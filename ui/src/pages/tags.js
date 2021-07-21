@@ -69,18 +69,61 @@ export default class TagsPage extends React.Component {
         let reload = false;
         let notFound = false;
         let error = undefined;
+        var bServicesParams = {
+            category: 'domain',
+            attributeName: 'businessService',
+            userName: props.req.session.shortId,
+        };
+        var bServicesParamsAll = {
+            category: 'domain',
+            attributeName: 'businessService',
+        };
         const tagsData = await Promise.all([
             api.listUserDomains(),
             api.getHeaderDetails(),
             api.getDomain(props.query.domain),
             api.getForm(),
+            api.getFeatureFlag(),
+            api.getMeta(bServicesParams),
+            api.getMeta(bServicesParamsAll),
         ]).catch((err) => {
             let response = RequestUtils.errorCheckHelper(err);
             reload = response.reload;
             error = response.error;
-            return [{}, {}, {}, {}];
+            return [{}, {}, {}, {}, {}, {}, {}];
         });
-
+        let businessServiceOptions = [];
+        if (tagsData[5] && tagsData[5].validValues) {
+            tagsData[5].validValues.forEach((businessService) => {
+                let bServiceOnlyId = businessService.substring(
+                    0,
+                    businessService.indexOf(':')
+                );
+                let bServiceOnlyName = businessService.substring(
+                    businessService.indexOf(':') + 1
+                );
+                businessServiceOptions.push({
+                    value: bServiceOnlyId,
+                    name: bServiceOnlyName,
+                });
+            });
+        }
+        let businessServiceOptionsAll = [];
+        if (tagsData[6] && tagsData[6].validValues) {
+            tagsData[6].validValues.forEach((businessService) => {
+                let bServiceOnlyId = businessService.substring(
+                    0,
+                    businessService.indexOf(':')
+                );
+                let bServiceOnlyName = businessService.substring(
+                    businessService.indexOf(':') + 1
+                );
+                businessServiceOptionsAll.push({
+                    value: bServiceOnlyId,
+                    name: bServiceOnlyName,
+                });
+            });
+        }
         return {
             api,
             reload,
@@ -92,6 +135,9 @@ export default class TagsPage extends React.Component {
             _csrf: tagsData[3],
             domain: props.query.domain,
             nonce: props.req.headers.rid,
+            featureFlag: tagsData[4],
+            validBusinessServices: businessServiceOptions,
+            validBusinessServicesAll: businessServiceOptionsAll,
         };
     }
 
@@ -139,11 +185,19 @@ export default class TagsPage extends React.Component {
                                                 this.props.headerDetails
                                                     .productMasterLink
                                             }
+                                            validBusinessServices={
+                                                this.props.validBusinessServices
+                                            }
+                                            validBusinessServicesAll={
+                                                this.props
+                                                    .validBusinessServicesAll
+                                            }
                                         />
                                         <Tabs
                                             api={this.api}
                                             domain={domain}
                                             selectedName={'tags'}
+                                            featureFlag={this.props.featureFlag}
                                         />
                                     </PageHeaderDiv>
                                     <TagList

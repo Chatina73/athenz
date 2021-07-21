@@ -574,7 +574,7 @@ public class ZTSClient implements Closeable {
     }
 
     /**
-     * Generate the SSLContext object based on give key/cert and trusttore
+     * Generate the SSLContext object based on give key/cert and truststore
      * files. If configured, the method will monitor any changes in the given
      * key/cert files and automatically update the ssl context.
      * @param trustStorePath path to the trust-store
@@ -1131,7 +1131,7 @@ public class ZTSClient implements Closeable {
      * @return ZTS generated Access Token Response object. ZTSClientException will be thrown in case of failure
      */
     public AccessTokenResponse getAccessToken(String domainName, List<String> roleNames, long expiryTime) {
-        return getAccessToken(domainName, roleNames, null, null, null, expiryTime, false);
+        return getAccessToken(domainName, roleNames, null, null, null, null, expiryTime, false);
     }
 
     /**
@@ -1150,7 +1150,7 @@ public class ZTSClient implements Closeable {
      */
     public AccessTokenResponse getAccessToken(String domainName, String roleName, String authorizationDetails, long expiryTime) {
         return getAccessToken(domainName, Collections.singletonList(roleName), null, null,
-                authorizationDetails, expiryTime, false);
+                authorizationDetails, null, expiryTime, false);
     }
 
     /**
@@ -1169,7 +1169,7 @@ public class ZTSClient implements Closeable {
      */
     public AccessTokenResponse getAccessToken(String domainName, List<String> roleNames,
             String idTokenServiceName, long expiryTime, boolean ignoreCache) {
-        return getAccessToken(domainName, roleNames, idTokenServiceName, null, null, expiryTime, ignoreCache);
+        return getAccessToken(domainName, roleNames, idTokenServiceName, null, null, null, expiryTime, ignoreCache);
     }
 
     /**
@@ -1190,6 +1190,31 @@ public class ZTSClient implements Closeable {
      */
     public AccessTokenResponse getAccessToken(String domainName, List<String> roleNames, String idTokenServiceName,
             String proxyForPrincipal, String authorizationDetails, long expiryTime, boolean ignoreCache) {
+        return getAccessToken(domainName, roleNames, idTokenServiceName, proxyForPrincipal, authorizationDetails,
+                null, expiryTime, ignoreCache);
+    }
+
+    /**
+     * For the specified requester(user/service) return the corresponding Access Token that
+     * includes the list of roles that the principal has access to in the specified domain
+     * @param domainName name of the domain
+     * @param roleNames (optional) only interested in roles with these names, comma separated list of roles
+     * @param idTokenServiceName (optional) as part of the response return an id token whose audience
+     *          is the specified service (only service name e.g. api) in the
+     *          domainName domain.
+     * @param proxyForPrincipal (optional) this request is proxy for this principal
+     * @param authorizationDetails (optional) rich authorization request details
+     * @param proxyPrincipalSpiffeUris (optional) comma separated list of spiffe uris of proxy
+     *          principals that this token will be routed through
+     * @param expiryTime (optional) specifies that the returned Access must be
+     *          at least valid for specified number of seconds. Pass 0 to use
+     *          server default timeout.
+     * @param ignoreCache ignore the cache and retrieve the token from ZTS Server
+     * @return ZTS generated Access Token Response object. ZTSClientException will be thrown in case of failure
+     */
+    public AccessTokenResponse getAccessToken(String domainName, List<String> roleNames, String idTokenServiceName,
+            String proxyForPrincipal, String authorizationDetails, String proxyPrincipalSpiffeUris, long expiryTime,
+            boolean ignoreCache) {
 
         AccessTokenResponse accessTokenResponse = null;
 
@@ -1199,7 +1224,7 @@ public class ZTSClient implements Closeable {
         String cacheKey = null;
         if (!cacheDisabled) {
             cacheKey = getAccessTokenCacheKey(domainName, roleNames, idTokenServiceName,
-                    proxyForPrincipal, authorizationDetails);
+                    proxyForPrincipal, authorizationDetails, proxyPrincipalSpiffeUris);
             if (cacheKey != null && !ignoreCache) {
                 accessTokenResponse = lookupAccessTokenResponseInCache(cacheKey, expiryTime);
                 if (accessTokenResponse != null) {
@@ -1208,7 +1233,7 @@ public class ZTSClient implements Closeable {
                 // start prefetch for this token if prefetch is enabled
                 if (enablePrefetch && prefetchAutoEnable) {
                     if (prefetchAccessToken(domainName, roleNames, idTokenServiceName,
-                            proxyForPrincipal, authorizationDetails, expiryTime)) {
+                            proxyForPrincipal, authorizationDetails, proxyPrincipalSpiffeUris, expiryTime)) {
                         accessTokenResponse = lookupAccessTokenResponseInCache(cacheKey, expiryTime);
                     }
                     if (accessTokenResponse != null) {
@@ -1232,7 +1257,8 @@ public class ZTSClient implements Closeable {
             updateServicePrincipal();
             try {
                 final String requestBody = generateAccessTokenRequestBody(domainName, roleNames,
-                        idTokenServiceName, proxyForPrincipal, authorizationDetails, expiryTime);
+                        idTokenServiceName, proxyForPrincipal, authorizationDetails,
+                        proxyPrincipalSpiffeUris, expiryTime);
                 accessTokenResponse = ztsClient.postAccessTokenRequest(requestBody);
             } catch (ResourceException ex) {
                 if (cacheKey != null && !ignoreCache) {
@@ -1260,7 +1286,7 @@ public class ZTSClient implements Closeable {
         if (!cacheDisabled) {
             if (cacheKey == null) {
                 cacheKey = getAccessTokenCacheKey(domainName, roleNames, idTokenServiceName,
-                        proxyForPrincipal, authorizationDetails);
+                        proxyForPrincipal, authorizationDetails, proxyPrincipalSpiffeUris);
             }
             if (cacheKey != null) {
                 ACCESS_TOKEN_CACHE.put(cacheKey, new AccessTokenResponseCacheEntry(accessTokenResponse));
@@ -1271,7 +1297,8 @@ public class ZTSClient implements Closeable {
     }
 
     String generateAccessTokenRequestBody(String domainName, List<String> roleNames, String idTokenServiceName,
-            String proxyForPrincipal, String authorizationDetails, long expiryTime) throws UnsupportedEncodingException {
+            String proxyForPrincipal, String authorizationDetails, String proxyPrincipalSpiffeUris,
+            long expiryTime) throws UnsupportedEncodingException {
 
         StringBuilder body = new StringBuilder(256);
         body.append("grant_type=client_credentials");
@@ -1302,6 +1329,10 @@ public class ZTSClient implements Closeable {
 
         if (!isEmpty(authorizationDetails)) {
             body.append("&authorization_details=").append(URLEncoder.encode(authorizationDetails, "UTF-8"));
+        }
+
+        if (!isEmpty(proxyPrincipalSpiffeUris)) {
+            body.append("&proxy_principal_spiffe_uris=").append(URLEncoder.encode(proxyPrincipalSpiffeUris, "UTF-8"));
         }
 
         return body.toString();
@@ -1358,7 +1389,7 @@ public class ZTSClient implements Closeable {
      * @param expiryTime number of seconds to request certificate to be valid for
      * @return RoleCertificateRequest object
      */
-    static public RoleCertificateRequest generateRoleCertificateRequest(final String principalDomain,
+    public static RoleCertificateRequest generateRoleCertificateRequest(final String principalDomain,
             final String principalService, final String roleDomainName, final String roleName,
             PrivateKey privateKey, final String csrDn, final String csrDomain, int expiryTime) {
         
@@ -1417,7 +1448,7 @@ public class ZTSClient implements Closeable {
      * @param expiryTime number of seconds to request certificate to be valid for
      * @return RoleCertificateRequest object
      */
-    static public RoleCertificateRequest generateRoleCertificateRequest(final String principalDomain,
+    public static RoleCertificateRequest generateRoleCertificateRequest(final String principalDomain,
             final String principalService, final String roleDomainName, final String roleName,
             final PrivateKey privateKey, final String cloud, int expiryTime) {
         
@@ -1448,7 +1479,7 @@ public class ZTSClient implements Closeable {
      * @param expiryTime number of seconds to request certificate to be valid for
      * @return InstanceRefreshRequest object
      */
-    static public InstanceRefreshRequest generateInstanceRefreshRequest(final String principalDomain,
+    public static InstanceRefreshRequest generateInstanceRefreshRequest(final String principalDomain,
             final String principalService, PrivateKey privateKey, final String csrDn,
             final String csrDomain, int expiryTime) {
         
@@ -1474,11 +1505,14 @@ public class ZTSClient implements Closeable {
         
         // now let's generate our dsnName field based on our principal's details
 
+        GeneralName[] sanArray = new GeneralName[2];
+
         final String hostName = service + '.' + domain.replace('.', '-') + '.' + csrDomain;
-        
-        GeneralName[] sanArray = new GeneralName[1];
         sanArray[0] = new GeneralName(GeneralName.dNSName, new DERIA5String(hostName));
-        
+
+        final String spiffeUri = "spiffe://" + domain + "/sa/" + service;
+        sanArray[1] = new GeneralName(GeneralName.uniformResourceIdentifier, new DERIA5String(spiffeUri));
+
         String csr;
         try {
             csr = Crypto.generateX509CSR(privateKey, dn, sanArray);
@@ -1499,7 +1533,7 @@ public class ZTSClient implements Closeable {
      * @param expiryTime number of seconds to request certificate to be valid for
      * @return InstanceRefreshRequest object
      */
-    static public InstanceRefreshRequest generateInstanceRefreshRequest(String principalDomain,
+    public static InstanceRefreshRequest generateInstanceRefreshRequest(String principalDomain,
             String principalService, PrivateKey privateKey, String cloud, int expiryTime) {
         
         if (cloud == null) {
@@ -1844,14 +1878,15 @@ public class ZTSClient implements Closeable {
     }
 
     public boolean prefetchAccessToken(String domainName, List<String> roleNames,
-            String idTokenServiceName, String proxyForPrincipal, String authorizationDetails, long expiryTime) {
+            String idTokenServiceName, String proxyForPrincipal, String authorizationDetails,
+            String proxyPrincipalSpiffeUris, long expiryTime) {
 
         if (domainName == null || domainName.trim().isEmpty()) {
             throw new ZTSClientException(ResourceException.BAD_REQUEST, "Domain Name cannot be empty");
         }
 
         AccessTokenResponse tokenResponse = getAccessToken(domainName, roleNames, idTokenServiceName,
-                proxyForPrincipal, authorizationDetails, expiryTime, true);
+                proxyForPrincipal, authorizationDetails, proxyPrincipalSpiffeUris, expiryTime, true);
         if (tokenResponse == null) {
             LOG.error("PrefetchToken: No access token fetchable using domain={}", domainName);
             return false;
@@ -1925,7 +1960,7 @@ public class ZTSClient implements Closeable {
     }
 
     String getAccessTokenCacheKey(String domainName, List<String> roleNames, String idTokenServiceName,
-            String proxyForPrincipal, String authorizationDetails) {
+            String proxyForPrincipal, String authorizationDetails, String proxyPrincipalSpiffeUris) {
 
         // if we don't have a tenant domain specified but we have a ssl context
         // then we're going to use the hash code for our sslcontext as the
@@ -1936,12 +1971,12 @@ public class ZTSClient implements Closeable {
             tenantDomain = sslContext.toString();
         }
         return getAccessTokenCacheKey(tenantDomain, service, domainName, roleNames,
-                idTokenServiceName, proxyForPrincipal, authorizationDetails);
+                idTokenServiceName, proxyForPrincipal, authorizationDetails, proxyPrincipalSpiffeUris);
     }
 
-    String getAccessTokenCacheKey(String tenantDomain, String tenantService, String domainName,
+    static String getAccessTokenCacheKey(String tenantDomain, String tenantService, String domainName,
             List<String> roleNames, String idTokenServiceName, String proxyForPrincipal,
-            String authorizationDetails) {
+            String authorizationDetails, String proxyPrincipalSpiffeUris) {
 
         // before we generate a cache key we need to have a valid domain
 
@@ -1977,6 +2012,11 @@ public class ZTSClient implements Closeable {
         if (!isEmpty(authorizationDetails)) {
             cacheKey.append(";z=");
             cacheKey.append(Base64.getUrlEncoder().withoutPadding().encodeToString(Crypto.sha256(authorizationDetails)));
+        }
+
+        if (!isEmpty(proxyPrincipalSpiffeUris)) {
+            cacheKey.append(";s=");
+            cacheKey.append(proxyPrincipalSpiffeUris);
         }
 
         return cacheKey.toString();
@@ -2769,6 +2809,75 @@ public class ZTSClient implements Closeable {
         }
     }
 
+    /**
+     * Retrieve list of workloads running on the given ip address
+     * @param ipAddress ip address of the workload
+     * @return list of workloads on success. ZTSClientException will be thrown in case of failure
+     */
+    public Workloads getWorkloadsByIP(String ipAddress) {
+        updateServicePrincipal();
+        try {
+            return ztsClient.getWorkloadsByIP(ipAddress);
+        } catch (ResourceException ex) {
+            throw new ZTSClientException(ex.getCode(), ex.getData());
+        } catch (Exception ex) {
+            throw new ZTSClientException(ResourceException.BAD_REQUEST, ex.getMessage());
+        }
+    }
+
+    /**
+     * Retrieve list of workloads running with given domain and service
+     * @param domain name of the domain
+     * @param service name of the service
+     * @return list of workloads on success. ZTSClientException will be thrown in case of failure
+     */
+    public Workloads getWorkloadsByService(String domain, String service) {
+        updateServicePrincipal();
+        try {
+            return ztsClient.getWorkloadsByService(domain, service);
+        } catch (ResourceException ex) {
+            throw new ZTSClientException(ex.getCode(), ex.getData());
+        } catch (Exception ex) {
+            throw new ZTSClientException(ResourceException.BAD_REQUEST, ex.getMessage());
+        }
+    }
+
+    /**
+     * Retrieve list of transport rules defined for given domain and service
+     * @param domain name of the domain
+     * @param service name of the service
+     * @return list of transport rules on success. ZTSClientException will be thrown in case of failure
+     */
+    public TransportRules getTransportRules(String domain, String service) {
+        updateServicePrincipal();
+        try {
+            return ztsClient.getTransportRules(domain, service);
+        } catch (ResourceException ex) {
+            throw new ZTSClientException(ex.getCode(), ex.getData());
+        } catch (Exception ex) {
+            throw new ZTSClientException(ResourceException.BAD_REQUEST, ex.getMessage());
+        }
+    }
+
+    /**
+     * Request an instance register token for the given service instance from the
+     * given provider. Not all providers may support such functionality.
+     * @param provider name of the provider
+     * @param domain name of the domain
+     * @param service name of the service
+     * @param instanceId unique id assigned to the instance by the provider
+     * @return instance register token. ZTSClientException will be thrown in case of failure
+     */
+    public InstanceRegisterToken getInstanceRegisterToken(String provider, String domain, String service, String instanceId) {
+        try {
+            return ztsClient.getInstanceRegisterToken(provider, domain, service, instanceId);
+        } catch (ResourceException ex) {
+            throw new ZTSClientException(ex.getCode(), ex.getData());
+        } catch (Exception ex) {
+            throw new ZTSClientException(ResourceException.BAD_REQUEST, ex.getMessage());
+        }
+    }
+
     static class ClientKeyRefresherListener implements KeyRefresherListener {
 
         long lastCertRefreshTime = 0;
@@ -3147,11 +3256,11 @@ public class ZTSClient implements Closeable {
         return cacheKeySet;
     }
 
-    boolean isEmpty(final String value) {
+    static boolean isEmpty(final String value) {
         return (value == null || value.isEmpty());
     }
 
-    boolean isEmpty(final List<String> list) {
+    static boolean isEmpty(final List<String> list) {
         return (list == null || list.isEmpty());
     }
 

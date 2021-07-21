@@ -5,21 +5,30 @@ package zmscli
 
 import (
 	"bytes"
-
 	"github.com/AthenZ/athenz/clients/go/zms"
 )
 
-func (cli Zms) ListUsers() (*string, error) {
-	var buf bytes.Buffer
-	users, err := cli.Zms.GetUserList()
+func (cli Zms) ListUsers(domainName string) (*string, error) {
+	users, err := cli.Zms.GetUserList(zms.DomainName(domainName))
 	if err != nil {
 		return nil, err
 	}
-	buf.WriteString("users:\n")
-	for _, item := range users.Names {
-		buf.WriteString("    - " + string(item) + "\n")
+
+	oldYamlConverter := func(res interface{}) (*string, error) {
+		var buf bytes.Buffer
+		users, err := cli.Zms.GetUserList(zms.DomainName(domainName))
+		if err != nil {
+			return nil, err
+		}
+		buf.WriteString("users:\n")
+		for _, item := range users.Names {
+			buf.WriteString("    - " + string(item) + "\n")
+		}
+		s := buf.String()
+		return &s, nil
 	}
-	return cli.switchOverFormats(users, buf.String())
+
+	return cli.dumpByFormat(users, oldYamlConverter)
 }
 
 func (cli Zms) DeleteUser(user string) (*string, error) {
@@ -28,5 +37,11 @@ func (cli Zms) DeleteUser(user string) (*string, error) {
 		return nil, err
 	}
 	s := "[Deleted user: " + user + "]"
-	return cli.switchOverFormats(s)
+
+	message := SuccessMessage{
+		Status:  200,
+		Message: s,
+	}
+
+	return cli.dumpByFormat(message, cli.buildYAMLOutput)
 }

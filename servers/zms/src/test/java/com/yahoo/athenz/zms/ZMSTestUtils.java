@@ -135,7 +135,7 @@ public class ZMSTestUtils {
 
     public static void cleanupNotAdminUsers(ZMSImpl zms, final String adminUser, ResourceContext ctx) {
 
-        UserList userList = zms.getUserList(ctx);
+        UserList userList = zms.getUserList(ctx, null);
         List<String> users = userList.getNames();
         for (String user : users) {
             if (user.equals(adminUser)) {
@@ -150,5 +150,9 @@ public class ZMSTestUtils {
 
     public static Timestamp addDays(Timestamp date, int days) {
         return Timestamp.fromMillis(date.millis() + TimeUnit.MILLISECONDS.convert(days, TimeUnit.DAYS));
+    }
+
+    public static boolean validateDueDate(long millis, long extMillis) {
+        return (millis > System.currentTimeMillis() + extMillis - 5000 && millis < System.currentTimeMillis() + extMillis + 5000);
     }
 }

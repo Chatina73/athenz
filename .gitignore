@@ -17,6 +17,7 @@ servers/zms/schema/zms_server.mwb.bak
 servers/zts/zts_logs/
 servers/zts/zts_store/
 servers/zts/bin/
+servers/zts/schema/zts_server.mwb.bak
 containers/jetty/zms_logs/
 core/zms/bin/
 core/zts/bin/
@@ -27,6 +28,8 @@ clients/go/zms/examples/get-access/get-access
 clients/go/zts/pkg/
 clients/go/zts/src/
 clients/go/zts/bin/
+clients/go/msd/pkg/
+clients/go/msd/bin/
 clients/go/zts/examples/get-role-token/get-role-token
 clients/java/zpe/src/test/resources/upd_pol_dir/
 clients/java/zpe/src/test/resources/pol_dir/angler.pol
@@ -119,7 +122,6 @@ libs/go/athenzutils/pkg/
 clients/nodejs/zpe/package-lock.json
 clients/nodejs/zts/package-lock.json
 libs/nodejs/auth_core/package-lock.json
-ui/package-lock.json
 .envrc
 .clover/
 athenz-docker-build.log

@@ -18,6 +18,7 @@ package com.yahoo.athenz.zts.cert;
 import com.yahoo.athenz.auth.AuthorityConsts;
 import com.yahoo.athenz.auth.util.Crypto;
 import com.yahoo.athenz.auth.util.CryptoException;
+import com.yahoo.athenz.common.utils.X509CertUtils;
 import com.yahoo.athenz.zts.ZTSConsts;
 import com.yahoo.athenz.zts.utils.ZTSUtils;
 import org.eclipse.jetty.util.StringUtil;
@@ -30,6 +31,8 @@ import java.util.*;
 public class X509RoleCertRequest extends X509CertRequest {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(X509RoleCertRequest.class);
+
+    private static final String SPIFFE_ROLE_AGENT    = "ra";
 
     protected String reqRoleName;
     protected String reqRoleDomain;
@@ -186,7 +189,7 @@ public class X509RoleCertRequest extends X509CertRequest {
 
         // validate spiffe uri if one is provided
 
-        return validateSpiffeURI(reqRoleDomain, "ra", reqRoleName);
+        return validateSpiffeURI(reqRoleDomain, SPIFFE_ROLE_AGENT, reqRoleName);
     }
 
     public boolean validateIPAddress(X509Certificate cert, final String ip) {

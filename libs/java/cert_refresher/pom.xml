@@ -20,7 +20,7 @@
   <parent>
     <groupId>com.yahoo.athenz</groupId>
     <artifactId>athenz</artifactId>
-    <version>1.10.10-SNAPSHOT</version>
+    <version>1.10.25-SNAPSHOT</version>
     <relativePath>../../../pom.xml</relativePath>
   </parent>
 
@@ -28,6 +28,10 @@
   <name>athenz-cert-refresher</name>
   <description>Athenz SSL Cert Refresher Package</description>
   <packaging>jar</packaging>
+
+  <properties>
+    <code.coverage.min>1.00</code.coverage.min>
+  </properties>
 
   <dependencies>
     <dependency>
@@ -89,6 +93,7 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-compiler-plugin</artifactId>
+            <version>${maven-compiler-plugin.version}</version>
             <executions>
               <execution>
                 <id>jdk11</id>
@@ -96,8 +101,6 @@
                   <goal>compile</goal>
                 </goals>
                 <configuration>
-                  <source>11</source>
-                  <target>11</target>
                   <release>11</release>
                   <compileSourceRoots>
                     <compileSourceRoot>${project.basedir}/src/main/java11</compileSourceRoot>
@@ -110,6 +113,7 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-jar-plugin</artifactId>
+            <version>${maven-jar-plugin.version}</version>
             <executions>
               <execution>
                 <id>default-jar</id>

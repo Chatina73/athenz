@@ -116,8 +116,12 @@ public class Crypto {
     public static final String SHA1 = "SHA1";
     public static final String SHA256 = "SHA256";
 
-    static final String ATHENZ_CRYPTO_BC_PROVIDER = "athenz.crypto.bc_provider";
+    static final String ATHENZ_CRYPTO_KEY_FACTORY_PROVIDER = "athenz.crypto.key_factory_provider";
+    static final String ATHENZ_CRYPTO_SIGNATURE_PROVIDER = "athenz.crypto.signature_provider";
     private static final String BC_PROVIDER = "BC";
+
+    public static final String CERT_RESTRICTED_SUFFIX = ":restricted";
+    public static final String CERT_SPIFFE_URI = "spiffe://";
 
     static final SecureRandom RANDOM;
     static {
@@ -135,8 +139,12 @@ public class Crypto {
         RANDOM.nextBytes(new byte[] { 8 });
     }
 
-    private static String getProvider() {
-        return System.getProperty(ATHENZ_CRYPTO_BC_PROVIDER, "BC");
+    private static String getKeyFactoryProvider() {
+        return System.getProperty(ATHENZ_CRYPTO_KEY_FACTORY_PROVIDER, BC_PROVIDER);
+    }
+
+    private static String getSignatureProvider() {
+        return System.getProperty(ATHENZ_CRYPTO_SIGNATURE_PROVIDER, BC_PROVIDER);
     }
 
     private static String getECDSAAlgo() {
@@ -225,7 +233,7 @@ public class Crypto {
     public static String sign(String message, PrivateKey key, String digestAlgorithm) throws CryptoException {
         try {
             String signatureAlgorithm = getSignatureAlgorithm(key.getAlgorithm(), digestAlgorithm);
-            java.security.Signature signer = java.security.Signature.getInstance(signatureAlgorithm, BC_PROVIDER);
+            java.security.Signature signer = java.security.Signature.getInstance(signatureAlgorithm, getSignatureProvider());
             signer.initSign(key);
             signer.update(utf8Bytes(message));
             byte[] sig = signer.sign();
@@ -258,7 +266,7 @@ public class Crypto {
     public static byte[] sign(byte[] message, PrivateKey key, String digestAlgorithm) throws CryptoException {
         try {
             String signatureAlgorithm = getSignatureAlgorithm(key.getAlgorithm(), digestAlgorithm);
-            java.security.Signature signer = java.security.Signature.getInstance(signatureAlgorithm, BC_PROVIDER);
+            java.security.Signature signer = java.security.Signature.getInstance(signatureAlgorithm, getSignatureProvider());
             signer.initSign(key);
             signer.update(message);
             return signer.sign();
@@ -302,7 +310,7 @@ public class Crypto {
         try {
             byte [] sig = ybase64Decode(signature);
             String signatureAlgorithm = getSignatureAlgorithm(key.getAlgorithm(), digestAlgorithm);
-            java.security.Signature signer = java.security.Signature.getInstance(signatureAlgorithm, BC_PROVIDER);
+            java.security.Signature signer = java.security.Signature.getInstance(signatureAlgorithm, getSignatureProvider());
             signer.initVerify(key);
             signer.update(utf8Bytes(message));
             return signer.verify(sig);
@@ -348,7 +356,7 @@ public class Crypto {
                                  String digestAlgorithm) throws CryptoException {
         try {
             String signatureAlgorithm = getSignatureAlgorithm(key.getAlgorithm(), digestAlgorithm);
-            java.security.Signature signer = java.security.Signature.getInstance(signatureAlgorithm, BC_PROVIDER);
+            java.security.Signature signer = java.security.Signature.getInstance(signatureAlgorithm, getSignatureProvider());
             signer.initVerify(key);
             signer.update(message);
             return signer.verify(signature);
@@ -545,7 +553,7 @@ public class Crypto {
             if (ecParam != null && ECDSA.equals(pubKey.getAlgorithm())) {
                 ECParameterSpec ecSpec = new ECParameterSpec(ecParam.getCurve(), ecParam.getG(),
                         ecParam.getN(), ecParam.getH(), ecParam.getSeed());
-                KeyFactory keyFactory = KeyFactory.getInstance(getECDSAAlgo(), getProvider());
+                KeyFactory keyFactory = KeyFactory.getInstance(getECDSAAlgo(), getKeyFactoryProvider());
                 ECPublicKeySpec keySpec = new ECPublicKeySpec(((BCECPublicKey) pubKey).getQ(), ecSpec);
                 pubKey = keyFactory.generatePublic(keySpec);
             }
@@ -590,7 +598,7 @@ public class Crypto {
         switch (privateKey.getAlgorithm()) {
             case RSA:
                 try {
-                    KeyFactory kf = KeyFactory.getInstance(getRSAAlgo(), getProvider());
+                    KeyFactory kf = KeyFactory.getInstance(getRSAAlgo(), getKeyFactoryProvider());
                     RSAPrivateCrtKey rsaCrtKey = (RSAPrivateCrtKey) privateKey;
                     RSAPublicKeySpec keySpec = new RSAPublicKeySpec(rsaCrtKey.getModulus(),
                             rsaCrtKey.getPublicExponent());
@@ -611,7 +619,7 @@ public class Crypto {
 
             case ECDSA:
                 try {
-                    KeyFactory kf = KeyFactory.getInstance(getECDSAAlgo(), getProvider());
+                    KeyFactory kf = KeyFactory.getInstance(getECDSAAlgo(), getKeyFactoryProvider());
                     BCECPrivateKey ecPrivKey = (BCECPrivateKey) privateKey;
                     ECMultiplier ecMultiplier = new FixedPointCombMultiplier();
                     ECParameterSpec ecParamSpec = ecPrivKey.getParameters();
@@ -732,7 +740,7 @@ public class Crypto {
             if (ecParam != null && privKey != null && ECDSA.equals(privKey.getAlgorithm())) {
                 ECParameterSpec ecSpec = new ECParameterSpec(ecParam.getCurve(), ecParam.getG(),
                         ecParam.getN(), ecParam.getH(), ecParam.getSeed());
-                KeyFactory keyFactory = KeyFactory.getInstance(getECDSAAlgo(), getProvider());
+                KeyFactory keyFactory = KeyFactory.getInstance(getECDSAAlgo(), getKeyFactoryProvider());
                 ECPrivateKeySpec keySpec = new ECPrivateKeySpec(((BCECPrivateKey) privKey).getS(), ecSpec);
                 privKey = keyFactory.generatePrivate(keySpec);
             }
@@ -1115,20 +1123,33 @@ public class Crypto {
     }
 
     public static boolean isRestrictedCertificate(X509Certificate x509Cert, GlobStringsMatcher globStringsMatcher) {
-        if (globStringsMatcher == null) {
-            LOG.error("isRestrictedCertificate: Required argument globStringsMatcher is null. Returning true.");
+
+        if (x509Cert == null) {
+            LOG.debug("isRestrictedCertificate: Required argument x509Cert is null. Returning true.");
             return true;
         }
-        if (x509Cert == null) {
-            LOG.error("isRestrictedCertificate: Required argument x509Cert is null. Returning true.");
+
+        final String x509Ou = extractX509CertSubjectOUField(x509Cert);
+        if (x509Ou == null || x509Ou.isEmpty()) {
+            // certificate has no ou field
+            return false;
+        }
+
+        // if it ends with our configured restricted suffix
+        // then there is no need to check for the regex match
+
+        if (x509Ou.endsWith(CERT_RESTRICTED_SUFFIX)) {
+            return true;
+        }
+
+        if (globStringsMatcher == null) {
+            LOG.debug("isRestrictedCertificate: Required argument globStringsMatcher is null. Returning true.");
             return true;
         }
         if (globStringsMatcher.isEmptyPatternsList()) {
             // No patterns provided, no need to check for mTLS restriction
             return false;
         }
-
-        String x509Ou = extractX509CertSubjectOUField(x509Cert);
         return globStringsMatcher.isMatch(x509Ou);
     }
 
@@ -1182,6 +1203,23 @@ public class Crypto {
 
     public static List<String> extractX509CertURIs(X509Certificate x509Cert) {
         return extractX509CertSANField(x509Cert, GeneralName.uniformResourceIdentifier);
+    }
+
+    public static String extractX509CertSpiffeUri(X509Certificate x509Cert) {
+        // each certificate must have a single SPIFFE URI
+        // if there are multiple we'll reject and return null
+        List<String> uris = extractX509CertURIs(x509Cert);
+        String spiffeUri = null;
+        for (String uri : uris) {
+            if (!uri.toLowerCase().startsWith(CERT_SPIFFE_URI)) {
+                continue;
+            }
+            if (spiffeUri != null) {
+                return null;
+            }
+            spiffeUri = uri;
+        }
+        return spiffeUri;
     }
 
     public static String extractX509CertPublicKey(X509Certificate x509Cert) {

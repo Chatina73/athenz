@@ -18,7 +18,6 @@ package com.yahoo.athenz.auth.token;
 import com.yahoo.athenz.auth.token.jwts.JwtsSigningKeyResolver;
 import com.yahoo.athenz.auth.util.Crypto;
 import com.yahoo.athenz.auth.util.CryptoException;
-import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import org.slf4j.Logger;
@@ -45,11 +44,14 @@ public class AccessToken extends OAuth2Token {
     public static final String CLAIM_AUTHZ_DETAILS = "authorization_details";
 
     public static final String CLAIM_CONFIRM_X509_HASH = "x5t#S256";
+    public static final String CLAIM_CONFIRM_PROXY_SPIFFE = "proxy-principals#spiffe";
 
     private static final Logger LOG = LoggerFactory.getLogger(AccessToken.class);
 
-    // default offset is 1 hour = 3600 secs
-    private static long ACCESS_TOKEN_CERT_OFFSET = 3600;
+    // by default we're going to allow the access token to be
+    // validated by the identity/spiffe uris and not carry
+    // out strict cert hash based validation only
+    private static long ACCESS_TOKEN_CERT_OFFSET = -1;
 
     // default no check on access token proxy principals
     private static Set<String> ACCESS_TOKEN_PROXY_PRINCIPALS = null;
@@ -71,7 +73,8 @@ public class AccessToken extends OAuth2Token {
 
     /**
      * Parses and validates the given token based on the keyResolver
-     * @param token access token
+     *
+     * @param token       access token
      * @param keyResolver JwtsSigningKeyResolver key resolver providing
      *                    the public key for token signature validation
      */
@@ -82,7 +85,8 @@ public class AccessToken extends OAuth2Token {
 
     /**
      * Parses and validates the given token based on the given public key
-     * @param token access token
+     *
+     * @param token     access token
      * @param publicKey the public key for token signature validation
      */
     public AccessToken(final String token, PublicKey publicKey) {
@@ -107,10 +111,11 @@ public class AccessToken extends OAuth2Token {
      * certs with start time of now - 3600secs) and 3600 secs after. The
      * second value is configurable with setAccessTokenCertOffset api
      * method.
-     * @param token access token
+     *
+     * @param token       access token
      * @param keyResolver JwtsSigningKeyResolver key resolver providing
      *                    the public key for token signature validation
-     * @param x509Cert x.509 certificate to validate confirmation claim
+     * @param x509Cert    x.509 certificate to validate confirmation claim
      */
     public AccessToken(final String token, JwtsSigningKeyResolver keyResolver,
                        X509Certificate x509Cert) {
@@ -141,10 +146,11 @@ public class AccessToken extends OAuth2Token {
      * and ask the library to validate based on that value. Additionally,
      * the client can configure what service identity names it will
      * accept proxy requests from for further security checks.
-     * @param token access token
-     * @param keyResolver JwtsSigningKeyResolver key resolver providing
-     *                    the public key for token signature validation
-     * @param x509Cert x.509 certificate to validate confirmation claim
+     *
+     * @param token        access token
+     * @param keyResolver  JwtsSigningKeyResolver key resolver providing
+     *                     the public key for token signature validation
+     * @param x509Cert     x.509 certificate to validate confirmation claim
      * @param x509CertHash x.509 certificate hash for proxy use case
      */
     public AccessToken(final String token, JwtsSigningKeyResolver keyResolver,
@@ -171,6 +177,7 @@ public class AccessToken extends OAuth2Token {
      * If the value is 0, then no offset is allowed. If the value is -1,
      * then we skip the offset check and only require that the client
      * certificate principal matches to the access token client id
+     *
      * @param offset number of seconds to allow access token validation
      *               based on principal/subject name
      */
@@ -186,6 +193,7 @@ public class AccessToken extends OAuth2Token {
      * and ask the library to validate based on that value. Additionally,
      * the client can configure what service identity names it will
      * accept proxy requests from for further security checks.
+     *
      * @param proxyPrincipals set of certificate principals that are allowed
      *                        to proxy access token requests
      */
@@ -194,7 +202,6 @@ public class AccessToken extends OAuth2Token {
     }
 
     void setAccessTokenFields() {
-        final Claims body = claims.getBody();
         setClientId(body.get(CLAIM_CLIENT_ID, String.class));
         setUserId(body.get(CLAIM_UID, String.class));
         setProxyPrincipal(body.get(CLAIM_PROXY, String.class));
@@ -274,6 +281,20 @@ public class AccessToken extends OAuth2Token {
         setConfirmEntry(CLAIM_CONFIRM_X509_HASH, getX509CertificateHash(cert));
     }
 
+    public void setConfirmProxyPrincipalSpiffeUris(List<String> proxyPrincipalSpiffeUris) {
+        setConfirmEntry(CLAIM_CONFIRM_PROXY_SPIFFE, proxyPrincipalSpiffeUris);
+    }
+
+    public List<String> getConfirmProxyPrincpalSpiffeUris() {
+
+        List<String> spiffeUris = null;
+        try {
+            spiffeUris = (List<String>) confirm.get(CLAIM_CONFIRM_PROXY_SPIFFE);
+        } catch (Exception ignored) {
+        }
+        return spiffeUris;
+    }
+
     public boolean confirmMTLSBoundToken(X509Certificate x509Cert, final String x509CertHash) {
 
         if (x509Cert == null) {
@@ -313,9 +334,40 @@ public class AccessToken extends OAuth2Token {
             return true;
         }
 
+        // check if we have authorization details specified for
+        // proxy access thus we can validate based on that
+
+        if (confirmX509CertPrincipalAuthzDetails(x509Cert)) {
+            return true;
+        }
         // direct comparison of certificate cn and provided hash
 
         return confirmX509ProxyPrincipal(cn, x509CertHash, cnfHash);
+    }
+
+    boolean confirmX509CertPrincipalAuthzDetails(X509Certificate cert) {
+
+        // make sure we have valid proxy principals specified
+
+        List<String> spiffeUris;
+        try {
+            spiffeUris = (List<String>) confirm.get(CLAIM_CONFIRM_PROXY_SPIFFE);
+        } catch (Exception ex) {
+            LOG.error("Unable to parse proxy principal claim: {}", ex.getMessage());
+            return false;
+        }
+        if (spiffeUris == null) {
+            return false;
+        }
+
+        final String certSpiffeUri = Crypto.extractX509CertSpiffeUri(cert);
+        for (String spiffeUri : spiffeUris) {
+            if (spiffeUri.equalsIgnoreCase(certSpiffeUri)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     boolean confirmX509CertHash(X509Certificate cert, final String cnfHash) {
@@ -405,7 +457,7 @@ public class AccessToken extends OAuth2Token {
     }
 
     public String getSignedToken(final PrivateKey key, final String keyId,
-            final SignatureAlgorithm keyAlg) {
+                                 final SignatureAlgorithm keyAlg) {
 
         return Jwts.builder().setSubject(subject)
                 .setId(jwtId)

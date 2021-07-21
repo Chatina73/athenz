@@ -64,9 +64,9 @@ public class JDBCConnection implements ObjectStoreConnection {
             + "SET modified=CURRENT_TIMESTAMP(3) WHERE name=?;";
     private static final String SQL_GET_DOMAIN_MOD_TIMESTAMP = "SELECT modified FROM domain WHERE name=?;";
     private static final String SQL_LIST_DOMAIN = "SELECT * FROM domain;";
-    private static final String SQL_LIST_DOMAIN_PREFIX = "SELECT name, modified FROM domain WHERE name>=? AND name<?;";
+    private static final String SQL_LIST_DOMAIN_PREFIX = "SELECT name, modified, enabled FROM domain WHERE name>=? AND name<?;";
     private static final String SQL_LIST_DOMAIN_MODIFIED = "SELECT * FROM domain WHERE modified>?;";
-    private static final String SQL_LIST_DOMAIN_PREFIX_MODIFIED = "SELECT name, modified FROM domain "
+    private static final String SQL_LIST_DOMAIN_PREFIX_MODIFIED = "SELECT name, modified, enabled FROM domain "
             + "WHERE name>=? AND name<? AND modified>?;";
     private static final String SQL_LIST_DOMAIN_ROLE_NAME_MEMBER = "SELECT domain.name FROM domain "
             + "JOIN role ON role.domain_id=domain.domain_id "
@@ -87,12 +87,12 @@ public class JDBCConnection implements ObjectStoreConnection {
     private static final String SQL_GET_ROLE_ID = "SELECT role_id FROM role WHERE domain_id=? AND name=?;";
     private static final String SQL_INSERT_ROLE = "INSERT INTO role (name, domain_id, trust, audit_enabled, self_serve,"
             + " member_expiry_days, token_expiry_mins, cert_expiry_mins, sign_algorithm, service_expiry_days,"
-            + " member_review_days, service_review_days, review_enabled, notify_roles, user_authority_filter, "
+            + " member_review_days, service_review_days, group_review_days, review_enabled, notify_roles, user_authority_filter, "
             + " user_authority_expiration, group_expiry_days) "
-            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);";
+            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);";
     private static final String SQL_UPDATE_ROLE = "UPDATE role SET trust=?, audit_enabled=?, self_serve=?, "
             + "member_expiry_days=?, token_expiry_mins=?, cert_expiry_mins=?, sign_algorithm=?, "
-            + "service_expiry_days=?, member_review_days=?, service_review_days=?, review_enabled=?, notify_roles=?, "
+            + "service_expiry_days=?, member_review_days=?, service_review_days=?, group_review_days=?, review_enabled=?, notify_roles=?, "
             + "user_authority_filter=?, user_authority_expiration=?, group_expiry_days=? WHERE role_id=?;";
     private static final String SQL_DELETE_ROLE = "DELETE FROM role WHERE domain_id=? AND name=?;";
     private static final String SQL_UPDATE_ROLE_MOD_TIMESTAMP = "UPDATE role "
@@ -528,6 +528,22 @@ public class JDBCConnection implements ObjectStoreConnection {
     private static final String SQL_LOOKUP_DOMAIN_BY_TAG_KEY_VAL = "SELECT d.name FROM domain d "
         + "JOIN domain_tags dt ON dt.domain_id = d.domain_id WHERE dt.key=? AND dt.value=?";
 
+    private static final String SQL_GET_ASSERTION_CONDITIONS = "SELECT assertion_condition.condition_id, "
+            + "assertion_condition.key, assertion_condition.operator, assertion_condition.value "
+            + "FROM assertion_condition WHERE assertion_condition.assertion_id=? ORDER BY assertion_condition.condition_id;";
+    private static final String SQL_GET_ASSERTION_CONDITION = "SELECT assertion_condition.key, assertion_condition.operator, assertion_condition.value, condition_id "
+            + "FROM assertion_condition WHERE assertion_id=? AND condition_id=? ORDER BY condition_id;";
+    private static final String SQL_COUNT_ASSERTION_CONDITIONS = "SELECT count(1) FROM assertion_condition WHERE assertion_id=?;";
+    private static final String SQL_INSERT_ASSERTION_CONDITION = "INSERT INTO assertion_condition (assertion_id,condition_id,`key`,operator,`value`) VALUES (?,?,?,?,?);";
+    private static final String SQL_DELETE_ASSERTION_CONDITION = "DELETE FROM assertion_condition WHERE assertion_id=? AND condition_id=?;";
+    private static final String SQL_DELETE_ASSERTION_CONDITIONS = "DELETE FROM assertion_condition WHERE assertion_id=?;";
+    private static final String SQL_GET_NEXT_CONDITION_ID = "SELECT IFNULL(MAX(condition_id)+1, 1) FROM assertion_condition WHERE assertion_id=?;";
+    private static final String SQL_GET_DOMAIN_POLICY_ASSERTIONS_CONDITIONS = "SELECT assertion.assertion_id, "
+            + "assertion_condition.condition_id, assertion_condition.key, assertion_condition.operator, assertion_condition.value "
+            + "FROM assertion_condition JOIN assertion ON assertion_condition.assertion_id=assertion.assertion_id "
+            + "JOIN policy ON policy.policy_id=assertion.policy_id "
+            + "WHERE policy.domain_id=? ORDER BY assertion.assertion_id, assertion_condition.condition_id;";
+
     private static final String CACHE_DOMAIN    = "d:";
     private static final String CACHE_ROLE      = "r:";
     private static final String CACHE_GROUP     = "g:";
@@ -656,6 +672,14 @@ public class JDBCConnection implements ObjectStoreConnection {
         }
         ps.setQueryTimeout(queryTimeout);
         return ps.executeQuery();
+    }
+
+    int[] executeBatch(PreparedStatement ps, String caller) throws SQLException {
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("{}: {}", caller, ps.toString());
+        }
+        ps.setQueryTimeout(queryTimeout);
+        return ps.executeBatch();
     }
 
     Domain saveDomainSettings(String domainName, ResultSet rs, boolean fetchTags) throws SQLException {
@@ -1074,7 +1098,7 @@ public class JDBCConnection implements ObjectStoreConnection {
         return res;
     }
 
-    public boolean insertDomainTags(String domainName, Map<String, StringList> tags) {
+    public boolean insertDomainTags(String domainName, Map<String, TagValueList> tags) {
         final String caller = "updateDomainTags";
         int domainId = getDomainId(domainName);
         if (domainId == 0) {
@@ -1088,7 +1112,7 @@ public class JDBCConnection implements ObjectStoreConnection {
         }
 
         boolean res = true;
-        for (Map.Entry<String, StringList> e : tags.entrySet()) {
+        for (Map.Entry<String, TagValueList> e : tags.entrySet()) {
             for (String tagValue : e.getValue().getList()) {
                 try (PreparedStatement ps = con.prepareStatement(SQL_INSERT_DOMAIN_TAG)) {
                     ps.setInt(1, domainId);
@@ -1104,9 +1128,9 @@ public class JDBCConnection implements ObjectStoreConnection {
         return res;
     }
 
-    private int calculateTagCount(Map<String, StringList> tags) {
+    private int calculateTagCount(Map<String, TagValueList> tags) {
         int count = 0;
-        for (Map.Entry<String, StringList> e : tags.entrySet()) {
+        for (Map.Entry<String, TagValueList> e : tags.entrySet()) {
             count += e.getValue().getList().size();
         }
         return count;
@@ -1128,9 +1152,9 @@ public class JDBCConnection implements ObjectStoreConnection {
         return count;
     }
 
-    public Map<String, StringList> getDomainTags(String domainName) {
+    public Map<String, TagValueList> getDomainTags(String domainName) {
         final String caller = "getDomainTags";
-        Map<String, StringList> domainTag = null;
+        Map<String, TagValueList> domainTag = null;
 
         try (PreparedStatement ps = con.prepareStatement(SQL_GET_DOMAIN_TAGS)) {
             ps.setString(1, domainName);
@@ -1141,7 +1165,7 @@ public class JDBCConnection implements ObjectStoreConnection {
                     if (domainTag == null) {
                         domainTag = new HashMap<>();
                     }
-                    StringList tagValues = domainTag.computeIfAbsent(tagKey, k -> new StringList().setList(new ArrayList<>()));
+                    TagValueList tagValues = domainTag.computeIfAbsent(tagKey, k -> new TagValueList().setList(new ArrayList<>()));
                     tagValues.getList().add(tagValue);
                 }
             }
@@ -1684,11 +1708,12 @@ public class JDBCConnection implements ObjectStoreConnection {
             ps.setInt(10, processInsertValue(role.getServiceExpiryDays()));
             ps.setInt(11, processInsertValue(role.getMemberReviewDays()));
             ps.setInt(12, processInsertValue(role.getServiceReviewDays()));
-            ps.setBoolean(13, processInsertValue(role.getReviewEnabled(), false));
-            ps.setString(14, processInsertValue(role.getNotifyRoles()));
-            ps.setString(15, processInsertValue(role.getUserAuthorityFilter()));
-            ps.setString(16, processInsertValue(role.getUserAuthorityExpiration()));
-            ps.setInt(17, processInsertValue(role.getGroupExpiryDays()));
+            ps.setInt(13, processInsertValue(role.getGroupReviewDays()));
+            ps.setBoolean(14, processInsertValue(role.getReviewEnabled(), false));
+            ps.setString(15, processInsertValue(role.getNotifyRoles()));
+            ps.setString(16, processInsertValue(role.getUserAuthorityFilter()));
+            ps.setString(17, processInsertValue(role.getUserAuthorityExpiration()));
+            ps.setInt(18, processInsertValue(role.getGroupExpiryDays()));
             affectedRows = executeUpdate(ps, caller);
         } catch (SQLException ex) {
             throw sqlError(ex, caller);
@@ -1728,12 +1753,13 @@ public class JDBCConnection implements ObjectStoreConnection {
             ps.setInt(8, processInsertValue(role.getServiceExpiryDays()));
             ps.setInt(9, processInsertValue(role.getMemberReviewDays()));
             ps.setInt(10, processInsertValue(role.getServiceReviewDays()));
-            ps.setBoolean(11, processInsertValue(role.getReviewEnabled(), false));
-            ps.setString(12, processInsertValue(role.getNotifyRoles()));
-            ps.setString(13, processInsertValue(role.getUserAuthorityFilter()));
-            ps.setString(14, processInsertValue(role.getUserAuthorityExpiration()));
-            ps.setInt(15, processInsertValue(role.getGroupExpiryDays()));
-            ps.setInt(16, roleId);
+            ps.setInt(11, processInsertValue(role.getGroupReviewDays()));
+            ps.setBoolean(12, processInsertValue(role.getReviewEnabled(), false));
+            ps.setString(13, processInsertValue(role.getNotifyRoles()));
+            ps.setString(14, processInsertValue(role.getUserAuthorityFilter()));
+            ps.setString(15, processInsertValue(role.getUserAuthorityExpiration()));
+            ps.setInt(16, processInsertValue(role.getGroupExpiryDays()));
+            ps.setInt(17, roleId);
             affectedRows = executeUpdate(ps, caller);
         } catch (SQLException ex) {
             throw sqlError(ex, caller);
@@ -3442,6 +3468,7 @@ public class JDBCConnection implements ObjectStoreConnection {
                 .setReviewEnabled(nullIfDefaultValue(rs.getBoolean(ZMSConsts.DB_COLUMN_REVIEW_ENABLED), false))
                 .setMemberReviewDays(nullIfDefaultValue(rs.getInt(ZMSConsts.DB_COLUMN_MEMBER_REVIEW_DAYS), 0))
                 .setServiceReviewDays(nullIfDefaultValue(rs.getInt(ZMSConsts.DB_COLUMN_SERVICE_REVIEW_DAYS), 0))
+                .setGroupReviewDays(nullIfDefaultValue(rs.getInt(ZMSConsts.DB_COLUMN_GROUP_REVIEW_DAYS), 0))
                 .setNotifyRoles(saveValue(rs.getString(ZMSConsts.DB_COLUMN_NOTIFY_ROLES)))
                 .setUserAuthorityFilter(saveValue(rs.getString(ZMSConsts.DB_COLUMN_USER_AUTHORITY_FILTER)))
                 .setUserAuthorityExpiration(saveValue(rs.getString(ZMSConsts.DB_COLUMN_USER_AUTHORITY_EXPIRATION)));
@@ -3560,6 +3587,7 @@ public class JDBCConnection implements ObjectStoreConnection {
 
         final String caller = "getAthenzDomain";
         Map<String, Policy> policyMap = new HashMap<>();
+        Map<Long, Assertion> assertionsMap = new HashMap<>();
         try (PreparedStatement ps = con.prepareStatement(SQL_GET_DOMAIN_POLICIES)) {
             ps.setInt(1, domainId);
             try (ResultSet rs = executeQuery(ps, caller)) {
@@ -3593,8 +3621,55 @@ public class JDBCConnection implements ObjectStoreConnection {
                     assertion.setResource(rs.getString(ZMSConsts.DB_COLUMN_RESOURCE));
                     assertion.setAction(rs.getString(ZMSConsts.DB_COLUMN_ACTION));
                     assertion.setEffect(AssertionEffect.valueOf(rs.getString(ZMSConsts.DB_COLUMN_EFFECT)));
-                    assertion.setId((long) rs.getInt(ZMSConsts.DB_COLUMN_ASSERT_ID));
+                    assertion.setId(rs.getLong(ZMSConsts.DB_COLUMN_ASSERT_ID));
+
                     assertions.add(assertion);
+                    assertionsMap.put(assertion.getId(), assertion);
+                }
+            }
+        } catch (SQLException ex) {
+            throw sqlError(ex, caller);
+        }
+        // assertion conditions fetch
+        Long assertionId;
+        int conditionId;
+        Assertion assertion;
+        Map<String, AssertionCondition> assertionConditionMap = new HashMap<>();
+        AssertionCondition assertionCondition;
+        Map<String, AssertionConditionData> assertionConditionDataMap;
+        AssertionConditionData assertionConditionData;
+        try (PreparedStatement ps = con.prepareStatement(SQL_GET_DOMAIN_POLICY_ASSERTIONS_CONDITIONS)) {
+            ps.setInt(1, domainId);
+            try (ResultSet rs = executeQuery(ps, caller)) {
+                while (rs.next()) {
+                    assertionId = rs.getLong(ZMSConsts.DB_COLUMN_ASSERT_ID);
+                    assertion = assertionsMap.get(assertionId);
+                    if (assertion == null) {
+                        continue;
+                    }
+                    AssertionConditions assertionConditions = assertion.getConditions();
+                    if (assertionConditions == null) {
+                        assertionConditions = new AssertionConditions();
+                        List<AssertionCondition> assertionConditionList = new ArrayList<>();
+                        assertionConditions.setConditionsList(assertionConditionList);
+                        assertion.setConditions(assertionConditions);
+                    }
+                    conditionId = rs.getInt(ZMSConsts.DB_COLUMN_CONDITION_ID);
+                    assertionCondition = assertionConditionMap.get(assertionId + ":" + conditionId);
+                    if (assertionCondition == null) {
+                        assertionCondition = new AssertionCondition();
+                        assertionConditionDataMap = new HashMap<>();
+                        assertionCondition.setConditionsMap(assertionConditionDataMap);
+                        assertionCondition.setId(conditionId);
+                        assertionConditionMap.put(assertionId + ":" + conditionId, assertionCondition);
+                        assertionConditions.getConditionsList().add(assertionCondition);
+                    }
+                    assertionConditionData = new AssertionConditionData();
+                    if (rs.getString(ZMSConsts.DB_COLUMN_OPERATOR) != null) {
+                        assertionConditionData.setOperator(AssertionConditionOperator.fromString(rs.getString(ZMSConsts.DB_COLUMN_OPERATOR)));
+                    }
+                    assertionConditionData.setValue(rs.getString(ZMSConsts.DB_COLUMN_VALUE));
+                    assertionCondition.getConditionsMap().put(rs.getString(ZMSConsts.DB_COLUMN_KEY), assertionConditionData);
                 }
             }
         } catch (SQLException ex) {
@@ -5951,10 +6026,10 @@ public class JDBCConnection implements ObjectStoreConnection {
 
     private void addTagsToRoles(Map<String, Role> roleMap, String domainName) {
 
-        Map<String, Map<String, StringList>> domainRoleTags = getDomainRoleTags(domainName);
+        Map<String, Map<String, TagValueList>> domainRoleTags = getDomainRoleTags(domainName);
         if (domainRoleTags != null) {
             for (Map.Entry<String, Role> roleEntry : roleMap.entrySet()) {
-                Map<String, StringList> roleTag = domainRoleTags.get(roleEntry.getKey());
+                Map<String, TagValueList> roleTag = domainRoleTags.get(roleEntry.getKey());
                 if (roleTag != null) {
                     roleEntry.getValue().setTags(roleTag);
                 }
@@ -5962,9 +6037,9 @@ public class JDBCConnection implements ObjectStoreConnection {
         }
     }
 
-    Map<String, Map<String, StringList>> getDomainRoleTags(String domainName) {
+    Map<String, Map<String, TagValueList>> getDomainRoleTags(String domainName) {
         final String caller = "getDomainRoleTags";
-        Map<String, Map<String, StringList>> domainRoleTags = null;
+        Map<String, Map<String, TagValueList>> domainRoleTags = null;
 
         try (PreparedStatement ps = con.prepareStatement(SQL_GET_DOMAIN_ROLE_TAGS)) {
             ps.setString(1, domainName);
@@ -5976,8 +6051,8 @@ public class JDBCConnection implements ObjectStoreConnection {
                     if (domainRoleTags == null) {
                         domainRoleTags = new HashMap<>();
                     }
-                    Map<String, StringList> roleTag = domainRoleTags.computeIfAbsent(roleName, tags -> new HashMap<>());
-                    StringList tagValues = roleTag.computeIfAbsent(tagKey, k -> new StringList().setList(new ArrayList<>()));
+                    Map<String, TagValueList> roleTag = domainRoleTags.computeIfAbsent(roleName, tags -> new HashMap<>());
+                    TagValueList tagValues = roleTag.computeIfAbsent(tagKey, k -> new TagValueList().setList(new ArrayList<>()));
                     tagValues.getList().add(tagValue);
                 }
             }
@@ -5988,9 +6063,9 @@ public class JDBCConnection implements ObjectStoreConnection {
     }
 
     @Override
-    public Map<String, StringList> getRoleTags(String domainName, String roleName) {
+    public Map<String, TagValueList> getRoleTags(String domainName, String roleName) {
         final String caller = "getRoleTags";
-        Map<String, StringList> roleTag = null;
+        Map<String, TagValueList> roleTag = null;
 
         try (PreparedStatement ps = con.prepareStatement(SQL_GET_ROLE_TAGS)) {
             ps.setString(1, domainName);
@@ -6002,7 +6077,7 @@ public class JDBCConnection implements ObjectStoreConnection {
                     if (roleTag == null) {
                         roleTag = new HashMap<>();
                     }
-                    StringList tagValues = roleTag.computeIfAbsent(tagKey, k -> new StringList().setList(new ArrayList<>()));
+                    TagValueList tagValues = roleTag.computeIfAbsent(tagKey, k -> new TagValueList().setList(new ArrayList<>()));
                     tagValues.getList().add(tagValue);
                 }
             }
@@ -6013,7 +6088,7 @@ public class JDBCConnection implements ObjectStoreConnection {
     }
 
     @Override
-    public boolean insertRoleTags(String roleName, String domainName, Map<String, StringList> roleTags) {
+    public boolean insertRoleTags(String roleName, String domainName, Map<String, TagValueList> roleTags) {
         final String caller = "insertRoleTags";
 
         int domainId = getDomainId(domainName);
@@ -6030,9 +6105,9 @@ public class JDBCConnection implements ObjectStoreConnection {
             throw requestError(caller, "role tag quota exceeded - limit: "
                 + roleTagsLimit + ", current tags count: " + curTagCount + ", new tags count: " + newTagCount);
         }
-        
+
         boolean res = true;
-        for (Map.Entry<String, StringList> e : roleTags.entrySet()) {
+        for (Map.Entry<String, TagValueList> e : roleTags.entrySet()) {
             for (String tagValue : e.getValue().getList()) {
                 try (PreparedStatement ps = con.prepareStatement(SQL_INSERT_ROLE_TAG)) {
                     ps.setInt(1, roleId);
@@ -6046,7 +6121,7 @@ public class JDBCConnection implements ObjectStoreConnection {
         }
         return res;
     }
-    
+
     private int getRoleTagsCount(int roleId) {
         final String caller = "getRoleTagsCount";
         int count = 0;
@@ -6087,4 +6162,173 @@ public class JDBCConnection implements ObjectStoreConnection {
         }
         return res;
     }
+
+    @Override
+    public int countAssertionConditions(long assertionId) {
+
+        final String caller = "countAssertionConditions";
+        int count = 0;
+        try (PreparedStatement ps = con.prepareStatement(SQL_COUNT_ASSERTION_CONDITIONS)) {
+            ps.setLong(1, assertionId);
+            try (ResultSet rs = executeQuery(ps, caller)) {
+                if (rs.next()) {
+                    count = rs.getInt(1);
+                }
+            }
+        } catch (SQLException ex) {
+            throw sqlError(ex, caller);
+        }
+        return count;
+    }
+
+    @Override
+    public List<AssertionCondition> getAssertionConditions(long assertionId) {
+        final String caller = "getAssertionConditions";
+        List<AssertionCondition> assertionConditions = new ArrayList<>();
+        Map<Integer, AssertionCondition> assertionConditionMap = new HashMap<>();
+        int conditionId;
+        AssertionCondition assertionCondition;
+        Map<String, AssertionConditionData> assertionConditionDataMap;
+        AssertionConditionData assertionConditionData;
+        try (PreparedStatement ps = con.prepareStatement(SQL_GET_ASSERTION_CONDITIONS)) {
+            ps.setLong(1, assertionId);
+            try (ResultSet rs = executeQuery(ps, caller)) {
+                while (rs.next()) {
+                    conditionId = rs.getInt(ZMSConsts.DB_COLUMN_CONDITION_ID);
+                    assertionCondition = assertionConditionMap.get(conditionId);
+                    if (assertionCondition == null) {
+                        assertionCondition = new AssertionCondition();
+                        assertionConditionDataMap = new HashMap<>();
+                        assertionCondition.setConditionsMap(assertionConditionDataMap);
+                        assertionCondition.setId(conditionId);
+                        assertionConditionMap.put(conditionId, assertionCondition);
+                        assertionConditions.add(assertionCondition);
+                    }
+                    assertionConditionData = new AssertionConditionData();
+                    if (rs.getString(ZMSConsts.DB_COLUMN_OPERATOR) != null) {
+                        assertionConditionData.setOperator(AssertionConditionOperator.fromString(rs.getString(ZMSConsts.DB_COLUMN_OPERATOR)));
+                    }
+                    assertionConditionData.setValue(rs.getString(ZMSConsts.DB_COLUMN_VALUE));
+                    assertionCondition.getConditionsMap().put(rs.getString(ZMSConsts.DB_COLUMN_KEY), assertionConditionData);
+
+                }
+            }
+        } catch (SQLException ex) {
+            throw sqlError(ex, caller);
+        }
+        return assertionConditions;
+    }
+
+    @Override
+    public AssertionCondition getAssertionCondition(long assertionId, int conditionId) {
+        final String caller = "getAssertionCondition";
+        AssertionCondition assertionCondition = null;
+        try (PreparedStatement ps = con.prepareStatement(SQL_GET_ASSERTION_CONDITION)) {
+            ps.setLong(1, assertionId);
+            ps.setInt(2, conditionId);
+            try (ResultSet rs = executeQuery(ps, caller)) {
+                while (rs.next()) {
+                    if (assertionCondition == null) {
+                        assertionCondition = new AssertionCondition();
+                        assertionCondition.setId(rs.getInt(ZMSConsts.DB_COLUMN_CONDITION_ID));
+                        Map<String, AssertionConditionData> conditionDataMap = new HashMap<>();
+                        assertionCondition.setConditionsMap(conditionDataMap);
+                    }
+                    AssertionConditionData conditionData = new AssertionConditionData();
+                    if (rs.getString(ZMSConsts.DB_COLUMN_OPERATOR) != null) {
+                        conditionData.setOperator(AssertionConditionOperator.fromString(rs.getString(ZMSConsts.DB_COLUMN_OPERATOR)));
+                    }
+                    conditionData.setValue(rs.getString(ZMSConsts.DB_COLUMN_VALUE));
+                    assertionCondition.getConditionsMap().put(rs.getString(ZMSConsts.DB_COLUMN_KEY), conditionData);
+                }
+            }
+        } catch (SQLException ex) {
+            throw sqlError(ex, caller);
+        }
+        return assertionCondition;
+    }
+
+    @Override
+    public boolean insertAssertionConditions(long assertionId, AssertionConditions assertionConditions) {
+        final String caller = "insertAssertionConditions";
+        boolean result = true;
+        for (AssertionCondition assertionCondition : assertionConditions.getConditionsList()) {
+            // get condition id for each AssertionCondition object in the list
+            // all keys in the conditionMap of AssertionCondition object share same condition id
+            assertionCondition.setId(getNextConditionId(assertionId, caller));
+            result = result && insertSingleAssertionCondition(assertionId, assertionCondition, caller);
+        }
+        return result;
+    }
+
+    @Override
+    public boolean deleteAssertionConditions(long assertionId) {
+        final String caller = "deleteAssertionConditions";
+        int affectedRows;
+        try (PreparedStatement ps = con.prepareStatement(SQL_DELETE_ASSERTION_CONDITIONS)) {
+            ps.setLong(1, assertionId);
+            affectedRows = executeUpdate(ps, caller);
+        } catch (SQLException ex) {
+            throw sqlError(ex, caller);
+        }
+        return affectedRows > 0;
+    }
+
+    @Override
+    public boolean insertAssertionCondition(long assertionId, AssertionCondition assertionCondition) {
+        final String caller = "insertAssertionCondition";
+        return insertSingleAssertionCondition(assertionId, assertionCondition, caller);
+    }
+
+    @Override
+    public int getNextConditionId(long assertionId, String caller) {
+        int nextConditionId = 1;
+        try (PreparedStatement ps = con.prepareStatement(SQL_GET_NEXT_CONDITION_ID)) {
+            ps.setLong(1, assertionId);
+            try (ResultSet rs = executeQuery(ps, caller)) {
+                if (rs.next()) {
+                    nextConditionId = rs.getInt(1);
+                }
+            }
+        } catch (SQLException ex) {
+            throw sqlError(ex, caller);
+        }
+        return nextConditionId;
+    }
+
+    private boolean insertSingleAssertionCondition(long assertionId, AssertionCondition assertionCondition, String caller) {
+        int affectedRows;
+        try (PreparedStatement ps = con.prepareStatement(SQL_INSERT_ASSERTION_CONDITION)) {
+            // loop over all the keys in the given condition map
+            for (String key : assertionCondition.getConditionsMap().keySet()) {
+                ps.setLong(1, assertionId);
+                ps.setInt(2, assertionCondition.getId());
+                ps.setString(3, key);
+                ps.setString(4, assertionCondition.getConditionsMap().get(key).getOperator().name());
+                ps.setString(5, assertionCondition.getConditionsMap().get(key).getValue());
+
+                ps.addBatch();
+            }
+            affectedRows = Arrays.stream(executeBatch(ps, caller)).sum();
+
+        } catch (SQLException ex) {
+            throw sqlError(ex, caller);
+        }
+        return affectedRows > 0;
+    }
+
+    @Override
+    public boolean deleteAssertionCondition(long assertionId, int conditionId) {
+        final String caller = "deleteAssertionCondition";
+        int affectedRows;
+        try (PreparedStatement ps = con.prepareStatement(SQL_DELETE_ASSERTION_CONDITION)) {
+            ps.setLong(1, assertionId);
+            ps.setInt(2, conditionId);
+            affectedRows = executeUpdate(ps, caller);
+        } catch (SQLException ex) {
+            throw sqlError(ex, caller);
+        }
+        return affectedRows > 0;
+    }
+
 }

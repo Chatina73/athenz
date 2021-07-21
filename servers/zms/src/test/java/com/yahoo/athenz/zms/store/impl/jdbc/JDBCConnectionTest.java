@@ -22,6 +22,8 @@ import com.yahoo.rdl.JSON;
 import com.yahoo.rdl.Struct;
 import com.yahoo.rdl.Timestamp;
 import com.yahoo.rdl.UUID;
+import org.hamcrest.CoreMatchers;
+import org.hamcrest.Matchers;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.Mockito;
@@ -89,7 +91,7 @@ public class JDBCConnectionTest {
         assertNull(domain.getId());
         assertNull(domain.getUserAuthorityFilter());
         assertEquals("service1", domain.getBusinessService());
-        assertEquals(domain.getTags(), Collections.singletonMap("tag-key", new StringList().setList(Collections.singletonList("tag-val"))));
+        assertEquals(domain.getTags(), Collections.singletonMap("tag-key", new TagValueList().setList(Collections.singletonList("tag-val"))));
         jdbcConn.close();
     }
 
@@ -125,7 +127,7 @@ public class JDBCConnectionTest {
         assertNull(domain.getOrg());
         assertNull(domain.getId());
         assertEquals("OnShore", domain.getUserAuthorityFilter());
-        assertEquals(domain.getTags(), Collections.singletonMap("tag-key", new StringList().setList(Collections.singletonList("tag-val"))));
+        assertEquals(domain.getTags(), Collections.singletonMap("tag-key", new TagValueList().setList(Collections.singletonList("tag-val"))));
 
         jdbcConn.close();
     }
@@ -391,7 +393,7 @@ public class JDBCConnectionTest {
         assertEquals("cloud_services", domain.getOrg());
         assertEquals(UUID.fromString("e5e97240-e94e-11e4-8163-6d083f3f473f"), domain.getId());
         assertEquals(domain.getUserAuthorityFilter(), "OnShore");
-        assertEquals(domain.getTags(), Collections.singletonMap("tag-key", new StringList().setList(Collections.singletonList("tag-val"))));
+        assertEquals(domain.getTags(), Collections.singletonMap("tag-key", new TagValueList().setList(Collections.singletonList("tag-val"))));
 
         jdbcConn.close();
     }
@@ -858,6 +860,7 @@ public class JDBCConnectionTest {
         assertNull(role.getServiceExpiryDays());
         assertNull(role.getMemberReviewDays());
         assertNull(role.getServiceReviewDays());
+        assertNull(role.getGroupReviewDays());
         assertNull(role.getUserAuthorityExpiration());
         assertNull(role.getUserAuthorityFilter());
         assertEquals(role.getSignAlgorithm(), "ec");
@@ -884,6 +887,7 @@ public class JDBCConnectionTest {
         Mockito.doReturn(40).when(mockResultSet).getInt(ZMSConsts.DB_COLUMN_SERVICE_EXPIRY_DAYS);
         Mockito.doReturn(70).when(mockResultSet).getInt(ZMSConsts.DB_COLUMN_MEMBER_REVIEW_DAYS);
         Mockito.doReturn(80).when(mockResultSet).getInt(ZMSConsts.DB_COLUMN_SERVICE_REVIEW_DAYS);
+        Mockito.doReturn(90).when(mockResultSet).getInt(ZMSConsts.DB_COLUMN_GROUP_REVIEW_DAYS);
 
         Mockito.doReturn(new java.sql.Timestamp(1454358916)).when(mockResultSet)
                 .getTimestamp(ZMSConsts.DB_COLUMN_MODIFIED);
@@ -907,6 +911,7 @@ public class JDBCConnectionTest {
         assertEquals(role.getUserAuthorityFilter(), "filter");
         assertEquals(role.getMemberReviewDays(), Integer.valueOf(70));
         assertEquals(role.getServiceReviewDays(), Integer.valueOf(80));
+        assertEquals(role.getGroupReviewDays(), Integer.valueOf(90));
 
         Mockito.verify(mockPrepStmt, times(1)).setString(1, "my-domain");
         Mockito.verify(mockPrepStmt, times(1)).setString(2, "role1");
@@ -1026,10 +1031,11 @@ public class JDBCConnectionTest {
         Mockito.verify(mockPrepStmt, times(1)).setInt(10, 0);
         Mockito.verify(mockPrepStmt, times(1)).setInt(11, 0);
         Mockito.verify(mockPrepStmt, times(1)).setInt(12, 0);
-        Mockito.verify(mockPrepStmt, times(1)).setBoolean(13, false);
-        Mockito.verify(mockPrepStmt, times(1)).setString(14, "");
+        Mockito.verify(mockPrepStmt, times(1)).setInt(13, 0);
+        Mockito.verify(mockPrepStmt, times(1)).setBoolean(14, false);
         Mockito.verify(mockPrepStmt, times(1)).setString(15, "");
         Mockito.verify(mockPrepStmt, times(1)).setString(16, "");
+        Mockito.verify(mockPrepStmt, times(1)).setString(17, "");
 
         jdbcConn.close();
     }
@@ -1041,6 +1047,7 @@ public class JDBCConnectionTest {
 
         Role role = new Role().setName("my-domain:role.role1").setAuditEnabled(true)
                 .setSelfServe(true).setMemberExpiryDays(45).setMemberReviewDays(70).setServiceReviewDays(80)
+                .setGroupReviewDays(90)
                 .setReviewEnabled(true).setNotifyRoles("role1,role2")
                 .setUserAuthorityFilter("filter").setUserAuthorityExpiration("expiry");
 
@@ -1064,10 +1071,11 @@ public class JDBCConnectionTest {
         Mockito.verify(mockPrepStmt, times(1)).setInt(10, 0);
         Mockito.verify(mockPrepStmt, times(1)).setInt(11, 70);
         Mockito.verify(mockPrepStmt, times(1)).setInt(12, 80);
-        Mockito.verify(mockPrepStmt, times(1)).setBoolean(13, true);
-        Mockito.verify(mockPrepStmt, times(1)).setString(14, "role1,role2");
-        Mockito.verify(mockPrepStmt, times(1)).setString(15, "filter");
-        Mockito.verify(mockPrepStmt, times(1)).setString(16, "expiry");
+        Mockito.verify(mockPrepStmt, times(1)).setInt(13, 90);
+        Mockito.verify(mockPrepStmt, times(1)).setBoolean(14, true);
+        Mockito.verify(mockPrepStmt, times(1)).setString(15, "role1,role2");
+        Mockito.verify(mockPrepStmt, times(1)).setString(16, "filter");
+        Mockito.verify(mockPrepStmt, times(1)).setString(17, "expiry");
         jdbcConn.close();
     }
 
@@ -1131,10 +1139,11 @@ public class JDBCConnectionTest {
         Mockito.verify(mockPrepStmt, times(1)).setInt(10, 0);
         Mockito.verify(mockPrepStmt, times(1)).setInt(11, 0);
         Mockito.verify(mockPrepStmt, times(1)).setInt(12, 0);
-        Mockito.verify(mockPrepStmt, times(1)).setBoolean(13, false);
-        Mockito.verify(mockPrepStmt, times(1)).setString(14, "");
+        Mockito.verify(mockPrepStmt, times(1)).setInt(13, 0);
+        Mockito.verify(mockPrepStmt, times(1)).setBoolean(14, false);
         Mockito.verify(mockPrepStmt, times(1)).setString(15, "");
         Mockito.verify(mockPrepStmt, times(1)).setString(16, "");
+        Mockito.verify(mockPrepStmt, times(1)).setString(17, "");
         jdbcConn.close();
     }
 
@@ -1167,6 +1176,7 @@ public class JDBCConnectionTest {
                 .setSelfServe(true).setMemberExpiryDays(30).setTokenExpiryMins(10)
                 .setCertExpiryMins(20).setSignAlgorithm("ec").setServiceExpiryDays(45)
                 .setMemberReviewDays(70).setServiceReviewDays(80).setGroupExpiryDays(50)
+                .setGroupReviewDays(90)
                 .setReviewEnabled(true).setNotifyRoles("role1,role2")
                 .setUserAuthorityFilter("filter").setUserAuthorityExpiration("expiry");
 
@@ -1194,12 +1204,13 @@ public class JDBCConnectionTest {
         Mockito.verify(mockPrepStmt, times(1)).setInt(8, 45);
         Mockito.verify(mockPrepStmt, times(1)).setInt(9, 70);
         Mockito.verify(mockPrepStmt, times(1)).setInt(10, 80);
-        Mockito.verify(mockPrepStmt, times(1)).setBoolean(11, true);
-        Mockito.verify(mockPrepStmt, times(1)).setString(12, "role1,role2");
-        Mockito.verify(mockPrepStmt, times(1)).setString(13, "filter");
-        Mockito.verify(mockPrepStmt, times(1)).setString(14, "expiry");
-        Mockito.verify(mockPrepStmt, times(1)).setInt(15, 50);
-        Mockito.verify(mockPrepStmt, times(1)).setInt(16, 4);
+        Mockito.verify(mockPrepStmt, times(1)).setInt(11, 90);
+        Mockito.verify(mockPrepStmt, times(1)).setBoolean(12, true);
+        Mockito.verify(mockPrepStmt, times(1)).setString(13, "role1,role2");
+        Mockito.verify(mockPrepStmt, times(1)).setString(14, "filter");
+        Mockito.verify(mockPrepStmt, times(1)).setString(15, "expiry");
+        Mockito.verify(mockPrepStmt, times(1)).setInt(16, 50);
+        Mockito.verify(mockPrepStmt, times(1)).setInt(17, 4);
         jdbcConn.close();
     }
 
@@ -1236,12 +1247,13 @@ public class JDBCConnectionTest {
         Mockito.verify(mockPrepStmt, times(1)).setInt(8, 0);
         Mockito.verify(mockPrepStmt, times(1)).setInt(9, 0);
         Mockito.verify(mockPrepStmt, times(1)).setInt(10, 0);
-        Mockito.verify(mockPrepStmt, times(1)).setBoolean(11, false);
-        Mockito.verify(mockPrepStmt, times(1)).setString(12, "");
+        Mockito.verify(mockPrepStmt, times(1)).setInt(11, 0);
+        Mockito.verify(mockPrepStmt, times(1)).setBoolean(12, false);
         Mockito.verify(mockPrepStmt, times(1)).setString(13, "");
         Mockito.verify(mockPrepStmt, times(1)).setString(14, "");
-        Mockito.verify(mockPrepStmt, times(1)).setInt(15, 0);
-        Mockito.verify(mockPrepStmt, times(1)).setInt(16, 7);
+        Mockito.verify(mockPrepStmt, times(1)).setString(15, "");
+        Mockito.verify(mockPrepStmt, times(1)).setInt(16, 0);
+        Mockito.verify(mockPrepStmt, times(1)).setInt(17, 7);
         jdbcConn.close();
     }
 
@@ -5740,7 +5752,10 @@ public class JDBCConnectionTest {
             .thenReturn(true).thenReturn(false) // 1 group
             .thenReturn(true).thenReturn(false) // 1 member
             .thenReturn(true).thenReturn(true).thenReturn(false) // 2 policies
-            .thenReturn(true).thenReturn(true).thenReturn(false) // 1 assertion each
+            // 1 assertion each. true for first assertion, false for assertion condition for that assertion
+            // true for second assertion, false for assertion condition for second assertion, last false to get out
+            .thenReturn(true).thenReturn(true).thenReturn(false)
+            .thenReturn(false) // no conditions
             .thenReturn(true).thenReturn(false) // 1 service
             .thenReturn(true).thenReturn(false) // 1 public key
             .thenReturn(true).thenReturn(false); // 1 host
@@ -12083,10 +12098,10 @@ public class JDBCConnectionTest {
         Mockito.when(mockResultSet.next())
                 .thenReturn(true, true, false);
 
-        Map<String, StringList> roleTags = jdbcConn.getRoleTags("domain", "role");
+        Map<String, TagValueList> roleTags = jdbcConn.getRoleTags("domain", "role");
         assertNotNull(roleTags);
 
-        StringList tagValues = roleTags.get("tagKey");
+        TagValueList tagValues = roleTags.get("tagKey");
 
         assertNotNull(tagValues);
         assertTrue(tagValues.getList().containsAll(Arrays.asList("tagVal1", "tagVal2")));
@@ -12104,7 +12119,7 @@ public class JDBCConnectionTest {
         Mockito.when(mockResultSet.next())
                 .thenReturn(false);
 
-        Map<String, StringList> roleTags = jdbcConn.getRoleTags("domain", "role");
+        Map<String, TagValueList> roleTags = jdbcConn.getRoleTags("domain", "role");
         assertNull(roleTags);
         Mockito.verify(mockPrepStmt, times(1)).setString(1, "domain");
         Mockito.verify(mockPrepStmt, times(1)).setString(2, "role");
@@ -12141,8 +12156,8 @@ public class JDBCConnectionTest {
 
         Mockito.doReturn(1).when(mockPrepStmt).executeUpdate();
 
-        Map<String, StringList> roleTags = Collections.singletonMap(
-                "tagKey", new StringList().setList(Collections.singletonList("tagVal"))
+        Map<String, TagValueList> roleTags = Collections.singletonMap(
+                "tagKey", new TagValueList().setList(Collections.singletonList("tagVal"))
         );
 
         assertTrue(jdbcConn.insertRoleTags("role", "domain", roleTags));
@@ -12173,8 +12188,8 @@ public class JDBCConnectionTest {
                 .thenReturn(true); // this one is for role id
 
         Mockito.doReturn(0).when(mockPrepStmt).executeUpdate();
-        Map<String, StringList> roleTags = Collections.singletonMap(
-                "tagKey", new StringList().setList(Collections.singletonList("tagVal"))
+        Map<String, TagValueList> roleTags = Collections.singletonMap(
+                "tagKey", new TagValueList().setList(Collections.singletonList("tagVal"))
         );
         assertFalse(jdbcConn.insertRoleTags("role", "domain", roleTags));
         jdbcConn.close();
@@ -12193,8 +12208,8 @@ public class JDBCConnectionTest {
         Mockito.when(mockPrepStmt.executeUpdate())
                 .thenThrow(new SQLException("sql error"));
         try {
-            Map<String, StringList> roleTags = Collections.singletonMap(
-                    "tagKey", new StringList().setList(Collections.singletonList("tagVal"))
+            Map<String, TagValueList> roleTags = Collections.singletonMap(
+                    "tagKey", new TagValueList().setList(Collections.singletonList("tagVal"))
             );
             jdbcConn.insertRoleTags("role", "domain", roleTags);
             fail();
@@ -12288,11 +12303,11 @@ public class JDBCConnectionTest {
         Mockito.when(mockResultSet.next())
                 .thenReturn(true, true, false);
 
-        Map<String, Map<String, StringList>> domainRoleTags = jdbcConn.getDomainRoleTags("sys.auth");
+        Map<String, Map<String, TagValueList>> domainRoleTags = jdbcConn.getDomainRoleTags("sys.auth");
         assertNotNull(domainRoleTags);
 
-        Map<String, StringList> roleTags = domainRoleTags.get("role");
-        StringList tagValues = roleTags.get("tagKey");
+        Map<String, TagValueList> roleTags = domainRoleTags.get("role");
+        TagValueList tagValues = roleTags.get("tagKey");
 
         assertNotNull(tagValues);
         assertTrue(tagValues.getList().containsAll(Arrays.asList("tagVal1", "tagVal2")));
@@ -12309,7 +12324,7 @@ public class JDBCConnectionTest {
         Mockito.when(mockResultSet.next())
                 .thenReturn(false);
 
-        Map<String, Map<String, StringList>> domainRoleTags = jdbcConn.getDomainRoleTags("sys.auth");
+        Map<String, Map<String, TagValueList>> domainRoleTags = jdbcConn.getDomainRoleTags("sys.auth");
         assertNull(domainRoleTags);
         Mockito.verify(mockPrepStmt, times(1)).setString(1, "sys.auth");
 
@@ -12394,10 +12409,10 @@ public class JDBCConnectionTest {
         Mockito.when(mockResultSet.next())
             .thenReturn(true, true, false);
 
-        Map<String, StringList> domainTags = jdbcConn.getDomainTags("domain");
+        Map<String, TagValueList> domainTags = jdbcConn.getDomainTags("domain");
         assertNotNull(domainTags);
 
-        StringList tagValues = domainTags.get("tagKey");
+        TagValueList tagValues = domainTags.get("tagKey");
 
         assertNotNull(tagValues);
         assertTrue(tagValues.getList().containsAll(Arrays.asList("tagVal1", "tagVal2")));
@@ -12414,7 +12429,7 @@ public class JDBCConnectionTest {
         Mockito.when(mockResultSet.next())
             .thenReturn(false);
 
-        Map<String, StringList> domainTags = jdbcConn.getDomainTags("domain");
+        Map<String, TagValueList> domainTags = jdbcConn.getDomainTags("domain");
         assertNull(domainTags);
         Mockito.verify(mockPrepStmt, times(1)).setString(1, "domain");
 
@@ -12448,8 +12463,8 @@ public class JDBCConnectionTest {
 
         Mockito.doReturn(1).when(mockPrepStmt).executeUpdate();
 
-        Map<String, StringList> domainTags = Collections.singletonMap(
-            "tagKey", new StringList().setList(Collections.singletonList("tagVal"))
+        Map<String, TagValueList> domainTags = Collections.singletonMap(
+            "tagKey", new TagValueList().setList(Collections.singletonList("tagVal"))
         );
 
         assertTrue(jdbcConn.insertDomainTags("domain", domainTags));
@@ -12473,8 +12488,8 @@ public class JDBCConnectionTest {
             .thenReturn(true); // this one is for domain id
 
         Mockito.doReturn(0).when(mockPrepStmt).executeUpdate();
-        Map<String, StringList> domainTags = Collections.singletonMap(
-            "tagKey", new StringList().setList(Collections.singletonList("tagVal"))
+        Map<String, TagValueList> domainTags = Collections.singletonMap(
+            "tagKey", new TagValueList().setList(Collections.singletonList("tagVal"))
         );
         assertFalse(jdbcConn.insertDomainTags("domain", domainTags));
         jdbcConn.close();
@@ -12486,8 +12501,8 @@ public class JDBCConnectionTest {
         JDBCConnection jdbcConn = new JDBCConnection(mockConn, true);
         Mockito.when(mockResultSet.next()).thenReturn(false); // this one is for domain id
 
-        Map<String, StringList> domainTags = Collections.singletonMap(
-                "tagKey", new StringList().setList(Collections.singletonList("tagVal"))
+        Map<String, TagValueList> domainTags = Collections.singletonMap(
+                "tagKey", new TagValueList().setList(Collections.singletonList("tagVal"))
         );
         try {
             jdbcConn.insertDomainTags("unknown-domain", domainTags);
@@ -12511,8 +12526,8 @@ public class JDBCConnectionTest {
         Mockito.when(mockPrepStmt.executeUpdate())
             .thenThrow(new SQLException("sql error"));
         try {
-            Map<String, StringList> domainTags = Collections.singletonMap(
-                "tagKey", new StringList().setList(Collections.singletonList("tagVal"))
+            Map<String, TagValueList> domainTags = Collections.singletonMap(
+                "tagKey", new TagValueList().setList(Collections.singletonList("tagVal"))
             );
             jdbcConn.insertDomainTags("domain",  domainTags);
             fail();
@@ -12698,5 +12713,252 @@ public class JDBCConnectionTest {
         assertEquals(principalAssertions.size(), 2);
         assertEquals(principalAssertions.get(0).getResource(), "arn:aws:iam::aws-1234/role/reader");
         assertEquals(principalAssertions.get(1).getResource(), "arn:aws:iam::aws-1234/role/writer");
+    }
+
+    @Test
+    public void testCountAssertionConditions() throws SQLException {
+        JDBCConnection jdbcConn = new JDBCConnection(mockConn, true);
+        Mockito.when(mockResultSet.next()).thenReturn(true, false);
+        Mockito.when(mockResultSet.getInt(1)).thenReturn(5);
+        assertEquals(jdbcConn.countAssertionConditions(4), 5);
+        jdbcConn.close();
+
+        jdbcConn = new JDBCConnection(mockConn, true);
+        Mockito.when(mockPrepStmt.executeQuery()).thenThrow(new SQLException("sql error"));
+        try {
+            jdbcConn.countAssertionConditions(4);
+            fail();
+        } catch (ResourceException ex) {
+            assertTrue(ex.getMessage().contains("sql error"));
+        }
+        jdbcConn.close();
+    }
+
+    @Test
+    public void testGetAssertionConditions() throws SQLException {
+        JDBCConnection jdbcConn = new JDBCConnection(mockConn, true);
+        Mockito.when(mockResultSet.next()).thenReturn(true, false);
+
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_KEY)).thenReturn("key1");
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_OPERATOR)).thenReturn("EQUALS");
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_VALUE)).thenReturn("value1");
+        Mockito.when(mockResultSet.getInt(ZMSConsts.DB_COLUMN_CONDITION_ID)).thenReturn(1);
+        AssertionCondition ac = new AssertionCondition().setId(1);
+        Map<String, AssertionConditionData> m1 = new HashMap<>();
+        m1.put("key1", new AssertionConditionData().setOperator(AssertionConditionOperator.EQUALS).setValue("value1"));
+        ac.setConditionsMap(m1);
+        List<AssertionCondition> actualList = jdbcConn.getAssertionConditions(4);
+        org.hamcrest.MatcherAssert.assertThat(actualList, CoreMatchers.hasItems(ac));
+        jdbcConn.close();
+
+        jdbcConn = new JDBCConnection(mockConn, true);
+        Mockito.when(mockPrepStmt.executeQuery()).thenThrow(new SQLException("sql error"));
+        try {
+            jdbcConn.getAssertionConditions(4);
+            fail();
+        } catch (ResourceException ex) {
+            assertTrue(ex.getMessage().contains("sql error"));
+        }
+        jdbcConn.close();
+    }
+
+    @Test
+    public void testGetAssertionCondition() throws SQLException {
+        JDBCConnection jdbcConn = new JDBCConnection(mockConn, true);
+        Mockito.when(mockResultSet.next()).thenReturn(true, false);
+
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_KEY)).thenReturn("key1");
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_OPERATOR)).thenReturn("EQUALS");
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_VALUE)).thenReturn("value1");
+        Mockito.when(mockResultSet.getInt(ZMSConsts.DB_COLUMN_CONDITION_ID)).thenReturn(1);
+        AssertionCondition ac = new AssertionCondition().setId(1);
+        Map<String, AssertionConditionData> m1 = new HashMap<>();
+        m1.put("key1", new AssertionConditionData().setOperator(AssertionConditionOperator.EQUALS).setValue("value1"));
+        ac.setConditionsMap(m1);
+
+        assertEquals(jdbcConn.getAssertionCondition(4, 1), ac);
+        jdbcConn.close();
+
+        jdbcConn = new JDBCConnection(mockConn, true);
+        Mockito.when(mockPrepStmt.executeQuery()).thenThrow(new SQLException("sql error"));
+        try {
+            jdbcConn.getAssertionCondition(4, 1);
+            fail();
+        } catch (ResourceException ex) {
+            assertTrue(ex.getMessage().contains("sql error"));
+        }
+        jdbcConn.close();
+    }
+
+    @Test
+    public void testInsertAssertionConditions() throws SQLException {
+        JDBCConnection jdbcConn = new JDBCConnection(mockConn, true);
+        AssertionConditions assertionConditions = new AssertionConditions();
+        AssertionCondition ac1 = new AssertionCondition().setId(1);
+        Map<String, AssertionConditionData> m1 = new HashMap<>();
+        m1.put("key1", new AssertionConditionData().setOperator(AssertionConditionOperator.EQUALS).setValue("value1"));
+        ac1.setConditionsMap(m1);
+        assertionConditions.setConditionsList(Collections.singletonList(ac1));
+
+        Mockito.when(mockPrepStmt.executeQuery())
+                .thenReturn(mockResultSet) // happy path
+                .thenReturn(mockResultSet) // happy path 2
+                .thenThrow(new SQLException("sql error")) // next condition id fail
+                .thenReturn(mockResultSet); // insert assertion condition fail
+        Mockito.when(mockResultSet.next()).thenReturn(true, true, false, false);
+        Mockito.when(mockResultSet.getInt(1)).thenReturn(5).thenReturn(5);
+        Mockito.when(mockPrepStmt.executeBatch()).thenReturn(new int[]{1}).thenReturn(new int[]{0}).thenThrow(new SQLException("sql error"));
+        assertTrue(jdbcConn.insertAssertionConditions(4, assertionConditions));
+        assertFalse(jdbcConn.insertAssertionConditions(4, assertionConditions));
+        try {
+            // fail to get next condition id
+            jdbcConn.insertAssertionConditions(4, assertionConditions);
+            fail();
+        } catch (ResourceException ex) {
+            assertTrue(ex.getMessage().contains("sql error"));
+        }
+        try {
+            // fail to insert assertion conditions
+            jdbcConn.insertAssertionConditions(4, assertionConditions);
+            fail();
+        } catch (ResourceException ex) {
+            assertTrue(ex.getMessage().contains("sql error"));
+        }
+        jdbcConn.close();
+    }
+
+    @Test
+    public void testDeleteAssertionConditions() throws SQLException {
+        JDBCConnection jdbcConn = new JDBCConnection(mockConn, true);
+        Mockito.when(mockPrepStmt.executeUpdate()).thenReturn(2).thenReturn(0).thenThrow(new SQLException("sql error"));
+        assertTrue(jdbcConn.deleteAssertionConditions(4));
+        assertFalse(jdbcConn.deleteAssertionConditions(4));
+        try {
+            // fail to delete assertion conditions
+            jdbcConn.deleteAssertionConditions(4);
+            fail();
+        } catch (ResourceException ex) {
+            assertTrue(ex.getMessage().contains("sql error"));
+        }
+        jdbcConn.close();
+    }
+
+    @Test
+    public void testDeleteAssertionCondition() throws SQLException {
+        JDBCConnection jdbcConn = new JDBCConnection(mockConn, true);
+        Mockito.when(mockPrepStmt.executeUpdate()).thenReturn(1).thenReturn(0).thenThrow(new SQLException("sql error"));
+        assertTrue(jdbcConn.deleteAssertionCondition(4, 1));
+        assertFalse(jdbcConn.deleteAssertionCondition(4, 1));
+        try {
+            // fail to delete assertion condition
+            jdbcConn.deleteAssertionCondition(4, 1);
+            fail();
+        } catch (ResourceException ex) {
+            assertTrue(ex.getMessage().contains("sql error"));
+        }
+        jdbcConn.close();
+    }
+
+    @Test
+    public void testGetNextAssertionCondition() throws SQLException {
+        JDBCConnection jdbcConn = new JDBCConnection(mockConn, true);
+        Mockito.when(mockPrepStmt.executeQuery()).thenReturn(mockResultSet).thenThrow(new SQLException("sql error"));
+        Mockito.when(mockResultSet.next()).thenReturn(true).thenReturn(false);
+        Mockito.when(mockResultSet.getInt(1)).thenReturn(1);
+        assertEquals(jdbcConn.getNextConditionId(1, "caller"), 1);
+        try {
+            jdbcConn.getNextConditionId(1, "caller");
+            fail();
+        } catch (ResourceException ex) {
+            assertTrue(ex.getMessage().contains("sql error"));
+        }
+        jdbcConn.close();
+    }
+
+    @Test
+    public void testGetAthenzDomainPolicies() throws SQLException {
+        JDBCConnection jdbcConn = new JDBCConnection(mockConn, true);
+        Mockito.when(mockResultSet.next()).thenReturn(true, false, true, false, true, false);
+
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_NAME)).thenReturn("pol1");
+        Mockito.doReturn(new java.sql.Timestamp(1454358916)).when(mockResultSet).getTimestamp(ZMSConsts.DB_COLUMN_MODIFIED);
+
+        Mockito.when(mockResultSet.getString(1)).thenReturn("pol1");
+
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_ROLE)).thenReturn("role1");
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_RESOURCE)).thenReturn("dom1:*");
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_ACTION)).thenReturn("*");
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_EFFECT)).thenReturn("ALLOW");
+        Mockito.when(mockResultSet.getLong(ZMSConsts.DB_COLUMN_ASSERT_ID)).thenReturn(1L);
+
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_KEY)).thenReturn("key1");
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_OPERATOR)).thenReturn("EQUALS");
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_VALUE)).thenReturn("value1");
+        Mockito.when(mockResultSet.getInt(ZMSConsts.DB_COLUMN_CONDITION_ID)).thenReturn(1);
+
+
+        AthenzDomain athenzDomain = new AthenzDomain("dom1");
+        jdbcConn.getAthenzDomainPolicies("dom1", 1, athenzDomain);
+        assertNotNull(athenzDomain.getPolicies().get(0).getAssertions().get(0).getConditions());
+        AssertionCondition ac1 = new AssertionCondition().setId(1);
+        Map<String, AssertionConditionData> m1 = new HashMap<>();
+        m1.put("key1", new AssertionConditionData().setOperator(AssertionConditionOperator.EQUALS).setValue("value1"));
+        ac1.setConditionsMap(m1);
+        org.hamcrest.MatcherAssert.assertThat(athenzDomain.getPolicies().get(0).getAssertions().get(0).getConditions().getConditionsList(),
+                CoreMatchers.hasItems(ac1));
+        jdbcConn.close();
+
+        jdbcConn = new JDBCConnection(mockConn, true);
+        Mockito.when(mockPrepStmt.executeQuery()).thenReturn(mockResultSet).thenThrow(new SQLException("sql error")).thenThrow(new SQLException("sql error"));
+        Mockito.when(mockResultSet.next()).thenReturn(true, false);
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_NAME)).thenReturn("pol1");
+        Mockito.doReturn(new java.sql.Timestamp(1454358916)).when(mockResultSet).getTimestamp(ZMSConsts.DB_COLUMN_MODIFIED);
+
+        try {
+            // fail to get assertion conditions
+            jdbcConn.getAthenzDomainPolicies("dom1", 1, athenzDomain);
+            fail();
+        } catch (ResourceException ex) {
+            assertTrue(ex.getMessage().contains("sql error"));
+        }
+        jdbcConn.close();
+    }
+
+    @Test
+    public void testGetAthenzDomainPoliciesError() throws SQLException {
+        JDBCConnection jdbcConn = new JDBCConnection(mockConn, true);
+        AthenzDomain athenzDomain = new AthenzDomain("dom1");
+        Mockito.when(mockPrepStmt.executeQuery()).thenThrow(new SQLException("sql error"));
+        try {
+            // fail to get assertion conditions
+            jdbcConn.getAthenzDomainPolicies("dom1", 1, athenzDomain);
+            fail();
+        } catch (ResourceException ex) {
+            assertTrue(ex.getMessage().contains("sql error"));
+        }
+        jdbcConn.close();
+    }
+
+    @Test
+    public void testGetAthenzDomainPoliciesAssertionConditionsError() throws SQLException {
+        JDBCConnection jdbcConn = new JDBCConnection(mockConn, true);
+        AthenzDomain athenzDomain = new AthenzDomain("dom1");
+        Mockito.when(mockResultSet.next()).thenReturn(true, false, true, false, false);
+        Mockito.when(mockPrepStmt.executeQuery()).thenReturn(mockResultSet).thenReturn(mockResultSet).thenThrow(new SQLException("sql error"));
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_NAME)).thenReturn("pol1");
+        Mockito.doReturn(new java.sql.Timestamp(1454358916)).when(mockResultSet).getTimestamp(ZMSConsts.DB_COLUMN_MODIFIED);
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_ROLE)).thenReturn("role1");
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_RESOURCE)).thenReturn("resource");
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_ACTION)).thenReturn("action");
+        Mockito.when(mockResultSet.getString(ZMSConsts.DB_COLUMN_EFFECT)).thenReturn("ALLOW");
+        Mockito.when(mockResultSet.getLong(ZMSConsts.DB_COLUMN_ASSERT_ID)).thenReturn(1L);
+        try {
+            // fail to get assertion conditions
+            jdbcConn.getAthenzDomainPolicies("dom1", 1, athenzDomain);
+            fail();
+        } catch (ResourceException ex) {
+            assertTrue(ex.getMessage().contains("sql error"));
+        }
+        jdbcConn.close();
     }
 }

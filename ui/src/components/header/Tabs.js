@@ -48,6 +48,10 @@ class Tabs extends React.Component {
             name: 'templates',
         },
         {
+            label: 'Settings',
+            name: 'domain-settings',
+        },
+        {
             label: 'History',
             name: 'history',
         },
@@ -105,10 +109,32 @@ class Tabs extends React.Component {
                     { getInitialProps: true }
                 );
                 break;
+            case 'microsegmentation':
+                this.props.router.push(
+                    `/domain/${domain}/microsegmentation`,
+                    `/domain/${domain}/microsegmentation`,
+                    { getInitialProps: true }
+                );
+                break;
+            case 'domain-settings':
+                this.props.router.push(
+                    `/domain/${domain}/domain-settings`,
+                    `/domain/${domain}/domain-settings`,
+                    { getInitialProps: true }
+                );
+                break;
         }
     }
 
     render() {
+        let microSeg = {
+            label: 'Micro Segmentation',
+            name: 'microsegmentation',
+        };
+
+        if (this.props.featureFlag) {
+            this.TABS.push(microSeg);
+        }
         return (
             <TabGroup
                 tabs={this.TABS}

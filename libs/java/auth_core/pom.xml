@@ -17,7 +17,7 @@
   <parent>
     <groupId>com.yahoo.athenz</groupId>
     <artifactId>athenz</artifactId>
-    <version>1.10.10-SNAPSHOT</version>
+    <version>1.10.25-SNAPSHOT</version>
     <relativePath>../../../pom.xml</relativePath>
   </parent>
 
@@ -27,8 +27,9 @@
   <description>Core Auth Interfaces</description>
 
   <properties>
-    <code.coverage.min>0.89</code.coverage.min>
+    <code.coverage.min>0.8988</code.coverage.min>
   </properties>
+
   <dependencies>
     <dependency>
       <groupId>org.bouncycastle</groupId>
@@ -98,6 +99,7 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-compiler-plugin</artifactId>
+            <version>${maven-compiler-plugin.version}</version>
             <executions>
               <execution>
                 <id>jdk11</id>
@@ -105,8 +107,6 @@
                   <goal>compile</goal>
                 </goals>
                 <configuration>
-                  <source>11</source>
-                  <target>11</target>
                   <release>11</release>
                   <compileSourceRoots>
                     <compileSourceRoot>${project.basedir}/src/main/java11</compileSourceRoot>
@@ -119,6 +119,7 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-jar-plugin</artifactId>
+            <version>${maven-jar-plugin.version}</version>
             <executions>
               <execution>
                 <id>default-jar</id>

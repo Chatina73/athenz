@@ -129,6 +129,8 @@ func (cli Zms) dumpRole(buf *bytes.Buffer, role zms.Role, auditLog bool, indent1
 	dumpInt32Value(buf, indent2, "cert_expiry_mins", role.CertExpiryMins)
 	dumpInt32Value(buf, indent2, "member_review_days", role.MemberReviewDays)
 	dumpInt32Value(buf, indent2, "service_review_days", role.ServiceReviewDays)
+	dumpInt32Value(buf, indent2, "group_expiry_days", role.GroupExpiryDays)
+	dumpInt32Value(buf, indent2, "group_review_days", role.GroupReviewDays)
 	dumpBoolValue(buf, indent2, "audit_enabled", role.AuditEnabled)
 	dumpBoolValue(buf, indent2, "review_enabled", role.ReviewEnabled)
 	dumpBoolValue(buf, indent2, "self_serve", role.SelfServe)
@@ -181,7 +183,7 @@ func (cli Zms) dumpRole(buf *bytes.Buffer, role zms.Role, auditLog bool, indent1
 	}
 }
 
-func (cli Zms) dumpTags(buf *bytes.Buffer, indentFirst bool, indent1, indent2 string, tags map[zms.CompoundName]*zms.StringList) {
+func (cli Zms) dumpTags(buf *bytes.Buffer, indentFirst bool, indent1, indent2 string, tags map[zms.CompoundName]*zms.TagValueList) {
 	if tags != nil {
 		if indentFirst {
 			buf.WriteString(indent2)
@@ -216,6 +218,8 @@ func (cli Zms) dumpRoles(buf *bytes.Buffer, dn string, tagKey string, tagValue s
 
 func (cli Zms) dumpGroup(buf *bytes.Buffer, group zms.Group, auditLog bool, indent1 string, indent2 string) {
 	cli.displayObjectName(buf, string(group.Name), ":group.", indent1)
+	dumpInt32Value(buf, indent2, "member_expiry_days", group.MemberExpiryDays)
+    dumpInt32Value(buf, indent2, "service_expiry_days", group.ServiceExpiryDays)
 	dumpBoolValue(buf, indent2, "audit_enabled", group.AuditEnabled)
 	dumpBoolValue(buf, indent2, "review_enabled", group.ReviewEnabled)
 	dumpBoolValue(buf, indent2, "self_serve", group.SelfServe)

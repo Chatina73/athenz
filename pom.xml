@@ -20,7 +20,7 @@
   <groupId>com.yahoo.athenz</groupId>
   <artifactId>athenz</artifactId>
   <packaging>pom</packaging>
-  <version>1.10.10-SNAPSHOT</version>
+  <version>1.10.25-SNAPSHOT</version>
 
   <name>AthenZ</name>
   <description>
@@ -55,8 +55,8 @@
 
   <scm>
     <url>https://github.com/AthenZ/athenz</url>
-    <connection>scm:git:https://github.com/AthenZ/athenz.git</connection>
-    <developerConnection>scm:git:https://github.com/AthenZ/athenz.git</developerConnection>
+    <connection>scm:git:ssh://git@github.com/AthenZ/athenz.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/AthenZ/athenz.git</developerConnection>
     <tag>HEAD</tag>
   </scm>
 
@@ -71,25 +71,25 @@
   </ciManagement>
 
   <properties>
-    <jetty.version>9.4.38.v20210224</jetty.version>
-    <jersey.version>2.33</jersey.version>
-    <jackson.core.version>2.12.2</jackson.core.version>
-    <jackson.databind.version>2.12.2</jackson.databind.version>
-    <jackson.annotations.version>2.12.2</jackson.annotations.version>
-    <jackson.jaxrs.version>2.12.2</jackson.jaxrs.version>
+    <jetty.version>9.4.43.v20210629</jetty.version>
+    <jersey.version>2.34</jersey.version>
+    <jackson.core.version>2.12.4</jackson.core.version>
+    <jackson.databind.version>2.12.4</jackson.databind.version>
+    <jackson.annotations.version>2.12.4</jackson.annotations.version>
+    <jackson.jaxrs.version>2.12.4</jackson.jaxrs.version>
     <rdl.version>1.5.4</rdl.version>
-    <bouncycastle.version>1.68</bouncycastle.version>
-    <aws.version>1.11.969</aws.version>
-    <aws2.version>2.16.13</aws2.version>
-    <guava.version>30.1-jre</guava.version>
+    <bouncycastle.version>1.69</bouncycastle.version>
+    <aws.version>1.12.19</aws.version>
+    <aws2.version>2.16.97</aws2.version>
+    <guava.version>30.1.1-jre</guava.version>
     <logback.version>1.2.3</logback.version>
     <javax.version>3.1.0</javax.version>
     <javax.ws.version>2.1.1</javax.ws.version>
-    <mockito.version>3.8.0</mockito.version>
+    <mockito.version>3.11.2</mockito.version>
     <jmockit.version>1.49</jmockit.version>
     <jjwt.version>0.11.2</jjwt.version>
     <jaxb.version>2.3.3</jaxb.version>
-    <mysql.connector.version>8.0.23</mysql.connector.version>
+    <mysql.connector.version>8.0.25</mysql.connector.version>
     <commons.daemon.version>1.2.4</commons.daemon.version>
     <apache.httpclient.version>4.5.13</apache.httpclient.version>
     <maven-surefire-plugin.version>3.0.0-M5</maven-surefire-plugin.version>
@@ -98,7 +98,9 @@
     <maven-jar-plugin.version>3.2.0</maven-jar-plugin.version>
     <maven-compiler-plugin.version>3.8.1</maven-compiler-plugin.version>
     <exec-maven-plugin.version>1.1.1</exec-maven-plugin.version>
-    <swagger.version>2.1.7</swagger.version>
+    <jacoco-maven-plugin.version>0.8.5</jacoco-maven-plugin.version>
+    <swagger.version>2.1.10</swagger.version>
+    <hamcrest.version>2.2</hamcrest.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <code.coverage.min>0.95</code.coverage.min>
@@ -116,6 +118,7 @@
     <module>rdl/rdl-gen-athenz-java-client</module>
     <module>core/zms</module>
     <module>core/zts</module>
+    <module>core/msd</module>
     <module>libs/java/auth_core</module>
     <module>libs/java/client_common</module>
     <module>libs/java/server_common</module>
@@ -125,11 +128,13 @@
     <module>clients/java/zts/core</module>
     <module>clients/java/zts/shade</module>
     <module>clients/java/zpe</module>
+    <module>clients/java/msd</module>
     <module>servers/zms</module>
     <module>servers/zts</module>
     <module>containers/jetty</module>
     <module>clients/go/zms</module>
     <module>clients/go/zts</module>
+    <module>clients/go/msd</module>
     <module>libs/go/zmscli</module>
     <module>libs/go/zmssvctoken</module>
     <module>libs/go/athenzutils</module>
@@ -159,7 +164,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-compiler-plugin</artifactId>
-          <version>3.5.1</version>
+          <version>${maven-compiler-plugin.version}</version>
           <configuration>
             <source>1.8</source>
             <target>1.8</target>
@@ -209,6 +214,7 @@
         </executions>
       </plugin>
       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-source-plugin</artifactId>
         <version>3.0.1</version>
         <executions>
@@ -239,7 +245,7 @@
       <plugin>
         <groupId>org.jacoco</groupId>
         <artifactId>jacoco-maven-plugin</artifactId>
-        <version>0.8.5</version>
+        <version>${jacoco-maven-plugin.version}</version>
         <executions>
           <execution>
             <goals>
@@ -269,6 +275,8 @@
                 <exclude>**/ZMSConsts.class</exclude>
                 <exclude>**/FileConnection.class</exclude>
                 <exclude>**/FileObjectStore.class</exclude>
+                <exclude>**/FileWorkloadStore.class</exclude>
+                <exclude>**/*MSDRDLGeneratedClient.class</exclude>
               </excludes>
               <rules>
                 <rules>
@@ -319,6 +327,12 @@
       <groupId>org.mockito</groupId>
       <artifactId>mockito-core</artifactId>
       <version>${mockito.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.hamcrest</groupId>
+      <artifactId>hamcrest</artifactId>
+      <version>${hamcrest.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

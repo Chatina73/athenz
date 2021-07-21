@@ -27,14 +27,20 @@ func (cli Zms) policyNames(dn string) ([]string, error) {
 }
 
 func (cli Zms) ListPolicies(dn string) (*string, error) {
-	var buf bytes.Buffer
 	policies, err := cli.policyNames(dn)
 	if err != nil {
 		return nil, err
 	}
-	buf.WriteString("policies:\n")
-	cli.dumpObjectList(&buf, policies, dn, "policy")
-	return cli.switchOverFormats(policies, buf.String())
+
+	oldYamlConverter := func(res interface{}) (*string, error) {
+		var buf bytes.Buffer
+		buf.WriteString("policies:\n")
+		cli.dumpObjectList(&buf, policies, dn, "policy")
+		s := buf.String()
+		return &s, nil
+	}
+
+	return cli.dumpByFormat(policies, oldYamlConverter)
 }
 
 func (cli Zms) ShowPolicy(dn string, name string) (*string, error) {
@@ -42,10 +48,16 @@ func (cli Zms) ShowPolicy(dn string, name string) (*string, error) {
 	if err != nil {
 		return nil, err
 	}
-	var buf bytes.Buffer
-	buf.WriteString("policy:\n")
-	cli.dumpPolicy(&buf, *policy, indentLevel1Dash, indentLevel1DashLvl)
-	return cli.switchOverFormats(policy, buf.String())
+
+	oldYamlConverter := func(res interface{}) (*string, error) {
+		var buf bytes.Buffer
+		buf.WriteString("policy:\n")
+		cli.dumpPolicy(&buf, *policy, indentLevel1Dash, indentLevel1DashLvl)
+		s := buf.String()
+		return &s, nil
+	}
+
+	return cli.dumpByFormat(policy, oldYamlConverter)
 }
 
 func parseAssertion(dn string, lst []string) (*zms.Assertion, error) {
@@ -161,7 +173,7 @@ func (cli Zms) AddPolicy(dn string, pn string, assertion []string) (*string, err
 		time.Sleep(500 * time.Millisecond)
 		output, err = cli.ShowPolicy(dn, pn)
 	}
-	return cli.switchOverFormats(*output)
+	return output, err
 }
 
 func (cli Zms) AddAssertion(dn string, pn string, assertion []string) (*string, error) {
@@ -177,11 +189,7 @@ func (cli Zms) AddAssertion(dn string, pn string, assertion []string) (*string, 
 		s := ""
 		return &s, nil
 	}
-	output, err := cli.ShowPolicy(dn, pn)
-	if err != nil {
-		return nil, err
-	}
-	return cli.switchOverFormats(*output)
+	return cli.ShowPolicy(dn, pn)
 }
 
 func (cli Zms) assertionMatch(assertion1 *zms.Assertion, assertion2 *zms.Assertion) bool {
@@ -244,11 +252,7 @@ func (cli Zms) DeleteAssertion(dn string, pn string, assertion []string) (*strin
 		s := ""
 		return &s, nil
 	}
-	output, err := cli.ShowPolicy(dn, pn)
-	if err != nil {
-		return nil, err
-	}
-	return cli.switchOverFormats(*output)
+	return cli.ShowPolicy(dn, pn)
 }
 
 func (cli Zms) DeletePolicy(dn string, pn string) (*string, error) {
@@ -257,5 +261,10 @@ func (cli Zms) DeletePolicy(dn string, pn string) (*string, error) {
 		return nil, err
 	}
 	s := "[Deleted policy: " + pn + "]"
-	return cli.switchOverFormats(s)
+
+	message := SuccessMessage{
+		Status:  200,
+		Message: s,
+	}
+	return cli.dumpByFormat(message, cli.buildYAMLOutput)
 }

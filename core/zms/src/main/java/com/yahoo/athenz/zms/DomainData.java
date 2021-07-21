@@ -67,9 +67,9 @@ public class DomainData {
     public String azureSubscription;
     @RdlOptional
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
-    public Map<String, StringList> tags;
+    public Map<String, TagValueList> tags;
     @RdlOptional
-    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public String businessService;
     public String name;
     public List<Role> roles;
@@ -198,11 +198,11 @@ public class DomainData {
     public String getAzureSubscription() {
         return azureSubscription;
     }
-    public DomainData setTags(Map<String, StringList> tags) {
+    public DomainData setTags(Map<String, TagValueList> tags) {
         this.tags = tags;
         return this;
     }
-    public Map<String, StringList> getTags() {
+    public Map<String, TagValueList> getTags() {
         return tags;
     }
     public DomainData setBusinessService(String businessService) {

@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -23,8 +24,10 @@ import (
 const (
 	// JSONOutputFormat is the JSON output format for commands.
 	JSONOutputFormat = "json"
-	// DefaultOutputFormat is the default YAML output format for commands.
-	DefaultOutputFormat = "yaml"
+	// YAMLOutputFormat is the YAML output format for commands.
+	YAMLOutputFormat = "yaml"
+	// DefaultOutputFormat is the default (old) YAML output format for commands.
+	DefaultOutputFormat = "manualYaml"
 	// ErrInvalidOutputFormat is the error message for unsupported output formats.
 	ErrInvalidOutputFormat = "unsupported output format \"%s\""
 )
@@ -46,6 +49,11 @@ type Zms struct {
 	AddSelf          bool
 }
 
+type SuccessMessage struct {
+	Status int
+	Message string
+}
+
 // StandardJSONMessage is the standard template for single-line string messages.
 type StandardJSONMessage struct {
 	Message string `json:"message,required"`
@@ -60,22 +68,32 @@ func (cli Zms) buildJSONOutput(res interface{}) (*string, error) {
 	return &output, nil
 }
 
-func (cli Zms) switchOverFormats(res interface{}, msg ...string) (*string, error) {
-	var op string
-	if msg == nil {
-		op = res.(string)
+func (cli Zms) buildYAMLOutput(res interface{}) (*string, error) {
+	if cli.OutputFormat == JSONOutputFormat || cli.OutputFormat == YAMLOutputFormat {
+	yamlOutput, err := yaml.Marshal(res)
+	if err != nil {
+		return nil, fmt.Errorf("failed to produce YAML output: %v", err)
 	}
+	output := string(yamlOutput)
+	return &output, nil
+	} else {
+		// For manual yaml, we just return the message as text. We should remove
+		// it once we removed the "manual yaml" option
+		message := res.(SuccessMessage).Message
+		return &message, nil
+	}
+}
+
+type YamlConverter func(res interface{}) (*string, error)
+
+func (cli Zms) dumpByFormat(jsonResponse interface{}, manualYamlConverter YamlConverter) (*string, error) {
 	switch cli.OutputFormat {
 	case JSONOutputFormat:
-		if msg == nil {
-			return cli.buildJSONOutput(&StandardJSONMessage{Message: op})
-		}
-		return cli.buildJSONOutput(res)
+		return cli.buildJSONOutput(jsonResponse)
+	case YAMLOutputFormat:
+		return cli.buildYAMLOutput(jsonResponse)
 	case DefaultOutputFormat:
-		if msg == nil {
-			return &op, nil
-		}
-		return &msg[0], nil
+		return manualYamlConverter(jsonResponse)
 	default:
 		return nil, fmt.Errorf(ErrInvalidOutputFormat, cli.OutputFormat)
 	}
@@ -191,7 +209,12 @@ func (cli *Zms) EvalCommand(params []string) (*string, error) {
 				cli.Domain = ""
 				s = "[not using any domain]"
 			}
-			return cli.switchOverFormats(s)
+			message := SuccessMessage{
+				Status:  200,
+				Message: s,
+			}
+
+			return cli.dumpByFormat(message, cli.buildYAMLOutput)
 		case "show-domain":
 			if argc == 1 {
 				//override the default domain, this command can show any of them
@@ -199,6 +222,24 @@ func (cli *Zms) EvalCommand(params []string) (*string, error) {
 			}
 			if dn != "" {
 				return cli.ShowDomain(dn)
+			}
+			return nil, fmt.Errorf("no domain specified")
+		case "disable-domain":
+			if argc == 1 {
+				//override the default domain, this command can show any of them
+				dn = args[0]
+			}
+			if dn != "" {
+				return cli.SetDomainState(dn, false)
+			}
+			return nil, fmt.Errorf("no domain specified")
+		case "enable-domain":
+			if argc == 1 {
+				//override the default domain, this command can show any of them
+				dn = args[0]
+			}
+			if dn != "" {
+				return cli.SetDomainState(dn, true)
 			}
 			return nil, fmt.Errorf("no domain specified")
 		case "check-domain":
@@ -298,12 +339,17 @@ func (cli *Zms) EvalCommand(params []string) (*string, error) {
 			if argc == 1 {
 				return cli.ShowServerTemplate(args[0])
 			}
+			return nil, fmt.Errorf("no template specified")
 		case "show-resource":
 			if argc == 2 {
 				return cli.ShowResourceAccess(args[0], args[1])
 			}
 		case "list-user":
-			return cli.ListUsers()
+			domainName := ""
+			if argc == 1 {
+				domainName = args[0]
+			}
+			return cli.ListUsers(domainName)
 		case "delete-user":
 			if argc == 1 {
 				return cli.DeleteUser(args[0])
@@ -830,6 +876,14 @@ func (cli *Zms) EvalCommand(params []string) (*string, error) {
 				}
 				return cli.SetRoleServiceReviewDays(dn, args[0], days)
 			}
+		case "set-role-group-review-days":
+			if argc == 2 {
+				days, err := cli.getInt32(args[1])
+				if err != nil {
+					return nil, err
+				}
+				return cli.SetRoleGroupReviewDays(dn, args[0], days)
+			}
 		case "set-role-token-expiry-mins":
 			if argc == 2 {
 				mins, err := cli.getInt32(args[1])
@@ -903,6 +957,22 @@ func (cli *Zms) EvalCommand(params []string) (*string, error) {
 					return nil, err
 				}
 				return cli.SetGroupSelfServe(dn, args[0], selfServe)
+			}
+        case "set-group-member-expiry-days":
+			if argc == 2 {
+				days, err := cli.getInt32(args[1])
+				if err != nil {
+					return nil, err
+				}
+				return cli.SetGroupMemberExpiryDays(dn, args[0], days)
+			}
+		case "set-group-service-expiry-days":
+			if argc == 2 {
+				days, err := cli.getInt32(args[1])
+				if err != nil {
+					return nil, err
+				}
+				return cli.SetGroupServiceExpiryDays(dn, args[0], days)
 			}
 		case "set-group-notify-roles":
 			if argc == 2 {
@@ -1018,6 +1088,26 @@ func (cli Zms) HelpSpecificCommand(interactive bool, cmd string) string {
 		buf.WriteString(" examples:\n")
 		buf.WriteString("   show-domain coretech.hosted\n")
 		buf.WriteString("   " + domainExample + " show-domain\n")
+	case "disable-domain":
+		buf.WriteString(" syntax:\n")
+		buf.WriteString("   [-o json] disable-domain domain\n")
+		buf.WriteString("   [-o json] " + domainParam + " disable-domain\n")
+		buf.WriteString(" parameters:\n")
+		buf.WriteString("   domain : disable this domain\n")
+		buf.WriteString("          : this argument is required unless -d <domain> is specified\n")
+		buf.WriteString(" examples:\n")
+		buf.WriteString("   disable-domain coretech.hosted\n")
+		buf.WriteString("   " + domainExample + " disable-domain\n")
+	case "enable-domain":
+		buf.WriteString(" syntax:\n")
+		buf.WriteString("   [-o json] enable-domain domain\n")
+		buf.WriteString("   [-o json] " + domainParam + " enable-domain\n")
+		buf.WriteString(" parameters:\n")
+		buf.WriteString("   domain : enable this domain\n")
+		buf.WriteString("          : this argument is required unless -d <domain> is specified\n")
+		buf.WriteString(" examples:\n")
+		buf.WriteString("   enable-domain coretech.hosted\n")
+		buf.WriteString("   " + domainExample + " enable-domain\n")
 	case "lookup-domain-by-account", "lookup-domain-by-aws-account":
 		buf.WriteString(" syntax:\n")
 		buf.WriteString("   [-o json] lookup-domain-by-aws-account account-id\n")
@@ -2198,9 +2288,10 @@ func (cli Zms) HelpSpecificCommand(interactive bool, cmd string) string {
 		buf.WriteString("   " + domainExample + " delete-domain-template vipng\n")
 	case "list-user":
 		buf.WriteString(" syntax:\n")
-		buf.WriteString("   list-user\n")
+		buf.WriteString("   list-user [domain]\n")
 		buf.WriteString(" examples:\n")
 		buf.WriteString("   list-user\n")
+		buf.WriteString("   list-user unix\n")
 	case "delete-user":
 		buf.WriteString(" syntax:\n")
 		buf.WriteString("   delete-user user\n")
@@ -2324,6 +2415,17 @@ func (cli Zms) HelpSpecificCommand(interactive bool, cmd string) string {
 		buf.WriteString("   days    : all service members in this role will have this max review days\n")
 		buf.WriteString(" examples:\n")
 		buf.WriteString("   " + domainExample + " set-role-service-review-days writers 60\n")
+	case "set-role-group-review-days":
+		buf.WriteString(" syntax:\n")
+		buf.WriteString("   " + domainParam + " set-role-group-review-days role days\n")
+		buf.WriteString(" parameters:\n")
+		if !interactive {
+			buf.WriteString("   domain  : name of the domain being updated\n")
+		}
+		buf.WriteString("   role    : name of the role to be modified\n")
+		buf.WriteString("   days    : all group members in this role will have this max review days\n")
+		buf.WriteString(" examples:\n")
+		buf.WriteString("   " + domainExample + " set-role-group-review-days writers 60\n")
 	case "set-role-token-expiry-mins":
 		buf.WriteString(" syntax:\n")
 		buf.WriteString("   " + domainParam + " set-role-token-expiry-mins role mins\n")
@@ -2445,6 +2547,28 @@ func (cli Zms) HelpSpecificCommand(interactive bool, cmd string) string {
 		buf.WriteString("   review-enabled : enable/disable review flag for the group\n")
 		buf.WriteString(" examples:\n")
 		buf.WriteString("   " + domainExample + " set-group-review-enabled readers true\n")
+	case "set-group-member-expiry-days":
+		buf.WriteString(" syntax:\n")
+		buf.WriteString("   " + domainParam + " set-group-member-expiry-days group days\n")
+		buf.WriteString(" parameters:\n")
+		if !interactive {
+			buf.WriteString("   domain  : name of the domain being updated\n")
+		}
+		buf.WriteString("   group    : name of the group to be modified\n")
+		buf.WriteString("   days    : all members in this group will have this max expiry days\n")
+		buf.WriteString(" examples:\n")
+		buf.WriteString("   " + domainExample + " set-group-member-expiry-days writers 60\n")
+	case "set-group-service-expiry-days":
+		buf.WriteString(" syntax:\n")
+		buf.WriteString("   " + domainParam + " set-group-service-expiry-days group days\n")
+		buf.WriteString(" parameters:\n")
+		if !interactive {
+			buf.WriteString("   domain  : name of the domain being updated\n")
+		}
+		buf.WriteString("   group    : name of the group to be modified\n")
+		buf.WriteString("   days    : all service members in this group will have this max expiry days\n")
+		buf.WriteString(" examples:\n")
+		buf.WriteString("   " + domainExample + " set-group-service-expiry-days writers 60\n")
 	case "set-group-notify-roles":
 		buf.WriteString(" syntax:\n")
 		buf.WriteString("   " + domainParam + " set-group-notify-roles group rolename[,rolename...]]\n")
@@ -2602,6 +2726,7 @@ func (cli Zms) HelpListCommand() string {
 	buf.WriteString("   set-role-group-expiry-days group_role group-member-expiry-days\n")
 	buf.WriteString("   set-role-member-review-days group_role user-member-review-days\n")
 	buf.WriteString("   set-role-service-review-days group_role service-member-review-days\n")
+	buf.WriteString("   set-role-group-review-days group_role group-member-review-days\n")
 	buf.WriteString("   set-role-token-expiry-mins group_role token-expiry-mins\n")
 	buf.WriteString("   set-role-cert-expiry-mins group_role cert-expiry-mins\n")
 	buf.WriteString("   set-role-token-sign-algorithm group_role algorithm\n")
@@ -2626,6 +2751,8 @@ func (cli Zms) HelpListCommand() string {
 	buf.WriteString("   set-group-audit-enabled group audit-enabled\n")
 	buf.WriteString("   set-group-review-enabled group review-enabled\n")
 	buf.WriteString("   set-group-self-serve group self-serve\n")
+	buf.WriteString("   set-group-member-expiry-days group user-member-expiry-days\n")
+    buf.WriteString("   set-group-service-expiry-days group service-member-expiry-days\n")
 	buf.WriteString("   set-group-notify-roles group rolename[,rolename...]\n")
 	buf.WriteString("   set-group-user-authority-filter group attribute[,attribute...]\n")
 	buf.WriteString("   set-group-user-authority-expiration group attribute\n")
@@ -2644,7 +2771,6 @@ func (cli Zms) HelpListCommand() string {
 	buf.WriteString("   show-public-key service key_id\n")
 	buf.WriteString("   delete-public-key service key_id\n")
 	buf.WriteString("   delete-service service\n")
-	buf.WriteString("   list-host-services host\n")
 	buf.WriteString("\n")
 	buf.WriteString(" Entity commands:\n")
 	buf.WriteString("   list-entity\n")
@@ -2673,13 +2799,15 @@ func (cli Zms) HelpListCommand() string {
 	buf.WriteString("\n")
 	buf.WriteString(" System Administrator commands:\n")
 	buf.WriteString("   set-default-admins domain admin [admin ...]\n")
-	buf.WriteString("   list-user\n")
+	buf.WriteString("   list-user [domain]\n")
 	buf.WriteString("   delete-user user\n")
+	buf.WriteString("   disable-domain [domain]\n")
+	buf.WriteString("   enable-domain [domain]\n")
 	buf.WriteString("\n")
 	buf.WriteString(" Other commands:\n")
 	buf.WriteString("   get-user-token [authorized_service]\n")
-	buf.WriteString("   version\n")
 	buf.WriteString("   list-pending-members\n")
+	buf.WriteString("   version\n")
 	buf.WriteString("\n")
 	return buf.String()
 }
