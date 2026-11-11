@@ -2,13 +2,13 @@
     "namespace": "com.yahoo.athenz.zts",
     "name": "ZTS",
     "version": 1,
-    "comment": "Copyright The Athenz Authors. Licensed under the terms of the Apache version 2.0 license. See LICENSE file for terms. The Authorization Token Service (ZTS) API",
+    "comment": "Copyright The Athenz Authors Licensed under the terms of the Apache version 2.0 license. See LICENSE file for terms. The Authorization Token Service (ZTS) API",
     "types": [
         {
             "StringTypeDef": {
                 "type": "String",
                 "name": "SimpleName",
-                "comment": "Copyright The Athenz Authors. Licensed under the terms of the Apache version 2.0 license. See LICENSE file for terms. Common name types used by several API definitions A simple identifier, an element of compound name.",
+                "comment": "Copyright The Athenz Authors Licensed under the terms of the Apache version 2.0 license. See LICENSE file for terms. Common name types used by several API definitions A simple identifier, an element of compound name.",
                 "pattern": "[a-zA-Z0-9_][a-zA-Z0-9_-]*"
             }
         },
@@ -715,6 +715,18 @@
                         "type": "String",
                         "optional": true,
                         "comment": "public key identifier"
+                    },
+                    {
+                        "name": "namespace",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "spiffe/k8s namespace value"
+                    },
+                    {
+                        "name": "cloud",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "optional cloud name where the instance is bootstrapped. e.g. aws / gcp / azure / openstack etc."
                     }
                 ],
                 "closed": false
@@ -933,6 +945,12 @@
                         "type": "String",
                         "optional": true,
                         "comment": "free-form csr if not using data/meta fields."
+                    },
+                    {
+                        "name": "attestationData",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "identity attestation data including document with its signature containing attributes like IP address, instance-id, account#, etc."
                     }
                 ],
                 "closed": false
@@ -982,393 +1000,6 @@
                         "type": "String",
                         "optional": true,
                         "comment": "the SSH CA's public key for the sshCertificate (user or host)"
-                    }
-                ],
-                "closed": false
-            }
-        },
-        {
-            "StructTypeDef": {
-                "type": "Struct",
-                "name": "InstanceRegisterInformation",
-                "fields": [
-                    {
-                        "name": "provider",
-                        "type": "ServiceName",
-                        "optional": false,
-                        "comment": "the provider service name (i.e. \"aws.us-west-2\", \"sys.openstack.cluster1\")"
-                    },
-                    {
-                        "name": "domain",
-                        "type": "DomainName",
-                        "optional": false,
-                        "comment": "the domain of the instance"
-                    },
-                    {
-                        "name": "service",
-                        "type": "SimpleName",
-                        "optional": false,
-                        "comment": "the service this instance is supposed to run"
-                    },
-                    {
-                        "name": "attestationData",
-                        "type": "String",
-                        "optional": false,
-                        "comment": "identity attestation data including document with its signature containing attributes like IP address, instance-id, account#, etc."
-                    },
-                    {
-                        "name": "csr",
-                        "type": "String",
-                        "optional": false,
-                        "comment": "the Certificate Signing Request for the expected X.509 certificate in the response"
-                    },
-                    {
-                        "name": "ssh",
-                        "type": "String",
-                        "optional": true,
-                        "comment": "deprecated - use sshCertRequest, if present, return an SSH host certificate. Format is JSON."
-                    },
-                    {
-                        "name": "sshCertRequest",
-                        "type": "SSHCertRequest",
-                        "optional": true,
-                        "comment": "if present, return an SSH host certificate"
-                    },
-                    {
-                        "name": "token",
-                        "type": "Bool",
-                        "optional": true,
-                        "comment": "if true, return a service token signed by ZTS for this service"
-                    },
-                    {
-                        "name": "expiryTime",
-                        "type": "Int32",
-                        "optional": true,
-                        "comment": "expiry time in minutes for the certificate (server enforces max expiry)"
-                    },
-                    {
-                        "name": "hostname",
-                        "type": "DomainName",
-                        "optional": true,
-                        "comment": "optional hostname in case included in the csr SAN dnsName attribute"
-                    },
-                    {
-                        "name": "hostCnames",
-                        "type": "Array",
-                        "optional": true,
-                        "comment": "optional host CNAMEs included in the csr SAN dnsName attribute",
-                        "items": "DomainName"
-                    }
-                ],
-                "closed": false
-            }
-        },
-        {
-            "StructTypeDef": {
-                "type": "Struct",
-                "name": "InstanceRefreshInformation",
-                "fields": [
-                    {
-                        "name": "attestationData",
-                        "type": "String",
-                        "optional": true,
-                        "comment": "identity attestation data including document with its signature containing attributes like IP address, instance-id, account#, etc."
-                    },
-                    {
-                        "name": "csr",
-                        "type": "String",
-                        "optional": true,
-                        "comment": "the Certificate Signing Request for the expected X.509 certificate in the response"
-                    },
-                    {
-                        "name": "ssh",
-                        "type": "String",
-                        "optional": true,
-                        "comment": "deprecated - use sshCertRequest, if present, return an SSH host certificate. Format is JSON."
-                    },
-                    {
-                        "name": "sshCertRequest",
-                        "type": "SSHCertRequest",
-                        "optional": true,
-                        "comment": "if present, return an SSH host certificate"
-                    },
-                    {
-                        "name": "token",
-                        "type": "Bool",
-                        "optional": true,
-                        "comment": "if true, return a service token signed by ZTS for this service"
-                    },
-                    {
-                        "name": "expiryTime",
-                        "type": "Int32",
-                        "optional": true,
-                        "comment": "expiry time in minutes for the certificate (server enforces max expiry)"
-                    },
-                    {
-                        "name": "hostname",
-                        "type": "DomainName",
-                        "optional": true,
-                        "comment": "optional hostname in case included in the csr SAN dnsName attribute"
-                    },
-                    {
-                        "name": "hostCnames",
-                        "type": "Array",
-                        "optional": true,
-                        "comment": "optional host CNAMEs included in the csr SAN dnsName attribute",
-                        "items": "DomainName"
-                    }
-                ],
-                "closed": false
-            }
-        },
-        {
-            "StructTypeDef": {
-                "type": "Struct",
-                "name": "InstanceRegisterToken",
-                "fields": [
-                    {
-                        "name": "provider",
-                        "type": "ServiceName",
-                        "optional": false,
-                        "comment": "provider service name"
-                    },
-                    {
-                        "name": "domain",
-                        "type": "DomainName",
-                        "optional": false,
-                        "comment": "the domain of the instance"
-                    },
-                    {
-                        "name": "service",
-                        "type": "SimpleName",
-                        "optional": false,
-                        "comment": "the service this instance is supposed to run"
-                    },
-                    {
-                        "name": "attestationData",
-                        "type": "String",
-                        "optional": false,
-                        "comment": "identity attestation data including document with its signature containing attributes like IP address, instance-id, account#, etc."
-                    },
-                    {
-                        "name": "attributes",
-                        "type": "Map",
-                        "optional": true,
-                        "comment": "additional non-signed attributes that assist in attestation. I.e. \"keyId\", \"accessKey\", etc",
-                        "items": "String",
-                        "keys": "String"
-                    }
-                ],
-                "closed": false
-            }
-        },
-        {
-            "StructTypeDef": {
-                "type": "Struct",
-                "name": "InstanceIdentity",
-                "fields": [
-                    {
-                        "name": "provider",
-                        "type": "ServiceName",
-                        "optional": false,
-                        "comment": "the provider service name (i.e. \"aws.us-west-2\", \"sys.openstack.cluster1\")"
-                    },
-                    {
-                        "name": "name",
-                        "type": "ServiceName",
-                        "optional": false,
-                        "comment": "name of the identity, fully qualified, i.e. my.domain.service1"
-                    },
-                    {
-                        "name": "instanceId",
-                        "type": "PathElement",
-                        "optional": false,
-                        "comment": "unique instance id within provider's namespace"
-                    },
-                    {
-                        "name": "x509Certificate",
-                        "type": "String",
-                        "optional": true,
-                        "comment": "an X.509 certificate usable for both client and server in TLS connections"
-                    },
-                    {
-                        "name": "x509CertificateSigner",
-                        "type": "String",
-                        "optional": true,
-                        "comment": "the CA certificate chain to verify all generated X.509 certs"
-                    },
-                    {
-                        "name": "sshCertificate",
-                        "type": "String",
-                        "optional": true,
-                        "comment": "the SSH certificate, signed by the CA (user or host)"
-                    },
-                    {
-                        "name": "sshCertificateSigner",
-                        "type": "String",
-                        "optional": true,
-                        "comment": "the SSH CA's public key for the sshCertificate (user or host)"
-                    },
-                    {
-                        "name": "serviceToken",
-                        "type": "SignedToken",
-                        "optional": true,
-                        "comment": "service token instead of TLS certificate"
-                    },
-                    {
-                        "name": "attributes",
-                        "type": "Map",
-                        "optional": true,
-                        "comment": "other config-like attributes determined at boot time",
-                        "items": "String",
-                        "keys": "String"
-                    }
-                ],
-                "closed": false
-            }
-        },
-        {
-            "StructTypeDef": {
-                "type": "Struct",
-                "name": "CertificateAuthorityBundle",
-                "fields": [
-                    {
-                        "name": "name",
-                        "type": "SimpleName",
-                        "optional": false,
-                        "comment": "name of the bundle"
-                    },
-                    {
-                        "name": "certs",
-                        "type": "String",
-                        "optional": false,
-                        "comment": "set of certificates included in the bundle"
-                    }
-                ],
-                "closed": false
-            }
-        },
-        {
-            "EnumTypeDef": {
-                "type": "Enum",
-                "name": "DomainMetricType",
-                "comment": "zpe metric attributes",
-                "elements": [
-                    {
-                        "symbol": "ACCESS_ALLOWED"
-                    },
-                    {
-                        "symbol": "ACCESS_ALLOWED_DENY"
-                    },
-                    {
-                        "symbol": "ACCESS_ALLOWED_DENY_NO_MATCH"
-                    },
-                    {
-                        "symbol": "ACCESS_ALLOWED_ALLOW"
-                    },
-                    {
-                        "symbol": "ACCESS_ALLOWED_ERROR"
-                    },
-                    {
-                        "symbol": "ACCESS_ALLOWED_TOKEN_INVALID"
-                    },
-                    {
-                        "symbol": "ACCESS_Allowed_TOKEN_EXPIRED"
-                    },
-                    {
-                        "symbol": "ACCESS_ALLOWED_DOMAIN_NOT_FOUND"
-                    },
-                    {
-                        "symbol": "ACCESS_ALLOWED_DOMAIN_MISMATCH"
-                    },
-                    {
-                        "symbol": "ACCESS_ALLOWED_DOMAIN_EXPIRED"
-                    },
-                    {
-                        "symbol": "ACCESS_ALLOWED_DOMAIN_EMPTY"
-                    },
-                    {
-                        "symbol": "ACCESS_ALLOWED_TOKEN_CACHE_FAILURE"
-                    },
-                    {
-                        "symbol": "ACCESS_ALLOWED_TOKEN_CACHE_NOT_FOUND"
-                    },
-                    {
-                        "symbol": "ACCESS_ALLOWED_TOKEN_CACHE_SUCCESS"
-                    },
-                    {
-                        "symbol": "ACCESS_ALLOWED_TOKEN_VALIDATE"
-                    },
-                    {
-                        "symbol": "LOAD_FILE_FAIL"
-                    },
-                    {
-                        "symbol": "LOAD_FILE_GOOD"
-                    },
-                    {
-                        "symbol": "LOAD_DOMAIN_GOOD"
-                    }
-                ]
-            }
-        },
-        {
-            "StructTypeDef": {
-                "type": "Struct",
-                "name": "DomainMetric",
-                "fields": [
-                    {
-                        "name": "metricType",
-                        "type": "DomainMetricType",
-                        "optional": false
-                    },
-                    {
-                        "name": "metricVal",
-                        "type": "Int32",
-                        "optional": false
-                    }
-                ],
-                "closed": false
-            }
-        },
-        {
-            "StructTypeDef": {
-                "type": "Struct",
-                "name": "DomainMetrics",
-                "fields": [
-                    {
-                        "name": "domainName",
-                        "type": "DomainName",
-                        "optional": false,
-                        "comment": "name of the domain the metrics pertain to"
-                    },
-                    {
-                        "name": "metricList",
-                        "type": "Array",
-                        "optional": false,
-                        "comment": "list of the domains metrics",
-                        "items": "DomainMetric"
-                    }
-                ],
-                "closed": false
-            }
-        },
-        {
-            "StructTypeDef": {
-                "type": "Struct",
-                "name": "Status",
-                "comment": "The representation for a status object",
-                "fields": [
-                    {
-                        "name": "code",
-                        "type": "Int32",
-                        "optional": false,
-                        "comment": "status message code"
-                    },
-                    {
-                        "name": "message",
-                        "type": "String",
-                        "optional": false,
-                        "comment": "status message of the server"
                     }
                 ],
                 "closed": false
@@ -1614,9 +1245,502 @@
                 "name": "OIDCResponse",
                 "fields": [
                     {
-                        "name": "location",
+                        "name": "version",
+                        "type": "Int32",
+                        "optional": false,
+                        "comment": "version number"
+                    },
+                    {
+                        "name": "id_token",
                         "type": "String",
+                        "optional": false,
+                        "comment": "id token"
+                    },
+                    {
+                        "name": "token_type",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "token type e.g. urn:ietf:params:oauth:token-type:id_token"
+                    },
+                    {
+                        "name": "success",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "response status"
+                    },
+                    {
+                        "name": "expiration_time",
+                        "type": "Int64",
+                        "optional": false,
+                        "comment": "expiration time in UTC"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "InstanceRegisterInformation",
+                "fields": [
+                    {
+                        "name": "provider",
+                        "type": "ServiceName",
+                        "optional": false,
+                        "comment": "the provider service name (i.e. \"aws.us-west-2\", \"sys.openstack.cluster1\")"
+                    },
+                    {
+                        "name": "domain",
+                        "type": "DomainName",
+                        "optional": false,
+                        "comment": "the domain of the instance"
+                    },
+                    {
+                        "name": "service",
+                        "type": "SimpleName",
+                        "optional": false,
+                        "comment": "the service this instance is supposed to run"
+                    },
+                    {
+                        "name": "attestationData",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "identity attestation data including document with its signature containing attributes like IP address, instance-id, account#, etc."
+                    },
+                    {
+                        "name": "csr",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "the Certificate Signing Request for the expected X.509 certificate in the response"
+                    },
+                    {
+                        "name": "ssh",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "deprecated - use sshCertRequest, if present, return an SSH host certificate. Format is JSON."
+                    },
+                    {
+                        "name": "sshCertRequest",
+                        "type": "SSHCertRequest",
+                        "optional": true,
+                        "comment": "if present, return an SSH host certificate"
+                    },
+                    {
+                        "name": "token",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "if true, return a service token signed by ZTS for this service"
+                    },
+                    {
+                        "name": "expiryTime",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "expiry time in minutes for the certificate (server enforces max expiry)"
+                    },
+                    {
+                        "name": "hostname",
+                        "type": "DomainName",
+                        "optional": true,
+                        "comment": "optional hostname in case included in the csr SAN dnsName attribute"
+                    },
+                    {
+                        "name": "hostCnames",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "optional host CNAMEs included in the csr SAN dnsName attribute",
+                        "items": "DomainName"
+                    },
+                    {
+                        "name": "athenzJWK",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "if true, return an Athenz JWK public keys file"
+                    },
+                    {
+                        "name": "athenzJWKModified",
+                        "type": "Timestamp",
+                        "optional": true,
+                        "comment": "return the public keys file only if modified after the given timestamp"
+                    },
+                    {
+                        "name": "namespace",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "spiffe/k8s namespace value"
+                    },
+                    {
+                        "name": "cloud",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "optional cloud name where the instance is bootstrapped. e.g. aws / gcp / azure / openstack etc."
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "InstanceRefreshInformation",
+                "fields": [
+                    {
+                        "name": "attestationData",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "identity attestation data including document with its signature containing attributes like IP address, instance-id, account#, etc."
+                    },
+                    {
+                        "name": "csr",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the Certificate Signing Request for the expected X.509 certificate in the response"
+                    },
+                    {
+                        "name": "ssh",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "deprecated - use sshCertRequest, if present, return an SSH host certificate. Format is JSON."
+                    },
+                    {
+                        "name": "sshCertRequest",
+                        "type": "SSHCertRequest",
+                        "optional": true,
+                        "comment": "if present, return an SSH host certificate"
+                    },
+                    {
+                        "name": "token",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "if true, return a service token signed by ZTS for this service"
+                    },
+                    {
+                        "name": "expiryTime",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "expiry time in minutes for the certificate (server enforces max expiry)"
+                    },
+                    {
+                        "name": "hostname",
+                        "type": "DomainName",
+                        "optional": true,
+                        "comment": "optional hostname in case included in the csr SAN dnsName attribute"
+                    },
+                    {
+                        "name": "hostCnames",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "optional host CNAMEs included in the csr SAN dnsName attribute",
+                        "items": "DomainName"
+                    },
+                    {
+                        "name": "athenzJWK",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "if true, return an Athenz JWK public keys file"
+                    },
+                    {
+                        "name": "athenzJWKModified",
+                        "type": "Timestamp",
+                        "optional": true,
+                        "comment": "return the public keys file only if modified after the given timestamp"
+                    },
+                    {
+                        "name": "namespace",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "spiffe/k8s namespace value"
+                    },
+                    {
+                        "name": "cloud",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "optional cloud name where the instance is bootstrapped. e.g. aws / gcp / azure / openstack etc."
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "InstanceRegisterToken",
+                "fields": [
+                    {
+                        "name": "provider",
+                        "type": "ServiceName",
+                        "optional": false,
+                        "comment": "provider service name"
+                    },
+                    {
+                        "name": "domain",
+                        "type": "DomainName",
+                        "optional": false,
+                        "comment": "the domain of the instance"
+                    },
+                    {
+                        "name": "service",
+                        "type": "SimpleName",
+                        "optional": false,
+                        "comment": "the service this instance is supposed to run"
+                    },
+                    {
+                        "name": "attestationData",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "identity attestation data including document with its signature containing attributes like IP address, instance-id, account#, etc."
+                    },
+                    {
+                        "name": "attributes",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional non-signed attributes that assist in attestation. I.e. \"keyId\", \"accessKey\", etc",
+                        "items": "String",
+                        "keys": "String"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "AthenzJWKConfig",
+                "fields": [
+                    {
+                        "name": "zms",
+                        "type": "JWKList",
+                        "optional": false,
+                        "comment": "ZMS JSON Web Key (JWK) List"
+                    },
+                    {
+                        "name": "zts",
+                        "type": "JWKList",
+                        "optional": false,
+                        "comment": "ZTS JSON Web Key (JWK) List"
+                    },
+                    {
+                        "name": "modified",
+                        "type": "Timestamp",
+                        "optional": true,
+                        "comment": "the last modification timestamp of the Athenz JWK configuration"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "InstanceIdentity",
+                "fields": [
+                    {
+                        "name": "provider",
+                        "type": "ServiceName",
+                        "optional": false,
+                        "comment": "the provider service name (i.e. \"aws.us-west-2\", \"sys.openstack.cluster1\")"
+                    },
+                    {
+                        "name": "name",
+                        "type": "ServiceName",
+                        "optional": false,
+                        "comment": "name of the identity, fully qualified, i.e. my.domain.service1"
+                    },
+                    {
+                        "name": "instanceId",
+                        "type": "PathElement",
+                        "optional": false,
+                        "comment": "unique instance id within provider's namespace"
+                    },
+                    {
+                        "name": "x509Certificate",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "an X.509 certificate usable for both client and server in TLS connections"
+                    },
+                    {
+                        "name": "x509CertificateSigner",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the CA certificate chain to verify all generated X.509 certs"
+                    },
+                    {
+                        "name": "sshCertificate",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the SSH certificate, signed by the CA (user or host)"
+                    },
+                    {
+                        "name": "sshCertificateSigner",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the SSH CA's public key for the sshCertificate (user or host)"
+                    },
+                    {
+                        "name": "serviceToken",
+                        "type": "SignedToken",
+                        "optional": true,
+                        "comment": "service token instead of TLS certificate"
+                    },
+                    {
+                        "name": "attributes",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "other config-like attributes determined at boot time",
+                        "items": "String",
+                        "keys": "String"
+                    },
+                    {
+                        "name": "athenzJWK",
+                        "type": "AthenzJWKConfig",
+                        "optional": true,
+                        "comment": "the Athenz JSON Web Key (JWK) configuration object"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "CertificateAuthorityBundle",
+                "fields": [
+                    {
+                        "name": "name",
+                        "type": "SimpleName",
+                        "optional": false,
+                        "comment": "name of the bundle"
+                    },
+                    {
+                        "name": "certs",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "set of certificates included in the bundle"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "EnumTypeDef": {
+                "type": "Enum",
+                "name": "DomainMetricType",
+                "comment": "zpe metric attributes",
+                "elements": [
+                    {
+                        "symbol": "ACCESS_ALLOWED"
+                    },
+                    {
+                        "symbol": "ACCESS_ALLOWED_DENY"
+                    },
+                    {
+                        "symbol": "ACCESS_ALLOWED_DENY_NO_MATCH"
+                    },
+                    {
+                        "symbol": "ACCESS_ALLOWED_ALLOW"
+                    },
+                    {
+                        "symbol": "ACCESS_ALLOWED_ERROR"
+                    },
+                    {
+                        "symbol": "ACCESS_ALLOWED_TOKEN_INVALID"
+                    },
+                    {
+                        "symbol": "ACCESS_Allowed_TOKEN_EXPIRED"
+                    },
+                    {
+                        "symbol": "ACCESS_ALLOWED_DOMAIN_NOT_FOUND"
+                    },
+                    {
+                        "symbol": "ACCESS_ALLOWED_DOMAIN_MISMATCH"
+                    },
+                    {
+                        "symbol": "ACCESS_ALLOWED_DOMAIN_EXPIRED"
+                    },
+                    {
+                        "symbol": "ACCESS_ALLOWED_DOMAIN_EMPTY"
+                    },
+                    {
+                        "symbol": "ACCESS_ALLOWED_TOKEN_CACHE_FAILURE"
+                    },
+                    {
+                        "symbol": "ACCESS_ALLOWED_TOKEN_CACHE_NOT_FOUND"
+                    },
+                    {
+                        "symbol": "ACCESS_ALLOWED_TOKEN_CACHE_SUCCESS"
+                    },
+                    {
+                        "symbol": "ACCESS_ALLOWED_TOKEN_VALIDATE"
+                    },
+                    {
+                        "symbol": "LOAD_FILE_FAIL"
+                    },
+                    {
+                        "symbol": "LOAD_FILE_GOOD"
+                    },
+                    {
+                        "symbol": "LOAD_DOMAIN_GOOD"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "DomainMetric",
+                "fields": [
+                    {
+                        "name": "metricType",
+                        "type": "DomainMetricType",
                         "optional": false
+                    },
+                    {
+                        "name": "metricVal",
+                        "type": "Int32",
+                        "optional": false
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "DomainMetrics",
+                "fields": [
+                    {
+                        "name": "domainName",
+                        "type": "DomainName",
+                        "optional": false,
+                        "comment": "name of the domain the metrics pertain to"
+                    },
+                    {
+                        "name": "metricList",
+                        "type": "Array",
+                        "optional": false,
+                        "comment": "list of the domains metrics",
+                        "items": "DomainMetric"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "Status",
+                "comment": "The representation for a status object",
+                "fields": [
+                    {
+                        "name": "code",
+                        "type": "Int32",
+                        "optional": false,
+                        "comment": "status message code"
+                    },
+                    {
+                        "name": "message",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "status message of the server"
                     }
                 ],
                 "closed": false
@@ -1770,6 +1894,981 @@
                 ],
                 "closed": false
             }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "Info",
+                "comment": "Copyright The Athenz Authors Licensed under the terms of the Apache version 2.0 license. See LICENSE file for terms. The representation for an info object",
+                "fields": [
+                    {
+                        "name": "buildJdkSpec",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "jdk build version"
+                    },
+                    {
+                        "name": "implementationTitle",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "implementation title - e.g. athenz-zms-server"
+                    },
+                    {
+                        "name": "implementationVersion",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "implementation version - e.g. 1.11.1"
+                    },
+                    {
+                        "name": "implementationVendor",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "implementation vendor - Athenz"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "ExternalCredentialsRequest",
+                "fields": [
+                    {
+                        "name": "clientId",
+                        "type": "ServiceName",
+                        "optional": false,
+                        "comment": "client id to be referenced in the ID token as audience"
+                    },
+                    {
+                        "name": "expiryTime",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "optional expiry period specified in seconds"
+                    },
+                    {
+                        "name": "attributes",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "credential request attributes",
+                        "items": "String",
+                        "keys": "String"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "ExternalCredentialsResponse",
+                "fields": [
+                    {
+                        "name": "attributes",
+                        "type": "Map",
+                        "optional": false,
+                        "comment": "credential response attributes",
+                        "items": "String",
+                        "keys": "String"
+                    },
+                    {
+                        "name": "expiration",
+                        "type": "Timestamp",
+                        "optional": true,
+                        "comment": "credential expiry timestamp"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "DomainDetails",
+                "fields": [
+                    {
+                        "name": "name",
+                        "type": "DomainName",
+                        "optional": false,
+                        "comment": "name of the athenz domain"
+                    },
+                    {
+                        "name": "awsAccount",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "associated aws account id"
+                    },
+                    {
+                        "name": "azureSubscription",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "associated azure subscription id"
+                    },
+                    {
+                        "name": "azureTenant",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "associated azure tenant id"
+                    },
+                    {
+                        "name": "azureClient",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "associated azure client id"
+                    },
+                    {
+                        "name": "gcpProjectId",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "associated gcp project id"
+                    },
+                    {
+                        "name": "gcpProjectNumber",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "associated gcp project number"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "rdl.Identifier",
+                "comment": "All names need to be of this restricted string type",
+                "pattern": "[a-zA-Z_]+[a-zA-Z_0-9]*"
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "rdl.NamespacedIdentifier",
+                "comment": "A Namespace is a dotted compound name, using reverse domain name order (i.e. \"com.yahoo.auth\")",
+                "pattern": "([a-zA-Z_]+[a-zA-Z_0-9]*)(\\.[a-zA-Z_]+[a-zA-Z_0-9])*"
+            }
+        },
+        {
+            "EnumTypeDef": {
+                "type": "Enum",
+                "name": "rdl.BaseType",
+                "elements": [
+                    {
+                        "symbol": "Bool"
+                    },
+                    {
+                        "symbol": "Int8"
+                    },
+                    {
+                        "symbol": "Int16"
+                    },
+                    {
+                        "symbol": "Int32"
+                    },
+                    {
+                        "symbol": "Int64"
+                    },
+                    {
+                        "symbol": "Float32"
+                    },
+                    {
+                        "symbol": "Float64"
+                    },
+                    {
+                        "symbol": "Bytes"
+                    },
+                    {
+                        "symbol": "String"
+                    },
+                    {
+                        "symbol": "Timestamp"
+                    },
+                    {
+                        "symbol": "Symbol"
+                    },
+                    {
+                        "symbol": "UUID"
+                    },
+                    {
+                        "symbol": "Array"
+                    },
+                    {
+                        "symbol": "Map"
+                    },
+                    {
+                        "symbol": "Struct"
+                    },
+                    {
+                        "symbol": "Enum"
+                    },
+                    {
+                        "symbol": "Union"
+                    },
+                    {
+                        "symbol": "Any"
+                    }
+                ]
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "rdl.ExtendedAnnotation",
+                "comment": "ExtendedAnnotation - parsed and preserved, but has no defined meaning in RDL. Such annotations must begin with \"x_\", and may have an associated string literal value (the value will be \"\" if the annotation is just a flag).",
+                "pattern": "x_[a-zA-Z_0-9]*"
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.TypeDef",
+                "comment": "TypeDef is the basic type definition.",
+                "fields": [
+                    {
+                        "name": "type",
+                        "type": "rdl.TypeRef",
+                        "optional": false,
+                        "comment": "The type this type is derived from. For base types, it is the same as the name"
+                    },
+                    {
+                        "name": "name",
+                        "type": "rdl.TypeName",
+                        "optional": false,
+                        "comment": "The name of the type"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The comment for the type"
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.AliasTypeDef",
+                "comment": "AliasTypeDef is used for type definitions that add no additional attributes, and thus just create an alias",
+                "fields": [],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.BytesTypeDef",
+                "comment": "Bytes allow the restriction by fixed size, or min/max size.",
+                "fields": [
+                    {
+                        "name": "size",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Fixed size"
+                    },
+                    {
+                        "name": "minSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Min size"
+                    },
+                    {
+                        "name": "maxSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Max size"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.StringTypeDef",
+                "comment": "Strings allow the restriction by regular expression pattern or by an explicit set of values. An optional maximum size may be asserted",
+                "fields": [
+                    {
+                        "name": "pattern",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "A regular expression that must be matched. Mutually exclusive with values"
+                    },
+                    {
+                        "name": "values",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "A set of allowable values",
+                        "items": "String"
+                    },
+                    {
+                        "name": "minSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Min size"
+                    },
+                    {
+                        "name": "maxSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Max size"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "UnionTypeDef": {
+                "type": "Union",
+                "name": "rdl.Number",
+                "comment": "A numeric is any of the primitive numeric types",
+                "variants": [
+                    "Int8",
+                    "Int16",
+                    "Int32",
+                    "Int64",
+                    "Float32",
+                    "Float64"
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.NumberTypeDef",
+                "comment": "A number type definition allows the restriction of numeric values.",
+                "fields": [
+                    {
+                        "name": "min",
+                        "type": "rdl.Number",
+                        "optional": true,
+                        "comment": "Min value"
+                    },
+                    {
+                        "name": "max",
+                        "type": "rdl.Number",
+                        "optional": true,
+                        "comment": "Max value"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.ArrayTypeDef",
+                "comment": "Array types can be restricted by item type and size",
+                "fields": [
+                    {
+                        "name": "items",
+                        "type": "rdl.TypeRef",
+                        "optional": false,
+                        "comment": "The type of the items, default to any type"
+                    },
+                    {
+                        "name": "size",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicate the fixed size."
+                    },
+                    {
+                        "name": "minSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicate the min size"
+                    },
+                    {
+                        "name": "maxSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicate the max size"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.MapTypeDef",
+                "comment": "Map types can be restricted by key type, item type and size",
+                "fields": [
+                    {
+                        "name": "keys",
+                        "type": "rdl.TypeRef",
+                        "optional": false,
+                        "comment": "The type of the keys, default to String."
+                    },
+                    {
+                        "name": "items",
+                        "type": "rdl.TypeRef",
+                        "optional": false,
+                        "comment": "The type of the items, default to Any type"
+                    },
+                    {
+                        "name": "size",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicates the fixed size."
+                    },
+                    {
+                        "name": "minSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicate the min size"
+                    },
+                    {
+                        "name": "maxSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicate the max size"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.StructFieldDef",
+                "comment": "Each field in a struct_field_spec is defined by this type",
+                "fields": [
+                    {
+                        "name": "name",
+                        "type": "rdl.Identifier",
+                        "optional": false,
+                        "comment": "The name of the field"
+                    },
+                    {
+                        "name": "type",
+                        "type": "rdl.TypeRef",
+                        "optional": false,
+                        "comment": "The type of the field"
+                    },
+                    {
+                        "name": "optional",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "The field may be omitted even if specified",
+                        "default": false
+                    },
+                    {
+                        "name": "default",
+                        "type": "Any",
+                        "optional": true,
+                        "comment": "If field is absent, what default value should be assumed."
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The comment for the field"
+                    },
+                    {
+                        "name": "items",
+                        "type": "rdl.TypeRef",
+                        "optional": true,
+                        "comment": "For map or array fields, the type of the items"
+                    },
+                    {
+                        "name": "keys",
+                        "type": "rdl.TypeRef",
+                        "optional": true,
+                        "comment": "For map type fields, the type of the keys"
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.StructTypeDef",
+                "comment": "A struct can restrict specific named fields to specific types. By default, any field not specified is allowed, and can be of any type. Specifying closed means only those fields explicitly",
+                "fields": [
+                    {
+                        "name": "fields",
+                        "type": "Array",
+                        "optional": false,
+                        "comment": "The fields in this struct. By default, open Structs can have any fields in addition to these",
+                        "items": "rdl.StructFieldDef"
+                    },
+                    {
+                        "name": "closed",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "indicates that only the specified fields are acceptable. Default is open (any fields)",
+                        "default": false
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.EnumElementDef",
+                "comment": "EnumElementDef defines one of the elements of an Enum",
+                "fields": [
+                    {
+                        "name": "symbol",
+                        "type": "rdl.Identifier",
+                        "optional": false,
+                        "comment": "The identifier representing the value"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the comment for the element"
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.EnumTypeDef",
+                "comment": "Define an enumerated type. Each value of the type is represented by a symbolic identifier.",
+                "fields": [
+                    {
+                        "name": "elements",
+                        "type": "Array",
+                        "optional": false,
+                        "comment": "The enumeration of the possible elements",
+                        "items": "rdl.EnumElementDef"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.UnionTypeDef",
+                "comment": "Define a type as one of any other specified type.",
+                "fields": [
+                    {
+                        "name": "variants",
+                        "type": "Array",
+                        "optional": false,
+                        "comment": "The type names of constituent types. Union types get expanded, this is a flat list",
+                        "items": "rdl.TypeRef"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "UnionTypeDef": {
+                "type": "Union",
+                "name": "rdl.Type",
+                "comment": "A Type can be specified by any of the above specialized Types, determined by the value of the the 'type' field",
+                "variants": [
+                    "rdl.BaseType",
+                    "rdl.StructTypeDef",
+                    "rdl.MapTypeDef",
+                    "rdl.ArrayTypeDef",
+                    "rdl.EnumTypeDef",
+                    "rdl.UnionTypeDef",
+                    "rdl.StringTypeDef",
+                    "rdl.BytesTypeDef",
+                    "rdl.NumberTypeDef",
+                    "rdl.AliasTypeDef"
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.ResourceInput",
+                "comment": "ResourceOutput defines input characteristics of a Resource",
+                "fields": [
+                    {
+                        "name": "name",
+                        "type": "rdl.Identifier",
+                        "optional": false,
+                        "comment": "the formal name of the input"
+                    },
+                    {
+                        "name": "type",
+                        "type": "rdl.TypeRef",
+                        "optional": false,
+                        "comment": "The type of the input"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The optional comment"
+                    },
+                    {
+                        "name": "pathParam",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "true of this input is a path parameter",
+                        "default": false
+                    },
+                    {
+                        "name": "queryParam",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "if present, the name of the query param name"
+                    },
+                    {
+                        "name": "header",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "If present, the name of the header the input is associated with"
+                    },
+                    {
+                        "name": "pattern",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "If present, the pattern associated with the pathParam (i.e. wildcard path matches)"
+                    },
+                    {
+                        "name": "default",
+                        "type": "Any",
+                        "optional": true,
+                        "comment": "If present, the default value for optional params"
+                    },
+                    {
+                        "name": "optional",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "If present, indicates that the input is optional",
+                        "default": false
+                    },
+                    {
+                        "name": "flag",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "If present, indicates the queryparam is of flag style (no value)",
+                        "default": false
+                    },
+                    {
+                        "name": "context",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "If present, indicates the parameter comes form the implementation context"
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.ResourceOutput",
+                "comment": "ResourceOutput defines output characteristics of a Resource",
+                "fields": [
+                    {
+                        "name": "name",
+                        "type": "rdl.Identifier",
+                        "optional": false,
+                        "comment": "the formal name of the output"
+                    },
+                    {
+                        "name": "type",
+                        "type": "rdl.TypeRef",
+                        "optional": false,
+                        "comment": "The type of the output"
+                    },
+                    {
+                        "name": "header",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "the name of the header associated with this output"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The optional comment for the output"
+                    },
+                    {
+                        "name": "optional",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "If present, indicates that the output is optional (the server decides)",
+                        "default": false
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.ResourceAuth",
+                "comment": "ResourceAuth defines authentication and authorization attributes of a resource. Presence of action, resource, or domain implies authentication; the authentication flag alone is required only when no authorization is done.",
+                "fields": [
+                    {
+                        "name": "authenticate",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "if present and true, then the requester must be authenticated",
+                        "default": false
+                    },
+                    {
+                        "name": "action",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the action to authorize access to. This forces authentication"
+                    },
+                    {
+                        "name": "resource",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the resource identity to authorize access to"
+                    },
+                    {
+                        "name": "domain",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "if present, the alternate domain to check access to. This is rare."
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.ExceptionDef",
+                "comment": "ExceptionDef describes the exception a symbolic response code maps to.",
+                "fields": [
+                    {
+                        "name": "type",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "The type of the exception"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the optional comment for the exception"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.Resource",
+                "comment": "A Resource of a REST service",
+                "fields": [
+                    {
+                        "name": "type",
+                        "type": "rdl.TypeRef",
+                        "optional": false,
+                        "comment": "The type of the resource"
+                    },
+                    {
+                        "name": "method",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "The method for the action (typically GET, POST, etc for HTTP access)"
+                    },
+                    {
+                        "name": "path",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "The resource path template"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The optional comment"
+                    },
+                    {
+                        "name": "inputs",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "An Array named inputs",
+                        "items": "rdl.ResourceInput"
+                    },
+                    {
+                        "name": "outputs",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "An Array of named outputs",
+                        "items": "rdl.ResourceOutput"
+                    },
+                    {
+                        "name": "auth",
+                        "type": "rdl.ResourceAuth",
+                        "optional": true,
+                        "comment": "The optional authentication or authorization directive"
+                    },
+                    {
+                        "name": "expected",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "The expected symbolic response code",
+                        "default": "OK"
+                    },
+                    {
+                        "name": "alternatives",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "The set of alternative but non-error response codes",
+                        "items": "String"
+                    },
+                    {
+                        "name": "exceptions",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "A map of symbolic response code to Exception definitions",
+                        "items": "rdl.ExceptionDef",
+                        "keys": "String"
+                    },
+                    {
+                        "name": "async",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "A hint to server implementations that this resource would be better implemented with async I/O"
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    },
+                    {
+                        "name": "consumes",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "Optional hint for resource acceptable input types",
+                        "items": "String"
+                    },
+                    {
+                        "name": "produces",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "Optional hint for resource output content types",
+                        "items": "String"
+                    },
+                    {
+                        "name": "name",
+                        "type": "rdl.Identifier",
+                        "optional": true,
+                        "comment": "The optional name of the resource"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.Schema",
+                "comment": "A Schema is a container for types and resources. It is self-contained (no external references). and is the output of the RDL parser.",
+                "fields": [
+                    {
+                        "name": "namespace",
+                        "type": "rdl.NamespacedIdentifier",
+                        "optional": true,
+                        "comment": "The namespace for the schema"
+                    },
+                    {
+                        "name": "name",
+                        "type": "rdl.Identifier",
+                        "optional": true,
+                        "comment": "The name of the schema"
+                    },
+                    {
+                        "name": "version",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "The version of the schema"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The comment for the entire schema"
+                    },
+                    {
+                        "name": "types",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "The types this schema defines.",
+                        "items": "rdl.Type"
+                    },
+                    {
+                        "name": "resources",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "The resources for a service this schema defines",
+                        "items": "rdl.Resource"
+                    },
+                    {
+                        "name": "base",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the base path for resources in the schema."
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ],
+                "closed": false
+            }
         }
     ],
     "resources": [
@@ -1819,6 +2918,9 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -1873,6 +2975,15 @@
                     "queryParam": "principal",
                     "optional": true,
                     "flag": false
+                },
+                {
+                    "name": "caseSensitive",
+                    "type": "Bool",
+                    "comment": "usually null. If true, match the action and resource of assertions created with the case-sensitive flag in their original case",
+                    "pathParam": false,
+                    "queryParam": "caseSensitive",
+                    "optional": true,
+                    "flag": false
                 }
             ],
             "auth": {
@@ -1880,6 +2991,9 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -1923,6 +3037,9 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -1954,6 +3071,9 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -2001,6 +3121,12 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
                 "BAD_REQUEST": {
                     "type": "ResourceError"
                 },
@@ -2029,6 +3155,12 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
                 "BAD_REQUEST": {
                     "type": "ResourceError"
                 }
@@ -2072,6 +3204,12 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
                 "BAD_REQUEST": {
                     "type": "ResourceError"
                 },
@@ -2126,6 +3264,12 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
                 "BAD_REQUEST": {
                     "type": "ResourceError"
                 },
@@ -2190,6 +3334,9 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -2240,6 +3387,9 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -2289,6 +3439,9 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -2330,6 +3483,9 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -2387,6 +3543,9 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -2435,6 +3594,9 @@
             "expected": "OK",
             "exceptions": {
                 "INTERNAL_SERVER_ERROR": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
                     "type": "ResourceError"
                 },
                 "UNAUTHORIZED": {
@@ -2497,6 +3659,9 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -2540,6 +3705,9 @@
             "expected": "CREATED",
             "exceptions": {
                 "INTERNAL_SERVER_ERROR": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
                     "type": "ResourceError"
                 },
                 "UNAUTHORIZED": {
@@ -2611,6 +3779,9 @@
                 "INTERNAL_SERVER_ERROR": {
                     "type": "ResourceError"
                 },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -2674,6 +3845,9 @@
                 "INTERNAL_SERVER_ERROR": {
                     "type": "ResourceError"
                 },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -2735,6 +3909,9 @@
                 "INTERNAL_SERVER_ERROR": {
                     "type": "ResourceError"
                 },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -2769,6 +3946,9 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -2790,6 +3970,9 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -2823,6 +4006,9 @@
                 "INTERNAL_SERVER_ERROR": {
                     "type": "ResourceError"
                 },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -2840,6 +4026,9 @@
             "path": "/.well-known/openid-configuration",
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "BAD_REQUEST": {
                     "type": "ResourceError"
                 }
@@ -2851,6 +4040,9 @@
             "path": "/.well-known/oauth-authorization-server",
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "BAD_REQUEST": {
                     "type": "ResourceError"
                 }
@@ -2870,10 +4062,23 @@
                     "optional": false,
                     "flag": false,
                     "default": false
+                },
+                {
+                    "name": "service",
+                    "type": "ServiceName",
+                    "comment": "service",
+                    "pathParam": false,
+                    "queryParam": "service",
+                    "optional": false,
+                    "flag": false,
+                    "default": "zts"
                 }
             ],
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "BAD_REQUEST": {
                     "type": "ResourceError"
                 }
@@ -2899,6 +4104,9 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -2981,6 +4189,54 @@
                     "queryParam": "keyType",
                     "optional": true,
                     "flag": false
+                },
+                {
+                    "name": "fullArn",
+                    "type": "Bool",
+                    "comment": "flag to indicate to use full arn in group claim (e.g. sports:role.deployer instead of deployer)",
+                    "pathParam": false,
+                    "queryParam": "fullArn",
+                    "optional": false,
+                    "flag": false,
+                    "default": false
+                },
+                {
+                    "name": "expiryTime",
+                    "type": "Int32",
+                    "comment": "optional expiry period specified in seconds",
+                    "pathParam": false,
+                    "queryParam": "expiryTime",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "output",
+                    "type": "SimpleName",
+                    "comment": "optional output format of json",
+                    "pathParam": false,
+                    "queryParam": "output",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "roleInAudClaim",
+                    "type": "Bool",
+                    "comment": "flag to indicate to include role name in the audience claim only if we have a single role in response",
+                    "pathParam": false,
+                    "queryParam": "roleInAudClaim",
+                    "optional": false,
+                    "flag": false,
+                    "default": false
+                },
+                {
+                    "name": "allScopePresent",
+                    "type": "Bool",
+                    "comment": "flag to indicate that all requested roles/groups in the scope must be present in the response otherwise return an error",
+                    "pathParam": false,
+                    "queryParam": "allScopePresent",
+                    "optional": false,
+                    "flag": false,
+                    "default": false
                 }
             ],
             "outputs": [
@@ -2995,8 +4251,11 @@
             "auth": {
                 "authenticate": true
             },
-            "expected": "FOUND",
+            "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -3031,6 +4290,9 @@
             },
             "expected": "OK",
             "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
                 "UNAUTHORIZED": {
                     "type": "ResourceError"
                 },
@@ -3210,6 +4472,92 @@
                     "type": "ResourceError"
                 }
             }
+        },
+        {
+            "type": "Info",
+            "method": "GET",
+            "path": "/sys/info",
+            "comment": "Retrieve the server info. Since we're exposing server version details, the request will require authorization",
+            "auth": {
+                "authenticate": false,
+                "action": "get",
+                "resource": "sys.auth:info"
+            },
+            "expected": "OK",
+            "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                }
+            }
+        },
+        {
+            "type": "ExternalCredentialsRequest",
+            "method": "POST",
+            "path": "/external/{provider}/domain/{domainName}/creds",
+            "comment": "request external credentials from the specified provider based on the specified request attributes and the principal's id token (that will be internally generated by ZTS). Based on the provider, the server will carry out internal authorization checks (e.g. is the principal authorized to request a given scope in the credentials).",
+            "inputs": [
+                {
+                    "name": "provider",
+                    "type": "SimpleName",
+                    "comment": "provider name to request credentials from",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "request credentials from account/project associated with this athenz domain",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "request",
+                    "type": "ExternalCredentialsRequest",
+                    "comment": "request object with optional and required attributes",
+                    "pathParam": false,
+                    "optional": false,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "OK",
+            "exceptions": {
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                }
+            }
+        },
+        {
+            "type": "rdl.Schema",
+            "method": "GET",
+            "path": "/schema",
+            "comment": "Get RDL Schema",
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "OK"
         }
     ]
 }

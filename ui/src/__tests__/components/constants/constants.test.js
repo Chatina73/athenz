@@ -1,0 +1,180 @@
+/*
+ * Copyright The Athenz Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import {
+    GROUP_MEMBER_NAME_REGEX,
+    StaticWorkloadType,
+} from '../../../components/constants/constants';
+import IPTestUtils from '../../../tests_utils/IPTestUtils';
+import { forEach } from 'async';
+import RegexUtils from '../../../components/utils/RegexUtils';
+
+describe('Group member name regex', () => {
+    it('allows compound and external member names', () => {
+        expect(
+            RegexUtils.validate('user.jane', GROUP_MEMBER_NAME_REGEX)
+        ).toBeTruthy();
+        expect(
+            RegexUtils.validate('weather.storage', GROUP_MEMBER_NAME_REGEX)
+        ).toBeTruthy();
+        expect(
+            RegexUtils.validate(
+                'email:ext.idjag-learner@athenz.io',
+                GROUP_MEMBER_NAME_REGEX
+            )
+        ).toBeTruthy();
+        expect(
+            RegexUtils.validate(
+                'partner.identity:ext.alice@example.com',
+                GROUP_MEMBER_NAME_REGEX
+            )
+        ).toBeTruthy();
+        expect(
+            RegexUtils.validate(
+                'athenz:ext.oidc/group/my-group',
+                GROUP_MEMBER_NAME_REGEX
+            )
+        ).toBeTruthy();
+    });
+
+    it('rejects invalid group member names', () => {
+        expect(RegexUtils.validate('*', GROUP_MEMBER_NAME_REGEX)).toBeFalsy();
+        expect(
+            RegexUtils.validate('home.test:group.test', GROUP_MEMBER_NAME_REGEX)
+        ).toBeFalsy();
+        expect(
+            RegexUtils.validate('user.test1.', GROUP_MEMBER_NAME_REGEX)
+        ).toBeFalsy();
+        expect(
+            RegexUtils.validate('athenz:ext.', GROUP_MEMBER_NAME_REGEX)
+        ).toBeFalsy();
+        expect(
+            RegexUtils.validate(
+                'email:external.user@example.com',
+                GROUP_MEMBER_NAME_REGEX
+            )
+        ).toBeFalsy();
+    });
+});
+
+describe('StaticWorkloadType', () => {
+    it('StaticWorkloadType should match the regex pattern based on types', () => {
+        StaticWorkloadType.forEach((type) => {
+            switch (type.value) {
+                case 'VIP':
+                    let vipName = IPTestUtils.generateRandomFQDN();
+                    expect(vipName).toMatch(new RegExp(type.pattern));
+                    break;
+                case 'ENTERPRISE_APPLIANCE':
+                    let enterpriseApplianceName =
+                        IPTestUtils.generateRandomString(30);
+                    expect(enterpriseApplianceName).toMatch(
+                        new RegExp(type.pattern)
+                    );
+                    break;
+                case 'CLOUD_LB':
+                    let cloudLBName = IPTestUtils.generateRandomFQDN();
+                    expect(cloudLBName).toMatch(new RegExp(type.pattern));
+                    break;
+                case 'CLOUD_NAT':
+                    let cloudNATIP = IPTestUtils.generateRandomIP();
+                    expect(cloudNATIP).toMatch(new RegExp(type.pattern));
+                    break;
+                case 'EXTERNAL_APPLIANCE':
+                    let externalApplianceIP = IPTestUtils.generateRandomIP();
+                    expect(externalApplianceIP).toMatch(
+                        new RegExp(type.pattern)
+                    );
+                    let externalApplicationCIDR =
+                        IPTestUtils.generateRandomCIDR();
+                    expect(externalApplicationCIDR).toMatch(
+                        new RegExp(type.pattern)
+                    );
+                    const pattern = new RegExp(type.pattern);
+                    // test ipv4
+                    // false
+                    expect('123').not.toMatch(pattern);
+                    expect('123.').not.toMatch(pattern);
+                    expect('123.123').not.toMatch(pattern);
+                    expect('123.123.123').not.toMatch(pattern);
+                    expect('123.123.123.').not.toMatch(pattern);
+                    expect('123.123.123.123/').not.toMatch(pattern);
+                    expect('123.123.123.123/33').not.toMatch(pattern);
+                    expect('01.123.123.123').not.toMatch(pattern);
+                    expect('256.123.123.123').not.toMatch(pattern);
+                    // true
+                    expect('255.255.255.255').toMatch(pattern);
+                    expect('123.123.123.123/32').toMatch(pattern);
+                    expect('0.0.0.0').toMatch(pattern);
+
+                    // test cidr
+                    // false
+                    expect('com').not.toMatch(pattern);
+                    expect('*ciea.ouryahoo.com').not.toMatch(pattern);
+                    expect('ciea.*ouryahoo.com').not.toMatch(pattern);
+                    expect('ciea.*.com').not.toMatch(pattern);
+                    expect('ciea.ouryahoo.*com').not.toMatch(pattern);
+                    expect('ciea.ouryahoo.*').not.toMatch(pattern);
+                    // true
+                    expect('*.ouryahoo.com').toMatch(pattern); // should match only wildcard as subdomain
+                    expect('ouryahoo.com').toMatch(pattern);
+                    expect('aaa.ouryahoo.com').toMatch(pattern);
+                    break;
+                case 'CLOUD_MANAGED':
+                    let externalCloudManagedName =
+                        IPTestUtils.generateRandomFQDN();
+                    expect(externalCloudManagedName).toMatch(
+                        new RegExp(type.pattern)
+                    );
+                    break;
+                case 'SERVICE_SUBNET':
+                    let validServiceSubnetCIDRs = [
+                        '10.0.0.0/8',
+                        '10.1.2.0/24',
+                        '172.16.0.0/12',
+                        '172.16.1.0/24',
+                        '172.31.0.0/16',
+                        '192.168.0.0/16',
+                        '192.168.1.0/24',
+                        '192.168.2.0/24',
+                        '192.168.100.0/24',
+                        '10.255.255.0/24',
+                        '100.64.0.0/10',
+                    ];
+
+                    let invalidServiceSubnetCIDRs = [
+                        '8.8.8.0/24',
+                        '203.0.113.0/24',
+                        '198.51.100.0/24',
+                        '192.0.2.0/24',
+                        '0.0.0.0/0',
+                        '224.0.0.0/4',
+                        '240.0.0.0/4',
+                        '169.254.0.0/16',
+                        '198.18.0.0/15',
+                    ];
+                    forEach(validServiceSubnetCIDRs, (cidr) => {
+                        expect(cidr).toMatch(new RegExp(type.pattern));
+                    });
+                    forEach(invalidServiceSubnetCIDRs, (cidr) => {
+                        expect(cidr).not.toMatch(new RegExp(type.pattern));
+                    });
+                    break;
+                default:
+                    fail(`Unknown StaticWorkloadType: ${type.value}`);
+            }
+        });
+    });
+});

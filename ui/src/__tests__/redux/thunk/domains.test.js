@@ -49,11 +49,11 @@ import {
 } from '../../config/config.test';
 import { getFullName } from '../../../redux/utils';
 import { subDomainDelimiter } from '../../../redux/config';
+import {
+    listUserDomains_response,
+    listUserDomains_responseTransformed,
+} from '../../../mock/MockData';
 
-const userDomains = [
-    { name: 'userDomain1', adminDomain: true },
-    { name: 'UserDomain2', adminDomain: false },
-];
 const domainsSelectors = require('../../../redux/selectors/domains');
 
 describe('test getUserDomainsList thunk', () => {
@@ -64,7 +64,7 @@ describe('test getUserDomainsList thunk', () => {
         const fakeDispatch = sinon.spy();
         const getState = () => {
             return {
-                domains: { domainsList: userDomains },
+                domains: { domainsList: listUserDomains_responseTransformed },
             };
         };
 
@@ -84,7 +84,7 @@ describe('test getUserDomainsList thunk', () => {
         MockApi.setMockApi({
             listUserDomains: jest
                 .fn()
-                .mockReturnValue(Promise.resolve(userDomains)),
+                .mockReturnValue(Promise.resolve(listUserDomains_response)),
         });
 
         await getUserDomainsList()(fakeDispatch, getState);
@@ -98,7 +98,7 @@ describe('test getUserDomainsList thunk', () => {
         expect(
             _.isEqual(
                 fakeDispatch.getCall(1).args[0],
-                loadUserDomainList(userDomains)
+                loadUserDomainList(listUserDomains_responseTransformed)
             )
         ).toBeTruthy();
         expect(
@@ -155,6 +155,7 @@ describe('test createSubDomain thunk', () => {
     const parentDomain = 'dom';
     const subDomain = 'test';
     const adminUser = 'user1';
+    const description = 'test description';
     const getState = () => {};
     afterEach(() => {
         MockApi.cleanMockApi();
@@ -165,14 +166,24 @@ describe('test createSubDomain thunk', () => {
         jest.spyOn(domainsSelectors, 'selectPersonalDomain').mockReturnValue(
             null
         );
-        MockApi.setMockApi({
+        const myApiMock = {
             createSubDomain: jest.fn().mockReturnValue(Promise.resolve()),
-        });
+        };
+        MockApi.setMockApi(myApiMock);
         await createSubDomain(
             parentDomain,
             subDomain,
-            adminUser
+            adminUser,
+            description,
+            'csrf'
         )(fakeDispatch, getState);
+        expect(myApiMock.createSubDomain).toHaveBeenCalledWith(
+            parentDomain,
+            subDomain,
+            adminUser,
+            description,
+            'csrf'
+        );
         expect(fakeDispatch.getCall(0).args[0]).toBeTruthy();
         expect(
             _.isEqual(

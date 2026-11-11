@@ -27,6 +27,24 @@ import (
 	"github.com/AthenZ/athenz/libs/go/sia/host/signature"
 )
 
+type AttestationRequest struct {
+	MetaEndPoint                string //meta data service endpoint
+	Domain                      string //name of the domain for the identity
+	Service                     string //name of the service for the identity
+	ZTSUrl                      string //the ZTS to contact
+	OmitDomain                  bool   //attestation role only includes service name
+	UseRegionalSTS              bool   //use regional sts endpoint
+	Account                     string //name of the account
+	Region                      string //region name
+	EC2Document                 string //EC2 instance identity document (for AWS only)
+	EC2Signature                string //EC2 instance identity document pkcs7 signature (for AWS only)
+	RolePath                    string //IAM role path prefix
+	UseWebIdentityToken         bool   //enable AWS web identity token attestation path
+	WebIdentityAudience         string //audience for the web identity token; empty defaults to ZTSUrl
+	WebIdentitySigningAlgorithm string //signing algorithm for the web identity token (RS256 or ES384)
+	WebIdentityDurationSeconds  int32  //lifetime of the web identity token in seconds (60-3600)
+}
+
 // Provider is the interface which wraps various Providers known to ZTS
 // It has methods for providing attestationdata depending on provider type
 // and generating sub-parts of DN to be including in the CSR and San DNS and URI entries
@@ -61,17 +79,20 @@ type Provider interface {
 	// GetSanIp returns an array of IPs that can be included in San IPs from the list of IPs found on the box
 	GetSanIp(map[string]bool, []net.IP, ip.Opts) []net.IP
 
-	// GetSuffix returns the suffix for the current provider
-	GetSuffix() string
+	// GetSuffixes returns a list of suffixes for the current provider
+	GetSuffixes() []string
 
 	// CloudAttestationData gets the attestation data to prove the identity from metadata of the respective cloud
-	CloudAttestationData(string, string, string) (string, error)
+	CloudAttestationData(*AttestationRequest) (string, error)
 
 	// GetAccountDomainServiceFromMeta gets the account, domain and service info from the respective cloud
 	GetAccountDomainServiceFromMeta(string) (string, string, string, error)
 
 	// GetAccessManagementProfileFromMeta gets the profile info from the respective cloud
 	GetAccessManagementProfileFromMeta(string) (string, error)
+
+	// GetInstanceAttributeValueFromMeta gets the attribute value of a given key from the respective cloud
+	GetInstanceAttributeValueFromMeta(string, string) (string, error)
 
 	// GetAdditionalSshHostPrincipals returns additional provider specific principals to be added in ssh host cert
 	GetAdditionalSshHostPrincipals(string) (string, error)

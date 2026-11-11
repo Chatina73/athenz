@@ -3212,6 +3212,45 @@ var zmsspec = {
         }
       }
     },
+    "/v1/domain/{domainName}/policies/{policyNames}" : {
+      "delete" : {
+        "description" : "Delete the specified policies. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned).",
+        "operationId" : "deletePolicies",
+        "parameters" : [ {
+          "name" : "domainName",
+          "in" : "path",
+          "description" : "name of the domain",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "policyNames",
+          "in" : "path",
+          "description" : "comma separated list of policy names to be deleted",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "Y-Audit-Ref",
+          "in" : "header",
+          "description" : "Audit param required(not empty) if domain auditEnabled is true.",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "default response",
+            "content" : {
+              "application/json" : { }
+            }
+          }
+        }
+      }
+    },
     "/v1/domain/{domainName}/policy" : {
       "get" : {
         "description" : "List policies provisioned in this namespace.",
@@ -3492,6 +3531,45 @@ var zmsspec = {
                   "$ref" : "#/components/schemas/Roles"
                 }
               }
+            }
+          }
+        }
+      }
+    },
+    "/v1/domain/{domainName}/roles/{roleNames}" : {
+      "delete" : {
+        "description" : "Delete the specified roles. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned).",
+        "operationId" : "deleteRoles",
+        "parameters" : [ {
+          "name" : "domainName",
+          "in" : "path",
+          "description" : "name of the domain",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "roleNames",
+          "in" : "path",
+          "description" : "comma separated list of role names to be deleted",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "Y-Audit-Ref",
+          "in" : "header",
+          "description" : "Audit param required(not empty) if domain auditEnabled is true.",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "default response",
+            "content" : {
+              "application/json" : { }
             }
           }
         }
@@ -4700,7 +4778,7 @@ var zmsspec = {
     },
     "/v1/domain/{domain}/service/{service}/meta/system/{attribute}" : {
       "put" : {
-        "description" : "Set the specified service metadata. Caller must have update privileges on the sys.auth domain.",
+        "description" : "Set the specified service metadata. Caller must have update privileges on the sys.auth domain. For OAuth DCR clientid updates, client ID self-update is also allowed when the server property and domain clientIdSelfUpdate flag are enabled, the caller is the target service principal, and the target domain policy grants update on resource service.<service>.clientid.<clientid>.",
         "operationId" : "putServiceIdentitySystemMeta",
         "parameters" : [ {
           "name" : "domain",
@@ -6976,6 +7054,9 @@ var zmsspec = {
           },
           "businessService" : {
             "type" : "string"
+          },
+          "clientIdSelfUpdate" : {
+            "type" : "boolean"
           }
         }
       },

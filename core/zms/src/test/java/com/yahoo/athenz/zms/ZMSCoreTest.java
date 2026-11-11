@@ -24,6 +24,7 @@ import com.yahoo.rdl.Validator.Result;
 import org.testng.annotations.Test;
 
 import java.util.*;
+import java.util.regex.Pattern;
 
 import static org.testng.Assert.*;
 
@@ -33,6 +34,35 @@ public class ZMSCoreTest {
     public void test() {
         Schema schema = ZMSSchema.instance();
         assertNotNull(schema);
+    }
+
+    @Test
+    public void testEntityNameList() {
+
+        Schema schema = ZMSSchema.instance();
+        Validator validator = new Validator(schema);
+
+        String[] goodNameLists = {
+                "role1",
+                "role1,role2",
+                "role.one,role-two,_role3"
+        };
+        for (String nameList : goodNameLists) {
+            Result result = validator.validate(nameList, "EntityNameList");
+            assertTrue(result.valid);
+        }
+
+        String[] badNameLists = {
+                "",
+                "role1,",
+                ",role1",
+                "role1,,role2",
+                "role1,bad:name"
+        };
+        for (String nameList : badNameLists) {
+            Result result = validator.validate(nameList, "EntityNameList");
+            assertFalse(result.valid);
+        }
     }
 
     @Test
@@ -137,273 +167,6 @@ public class ZMSCoreTest {
         ral2.setMember(null);
         assertFalse(ral2.equals(ral));
         assertFalse(ral2.equals(new String()));
-    }
-
-    @Test
-    public void testRolesMethod() {
-        Schema schema = ZMSSchema.instance();
-        Validator validator = new Validator(schema);
-
-        RoleAuditLog ral = new RoleAuditLog().setMember("user.test").setAdmin("user.admin")
-                .setCreated(Timestamp.fromMillis(123456789123L)).setAction("add").setAuditRef("zmstest");
-
-        List<RoleAuditLog> rall = Arrays.asList(ral);
-
-        // Role test
-        List<String> members = Arrays.asList("user.boynton");
-        List<RoleMember> roleMembers = new ArrayList<>();
-        roleMembers.add(new RoleMember().setMemberName("member1"));
-
-        Role r = new Role()
-                .setName("sys.auth:role.admin")
-                .setMembers(members)
-                .setRoleMembers(roleMembers)
-                .setAuditEnabled(true)
-                .setModified(Timestamp.fromMillis(123456789123L))
-                .setTrust("domain.admin")
-                .setAuditLog(rall)
-                .setSelfServe(false)
-                .setMemberExpiryDays(30)
-                .setServiceExpiryDays(40)
-                .setGroupExpiryDays(50)
-                .setGroupReviewDays(55)
-                .setTokenExpiryMins(300)
-                .setCertExpiryMins(120)
-                .setMemberReviewDays(70)
-                .setServiceReviewDays(80)
-                .setSignAlgorithm("ec")
-                .setReviewEnabled(false)
-                .setDeleteProtection(false)
-                .setNotifyRoles("role1,domain:role.role2")
-                .setLastReviewedDate(Timestamp.fromMillis(123456789123L))
-                .setUserAuthorityExpiration("attr1")
-                .setUserAuthorityFilter("attr2,attr3")
-                .setDescription("test role")
-                .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))));
-
-        Result result = validator.validate(r, "Role");
-        assertTrue(result.valid);
-
-        assertEquals(r.getName(), "sys.auth:role.admin");
-        assertEquals(r.getModified(), Timestamp.fromMillis(123456789123L));
-        assertEquals(r.getMembers(), members);
-        assertEquals(r.getTrust(), "domain.admin");
-        assertEquals(r.getAuditLog(), rall);
-        assertEquals(r.getRoleMembers(), roleMembers);
-        assertTrue(r.getAuditEnabled());
-        assertFalse(r.getSelfServe());
-        assertEquals(r.getMemberExpiryDays(), Integer.valueOf(30));
-        assertEquals(r.getServiceExpiryDays(), Integer.valueOf(40));
-        assertEquals(r.getGroupExpiryDays(), Integer.valueOf(50));
-        assertEquals(r.getGroupReviewDays(), Integer.valueOf(55));
-        assertEquals(r.getTokenExpiryMins(), Integer.valueOf(300));
-        assertEquals(r.getCertExpiryMins(), Integer.valueOf(120));
-        assertEquals(r.getMemberReviewDays(), Integer.valueOf(70));
-        assertEquals(r.getServiceReviewDays(), Integer.valueOf(80));
-        assertEquals(r.getSignAlgorithm(), "ec");
-        assertFalse(r.getReviewEnabled());
-        assertFalse(r.getDeleteProtection());
-        assertEquals(r.getLastReviewedDate(), Timestamp.fromMillis(123456789123L));
-        assertEquals(r.getNotifyRoles(), "role1,domain:role.role2");
-        assertEquals(r.getUserAuthorityExpiration(), "attr1");
-        assertEquals(r.getUserAuthorityFilter(), "attr2,attr3");
-        assertEquals(r.getTags().get("tagKey").getList().get(0), "tagValue");
-        assertEquals(r.getDescription(), "test role");
-
-        Role r2 = new Role()
-                .setName("sys.auth:role.admin")
-                .setMembers(members)
-                .setRoleMembers(roleMembers)
-                .setAuditEnabled(true)
-                .setModified(Timestamp.fromMillis(123456789123L))
-                .setTrust("domain.admin")
-                .setAuditLog(rall)
-                .setSelfServe(false)
-                .setMemberExpiryDays(30)
-                .setServiceExpiryDays(40)
-                .setGroupExpiryDays(50)
-                .setGroupReviewDays(55)
-                .setTokenExpiryMins(300)
-                .setCertExpiryMins(120)
-                .setMemberReviewDays(70)
-                .setServiceReviewDays(80)
-                .setSignAlgorithm("ec")
-                .setReviewEnabled(false)
-                .setDeleteProtection(false)
-                .setNotifyRoles("role1,domain:role.role2")
-                .setLastReviewedDate(Timestamp.fromMillis(123456789123L))
-                .setUserAuthorityExpiration("attr1")
-                .setUserAuthorityFilter("attr2,attr3")
-                .setDescription("test role")
-                .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))));
-
-        assertTrue(r2.equals(r));
-        assertTrue(r.equals(r));
-
-        r2.setLastReviewedDate(Timestamp.fromMillis(123456789124L));
-        assertFalse(r2.equals(r));
-        r2.setLastReviewedDate(null);
-        assertFalse(r2.equals(r));
-        r2.setLastReviewedDate(Timestamp.fromMillis(123456789123L));
-        assertTrue(r2.equals(r));
-
-        r2.setNotifyRoles("role1");
-        assertFalse(r2.equals(r));
-        r2.setNotifyRoles(null);
-        assertFalse(r2.equals(r));
-        r2.setNotifyRoles("role1,domain:role.role2");
-        assertTrue(r2.equals(r));
-
-        r2.setReviewEnabled(true);
-        assertFalse(r2.equals(r));
-        r2.setReviewEnabled(null);
-        assertFalse(r2.equals(r));
-        r2.setReviewEnabled(false);
-        assertTrue(r2.equals(r));
-
-        r2.setDeleteProtection(true);
-        assertFalse(r2.equals(r));
-        r2.setDeleteProtection(null);
-        assertFalse(r2.equals(r));
-        r2.setDeleteProtection(false);
-        assertTrue(r2.equals(r));
-
-        r2.setDescription("test role1");
-        assertFalse(r2.equals(r));
-        r2.setDescription(null);
-        assertFalse(r2.equals(r));
-        r2.setDescription("test role");
-        assertTrue(r2.equals(r));
-
-        r2.setSignAlgorithm("rsa");
-        assertFalse(r2.equals(r));
-        r2.setSignAlgorithm(null);
-        assertFalse(r2.equals(r));
-        r2.setSignAlgorithm("ec");
-        assertTrue(r2.equals(r));
-
-        r2.setMemberExpiryDays(45);
-        assertFalse(r2.equals(r));
-        r2.setMemberExpiryDays(null);
-        assertFalse(r2.equals(r));
-        r2.setMemberExpiryDays(30);
-        assertTrue(r2.equals(r));
-
-        r2.setServiceExpiryDays(45);
-        assertFalse(r2.equals(r));
-        r2.setServiceExpiryDays(null);
-        assertFalse(r2.equals(r));
-        r2.setServiceExpiryDays(40);
-        assertTrue(r2.equals(r));
-
-        r2.setGroupExpiryDays(55);
-        assertFalse(r2.equals(r));
-        r2.setGroupExpiryDays(null);
-        assertFalse(r2.equals(r));
-        r2.setGroupExpiryDays(50);
-        assertTrue(r2.equals(r));
-
-        r2.setGroupReviewDays(60);
-        assertFalse(r2.equals(r));
-        r2.setGroupReviewDays(null);
-        assertFalse(r2.equals(r));
-        r2.setGroupReviewDays(55);
-        assertTrue(r2.equals(r));
-
-        r2.setTokenExpiryMins(450);
-        assertFalse(r2.equals(r));
-        r2.setTokenExpiryMins(null);
-        assertFalse(r2.equals(r));
-        r2.setTokenExpiryMins(300);
-        assertTrue(r2.equals(r));
-
-        r2.setCertExpiryMins(150);
-        assertFalse(r2.equals(r));
-        r2.setCertExpiryMins(null);
-        assertFalse(r2.equals(r));
-        r2.setCertExpiryMins(120);
-        assertTrue(r2.equals(r));
-
-        r2.setAuditEnabled(false);
-        assertFalse(r2.equals(r));
-        r2.setAuditEnabled(null);
-        assertFalse(r2.equals(r));
-        r2.setAuditEnabled(true);
-        assertTrue(r2.equals(r));
-
-        r2.setSelfServe(true);
-        assertFalse(r2.equals(r));
-        r2.setSelfServe(null);
-        assertFalse(r2.equals(r));
-        r2.setSelfServe(false);
-        assertTrue(r2.equals(r));
-
-        r2.setMemberReviewDays(75);
-        assertFalse(r2.equals(r));
-        r2.setMemberReviewDays(null);
-        assertFalse(r2.equals(r));
-        r2.setMemberReviewDays(70);
-        assertTrue(r2.equals(r));
-
-        r2.setServiceReviewDays(85);
-        assertFalse(r2.equals(r));
-        r2.setServiceReviewDays(null);
-        assertFalse(r2.equals(r));
-        r2.setServiceReviewDays(80);
-        assertTrue(r2.equals(r));
-
-        r2.setUserAuthorityExpiration("attr11");
-        assertFalse(r2.equals(r));
-        r2.setUserAuthorityExpiration(null);
-        assertFalse(r2.equals(r));
-        r2.setUserAuthorityExpiration("attr1");
-        assertTrue(r2.equals(r));
-
-        r2.setUserAuthorityFilter("attr2");
-        assertFalse(r2.equals(r));
-        r2.setUserAuthorityFilter(null);
-        assertFalse(r2.equals(r));
-        r2.setUserAuthorityFilter("attr2,attr3");
-        assertTrue(r2.equals(r));
-
-        r2.setAuditLog(null);
-        assertFalse(r2.equals(r));
-        r2.setTrust(null);
-        assertFalse(r2.equals(r));
-        r2.setRoleMembers(null);
-        assertFalse(r2.equals(r));
-        r2.setMembers(null);
-        assertFalse(r2.equals(r));
-        r2.setModified(null);
-        assertFalse(r2.equals(r));
-        r2.setName(null);
-        assertFalse(r2.equals(r));
-        assertFalse(r.equals(new String()));
-
-        r2.setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue1"))));
-        assertFalse(r2.equals(r));
-        r2.setTags(null);
-        assertFalse(r2.equals(r));
-
-        List<Role> rl = Arrays.asList(r);
-
-        // Roles test
-        Roles rs1 = new Roles().setList(rl);
-        assertTrue(rs1.equals(rs1));
-
-        result = validator.validate(rs1, "Roles");
-        assertTrue(result.valid);
-
-        assertEquals(rs1.getList(), rl);
-
-        Roles rs2 = new Roles().setList(rl);
-        assertTrue(rs2.equals(rs1));
-
-        rs2.setList(null);
-        assertFalse(rs2.equals(rs1));
-
-        assertFalse(rs1.equals(null));
-        assertFalse(rs1.equals(new String()));
     }
 
     @Test
@@ -744,7 +507,9 @@ public class ZMSCoreTest {
                 .setProviderEndpoint("http://test.endpoint").setModified(Timestamp.fromMillis(123456789123L))
                 .setExecutable("exec/path").setHosts(hosts).setUser("user.test").setGroup("test.group")
                 .setDescription("description")
-                .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))));
+                .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))))
+                .setResourceOwnership(new ResourceServiceIdentityOwnership().setObjectOwner("TF"))
+                .setX509CertSignerKeyId("x509-keyid").setSshCertSignerKeyId("ssh-keyid");
         result = validator.validate(si, "ServiceIdentity");
         assertTrue(result.valid);
 
@@ -758,15 +523,41 @@ public class ZMSCoreTest {
         assertEquals(si.getGroup(), "test.group");
         assertEquals(si.getDescription(), "description");
         assertEquals(si.getTags().get("tagKey").getList().get(0), "tagValue");
+        assertEquals(si.getResourceOwnership(), new ResourceServiceIdentityOwnership().setObjectOwner("TF"));
+        assertEquals(si.getX509CertSignerKeyId(), "x509-keyid");
+        assertEquals(si.getSshCertSignerKeyId(), "ssh-keyid");
 
         ServiceIdentity si2 = new ServiceIdentity().setName("test.service").setPublicKeys(pkel)
                 .setProviderEndpoint("http://test.endpoint").setModified(Timestamp.fromMillis(123456789123L))
                 .setExecutable("exec/path").setHosts(hosts).setUser("user.test").setGroup("test.group")
                 .setDescription("description")
-                .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))));
+                .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))))
+                .setResourceOwnership(new ResourceServiceIdentityOwnership().setObjectOwner("TF"))
+                .setX509CertSignerKeyId("x509-keyid").setSshCertSignerKeyId("ssh-keyid");
 
         assertTrue(si2.equals(si));
         assertTrue(si.equals(si));
+
+        si2.setX509CertSignerKeyId("x509-keyid2");
+        assertNotEquals(si2, si);
+        si2.setX509CertSignerKeyId(null);
+        assertNotEquals(si2, si);
+        si2.setX509CertSignerKeyId("x509-keyid");
+        assertEquals(si2, si);
+
+        si2.setSshCertSignerKeyId("ssh-keyid2");
+        assertNotEquals(si2, si);
+        si2.setSshCertSignerKeyId(null);
+        assertNotEquals(si2, si);
+        si2.setSshCertSignerKeyId("ssh-keyid");
+        assertEquals(si2, si);
+
+        si2.setResourceOwnership(new ResourceServiceIdentityOwnership().setObjectOwner("ZTS"));
+        assertNotEquals(si2, si);
+        si2.setResourceOwnership(null);
+        assertNotEquals(si2, si);
+        si2.setResourceOwnership(new ResourceServiceIdentityOwnership().setObjectOwner("TF"));
+        assertEquals(si2, si);
 
         si2.setGroup(null);
         assertFalse(si2.equals(si));
@@ -813,21 +604,29 @@ public class ZMSCoreTest {
         List<ServiceIdentity> sil = Arrays.asList(si);
 
         // ServiceIdentities test
-        ServiceIdentities sis = new ServiceIdentities().setList(sil);
+        ServiceIdentities sis = new ServiceIdentities().setList(sil).setServiceMatchCount(100);
         result = validator.validate(sis, "ServiceIdentities");
         assertTrue(result.valid);
 
         assertEquals(sis.getList(), sil);
+        assertEquals(sis.getServiceMatchCount(), 100);
 
-        ServiceIdentities sis2 = new ServiceIdentities().setList(sil);
+        ServiceIdentities sis2 = new ServiceIdentities().setList(sil).setServiceMatchCount(100);
         assertTrue(sis2.equals(sis));
         assertTrue(sis.equals(sis));
 
         sis2.setList(null);
         assertFalse(sis2.equals(sis));
+        sis2.setList(sil);
+        assertTrue(sis2.equals(sis));
 
         assertFalse(sis.equals(null));
         assertFalse(sis.equals(new String()));
+
+        sis.setServiceMatchCount(200);
+        assertFalse(sis2.equals(sis));
+        sis.setServiceMatchCount(100);
+        assertTrue(sis2.equals(sis));
 
         // groups for the domain object
 
@@ -842,17 +641,26 @@ public class ZMSCoreTest {
                 .setMemberExpiryDays(30).setServiceExpiryDays(40).setGroupExpiryDays(50)
                 .setTokenExpiryMins(300).setRoleCertExpiryMins(120)
                 .setServiceCertExpiryMins(150).setDescription("main domain").setOrg("org").setSignAlgorithm("rsa")
-                .setUserAuthorityFilter("OnShore").setGroups(gl).setAzureSubscription("azure").setGcpProject("gcp")
+                .setUserAuthorityFilter("OnShore").setGroups(gl)
+                .setAzureSubscription("azure").setAzureTenant("tenant").setAzureClient("client")
                 .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))))
-                .setBusinessService("business-service").setMemberPurgeExpiryDays(10).setGcpProjectNumber("1235")
-                .setProductId("abcd-1234").setFeatureFlags(3);
+                .setBusinessService("business-service").setMemberPurgeExpiryDays(10).setGcpProject("gcp").setGcpProjectNumber("1235")
+                .setProductId("abcd-1234").setFeatureFlags(3).setContacts(Map.of("pe-owner", "user.test"))
+                .setEnvironment("production").setResourceOwnership(new ResourceDomainOwnership().setObjectOwner("TF"))
+                .setX509CertSignerKeyId("x509-keyid").setSshCertSignerKeyId("ssh-keyid")
+                .setSlackChannel("slack").setOnCall("oncall").setAutoDeleteTenantAssumeRoleAssertions(true)
+                .setAwsAccountName("aws-name").setExternalMemberValidator("ext-validator")
+                .setCostCenter("cost-center");
 
         result = validator.validate(dd, "DomainData");
         assertTrue(result.valid, result.error);
 
         assertEquals(dd.getName(), "test.domain");
         assertEquals(dd.getAccount(), "aws");
+        assertEquals(dd.getAwsAccountName(), "aws-name");
         assertEquals(dd.getAzureSubscription(), "azure");
+        assertEquals(dd.getAzureTenant(), "tenant");
+        assertEquals(dd.getAzureClient(), "client");
         assertEquals(dd.getGcpProject(), "gcp");
         assertEquals(dd.getGcpProjectNumber(), "1235");
         assertEquals((int) dd.getYpmId(), 1);
@@ -882,20 +690,52 @@ public class ZMSCoreTest {
         assertEquals(dd.getMemberPurgeExpiryDays(), 10);
         assertEquals(dd.getProductId(), "abcd-1234");
         assertEquals(dd.getFeatureFlags(), 3);
+        assertEquals(dd.getContacts(), Map.of("pe-owner", "user.test"));
+        assertEquals(dd.getEnvironment(), "production");
+        assertEquals(dd.getX509CertSignerKeyId(), "x509-keyid");
+        assertEquals(dd.getSshCertSignerKeyId(), "ssh-keyid");
+        assertEquals(dd.getResourceOwnership(), new ResourceDomainOwnership().setObjectOwner("TF"));
+        assertEquals(dd.getSlackChannel(), "slack");
+        assertEquals(dd.getOnCall(), "oncall");
+        assertTrue(dd.getAutoDeleteTenantAssumeRoleAssertions());
+        assertFalse(dd.getClientIdSelfUpdate());
+        assertEquals(dd.getExternalMemberValidator(), "ext-validator");
+        assertEquals(dd.getCostCenter(), "cost-center");
 
         DomainData dd2 = new DomainData().setName("test.domain").setAccount("aws").setYpmId(1).setRoles(rl)
                 .setPolicies(sp).setServices(sil).setEntities(elist).setModified(Timestamp.fromMillis(123456789123L))
                 .setEnabled(true).setApplicationId("101").setCertDnsDomain("athenz.cloud").setAuditEnabled(false)
                 .setMemberExpiryDays(30).setTokenExpiryMins(300).setRoleCertExpiryMins(120).setServiceCertExpiryMins(150)
                 .setDescription("main domain").setOrg("org").setSignAlgorithm("rsa").setServiceExpiryDays(40)
-                .setUserAuthorityFilter("OnShore").setGroupExpiryDays(50).setGroups(gl).setAzureSubscription("azure")
+                .setUserAuthorityFilter("OnShore").setGroupExpiryDays(50).setGroups(gl)
+                .setAzureSubscription("azure").setAzureTenant("tenant").setAzureClient("client")
                 .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))))
                 .setBusinessService("business-service").setMemberPurgeExpiryDays(10).setGcpProject("gcp")
-                .setGcpProjectNumber("1235").setProductId("abcd-1234").setFeatureFlags(3);
+                .setGcpProjectNumber("1235").setProductId("abcd-1234").setFeatureFlags(3)
+                .setContacts(Map.of("pe-owner", "user.test")).setEnvironment("production")
+                .setResourceOwnership(new ResourceDomainOwnership().setObjectOwner("TF"))
+                .setX509CertSignerKeyId("x509-keyid").setSshCertSignerKeyId("ssh-keyid")
+                .setSlackChannel("slack").setOnCall("oncall").setAutoDeleteTenantAssumeRoleAssertions(true)
+                .setClientIdSelfUpdate(false).setAwsAccountName("aws-name").setExternalMemberValidator("ext-validator")
+                .setCostCenter("cost-center");
 
         assertEquals(dd2, dd);
         assertNotEquals(dd, null);
         assertNotEquals(new String(), dd);
+
+        dd2.setCostCenter("cost-center2");
+        assertNotEquals(dd, dd2);
+        dd2.setCostCenter(null);
+        assertNotEquals(dd, dd2);
+        dd2.setCostCenter("cost-center");
+        assertEquals(dd, dd2);
+
+        dd2.setExternalMemberValidator("ext-validator2");
+        assertNotEquals(dd, dd2);
+        dd2.setExternalMemberValidator(null);
+        assertNotEquals(dd, dd2);
+        dd2.setExternalMemberValidator("ext-validator");
+        assertEquals(dd, dd2);
 
         List<Group> gl2 = new ArrayList<>();
         gl2.add(new Group().setName("new-name"));
@@ -904,6 +744,34 @@ public class ZMSCoreTest {
         dd2.setGroups(null);
         assertNotEquals(dd, dd2);
         dd2.setGroups(gl);
+        assertEquals(dd, dd2);
+
+        dd2.setEnvironment("staging");
+        assertNotEquals(dd, dd2);
+        dd2.setEnvironment(null);
+        assertNotEquals(dd, dd2);
+        dd2.setEnvironment("production");
+        assertEquals(dd, dd2);
+
+        dd2.setX509CertSignerKeyId("x509-keyid2");
+        assertNotEquals(dd, dd2);
+        dd2.setX509CertSignerKeyId(null);
+        assertNotEquals(dd, dd2);
+        dd2.setX509CertSignerKeyId("x509-keyid");
+        assertEquals(dd, dd2);
+
+        dd2.setSshCertSignerKeyId("ssh-keyid2");
+        assertNotEquals(dd, dd2);
+        dd2.setSshCertSignerKeyId(null);
+        assertNotEquals(dd, dd2);
+        dd2.setSshCertSignerKeyId("ssh-keyid");
+        assertEquals(dd, dd2);
+
+        dd2.setContacts(Map.of("product-owner", "user.test"));
+        assertNotEquals(dd, dd2);
+        dd2.setContacts(null);
+        assertNotEquals(dd, dd2);
+        dd2.setContacts(Map.of("pe-owner", "user.test"));
         assertEquals(dd, dd2);
 
         dd2.setName("test.domain2");
@@ -927,11 +795,32 @@ public class ZMSCoreTest {
         dd2.setAccount("aws");
         assertEquals(dd, dd2);
 
+        dd2.setAwsAccountName("aws-name2");
+        assertNotEquals(dd, dd2);
+        dd2.setAwsAccountName(null);
+        assertNotEquals(dd, dd2);
+        dd2.setAwsAccountName("aws-name");
+        assertEquals(dd, dd2);
+
         dd2.setAzureSubscription("azure2");
         assertNotEquals(dd, dd2);
         dd2.setAzureSubscription(null);
         assertNotEquals(dd, dd2);
         dd2.setAzureSubscription("azure");
+        assertEquals(dd, dd2);
+
+        dd2.setAzureTenant("tenant2");
+        assertNotEquals(dd, dd2);
+        dd2.setAzureTenant(null);
+        assertNotEquals(dd, dd2);
+        dd2.setAzureTenant("tenant");
+        assertEquals(dd, dd2);
+
+        dd2.setAzureClient("client2");
+        assertNotEquals(dd, dd2);
+        dd2.setAzureClient(null);
+        assertNotEquals(dd, dd2);
+        dd2.setAzureClient("client");
         assertEquals(dd, dd2);
 
         dd2.setGcpProject("gcp2");
@@ -1044,6 +933,41 @@ public class ZMSCoreTest {
         dd2.setBusinessService(null);
         assertNotEquals(dd, dd2);
         dd2.setBusinessService("business-service");
+        assertEquals(dd, dd2);
+
+        dd2.setSlackChannel("slack2");
+        assertNotEquals(dd, dd2);
+        dd2.setSlackChannel(null);
+        assertNotEquals(dd, dd2);
+        dd2.setSlackChannel("slack");
+        assertEquals(dd, dd2);
+
+        dd2.setOnCall("oncall1");
+        assertNotEquals(dd, dd2);
+        dd2.setOnCall(null);
+        assertNotEquals(dd, dd2);
+        dd2.setOnCall("oncall");
+        assertEquals(dd, dd2);
+
+        dd2.setResourceOwnership(new ResourceDomainOwnership().setObjectOwner("TF2"));
+        assertNotEquals(dd, dd2);
+        dd2.setResourceOwnership(null);
+        assertNotEquals(dd, dd2);
+        dd2.setResourceOwnership(new ResourceDomainOwnership().setObjectOwner("TF"));
+        assertEquals(dd, dd2);
+
+        dd2.setAutoDeleteTenantAssumeRoleAssertions(false);
+        assertNotEquals(dd, dd2);
+        dd2.setAutoDeleteTenantAssumeRoleAssertions(null);
+        assertNotEquals(dd, dd2);
+        dd2.setAutoDeleteTenantAssumeRoleAssertions(true);
+        assertEquals(dd, dd2);
+
+        dd2.setClientIdSelfUpdate(true);
+        assertNotEquals(dd, dd2);
+        dd2.setClientIdSelfUpdate(null);
+        assertNotEquals(dd, dd2);
+        dd2.setClientIdSelfUpdate(false);
         assertEquals(dd, dd2);
 
         dd2.setAuditEnabled(true);
@@ -1858,7 +1782,7 @@ public class ZMSCoreTest {
 
         assertTrue(meta.equals(meta1));
         assertFalse(meta.equals(null));
-        assertFalse(meta.equals(new Integer(3)));
+        assertFalse(meta.equals(3));
 
         meta1.setAutoUpdate(false);
         assertFalse(meta1.equals(meta));
@@ -2169,7 +2093,11 @@ public class ZMSCoreTest {
         TemplateMetaData meta = new TemplateMetaData();
 
         List<ServiceIdentity> sl = new ArrayList<>();
+
+        List<Group> groups = new ArrayList<>();
+
         Template t = new Template().setRoles(rl).setPolicies(pl).setServices(sl)
+                .setGroups(groups)
                 .setMetadata(meta);
 
         Result result = validator.validate(t, "Template");
@@ -2178,9 +2106,10 @@ public class ZMSCoreTest {
         assertEquals(t.getPolicies(), pl);
         assertEquals(t.getRoles(), rl);
         assertEquals(t.getServices(), sl);
+        assertEquals(t.getGroups(), groups);
         assertEquals(t.getMetadata(), meta);
 
-        Template t2 = new Template().setRoles(rl).setPolicies(pl).setServices(sl).setMetadata(meta);
+        Template t2 = new Template().setRoles(rl).setPolicies(pl).setServices(sl).setMetadata(meta).setGroups(groups);
         assertTrue(t2.equals(t));
         assertTrue(t.equals(t));
 
@@ -2196,6 +2125,9 @@ public class ZMSCoreTest {
         t2.setMetadata(null);
         assertFalse(t2.equals(t));
         t2.setMetadata(meta);
+        t2.setGroups(null);
+        assertFalse(t2.equals(t));
+        t2.setGroups(groups);
 
         assertFalse(t2.equals(null));
         assertFalse(t.equals(new String()));
@@ -2208,6 +2140,14 @@ public class ZMSCoreTest {
         Result result3 = validator.validate(t3, "Template");
         assertTrue(result3.valid, result3.error);
         assertEquals(t3.getServices(), services);
+
+        //test for groups
+        List<Group> gps = Arrays.asList(new Group().setName("test.group"));
+        Template t4 = new Template().setRoles(rl).setPolicies(pl).setServices(services).setGroups(gps);
+
+        Result result4 = validator.validate(t4, "Template");
+        assertTrue(result4.valid, result4.error);
+        assertEquals(t4.getGroups(), gps);
     }
 
     @Test
@@ -2314,6 +2254,137 @@ public class ZMSCoreTest {
     }
 
     @Test
+    public void testExternalMemberNames() {
+
+        String[] goodNames = {
+                "athenz:ext.user",
+                "athenz:ext.user@test.example.com",
+                "athenz:ext.oidc/group/my-group",
+                "athenz.sub:ext.test",
+                "athenz.sub.domain:ext.a",
+                "my_domain:ext.123",
+                "a:ext.x",
+        };
+
+        Schema schema = ZMSSchema.instance();
+        Validator validator = new Validator(schema);
+
+        for (String s : goodNames) {
+            Result result = validator.validate(s, "ExternalMemberName");
+            assertTrue(result.valid, s);
+        }
+
+        String[] badNames = {
+                "athenz:ext.",
+                "athenz:notext.user",
+                "athenz:Ext.user",
+                ":ext.user",
+                "athenz:ext",
+                "athenz.ext.user",
+                "*:ext.user",
+                "ext.user",
+                "athenz:group.name",
+        };
+
+        for (String s : badNames) {
+            Result result = validator.validate(s, "ExternalMemberName");
+            assertFalse(result.valid, s);
+        }
+    }
+
+    @Test
+    public void testGroupMemberNames() {
+
+        String[] goodNames = {
+                "user.joe",
+                "user.joe-smith",
+                "athenz.storage",
+                "athenz.storage.service1",
+                "athenz:ext.user",
+                "athenz:ext.user@test.example.com",
+                "athenz.sub:ext.test",
+                "my_domain:ext.123",
+                "a",
+                "a1",
+        };
+
+        Schema schema = ZMSSchema.instance();
+        Validator validator = new Validator(schema);
+
+        for (String s : goodNames) {
+            Result result = validator.validate(s, "GroupMemberName");
+            assertTrue(result.valid, s);
+        }
+
+        String[] badNames = {
+                "",
+                "*",
+                "user.*",
+                "athenz:ext.",
+                "athenz:group.name",
+                "-invalid",
+                ".invalid",
+                ":ext.user",
+        };
+
+        for (String s : badNames) {
+            Result result = validator.validate(s, "GroupMemberName");
+            assertFalse(result.valid, s);
+        }
+    }
+
+    @Test
+    public void testPrincipalNames() {
+
+        String[] goodNames = {
+                "user.joe",
+                "user.joe-smith",
+                "athenz",
+                "athenz.storage",
+                "athenz.storage.service1",
+                "athenz:service",
+                "athenz:role.admin",
+                "athenz.sub.domain:entity.name",
+                "a",
+                "a1",
+                "a:b",
+                "athenz:ext.user",
+                "athenz:ext.user@test.example.com",
+                "athenz:ext.oidc/group/my-group",
+                "athenz.sub:ext.test",
+                "athenz.sub.domain:ext.a",
+                "my_domain:ext.123",
+                "a:ext.x",
+        };
+
+        Schema schema = ZMSSchema.instance();
+        Validator validator = new Validator(schema);
+
+        for (String s : goodNames) {
+            Result result = validator.validate(s, "PrincipalName");
+            assertTrue(result.valid, s);
+        }
+
+        String[] badNames = {
+                "",
+                "*",
+                "user.*",
+                "-invalid",
+                ".invalid",
+                ":entity",
+                "athenz:",
+                "athenz:ext.",
+                ":ext.user",
+                "athenz:group.name:extra",
+        };
+
+        for (String s : badNames) {
+            Result result = validator.validate(s, "PrincipalName");
+            assertFalse(result.valid, s);
+        }
+    }
+
+    @Test
     public void testMemberNames() {
         String[] goodMemberNames = {
                 "user.joe",
@@ -2324,7 +2395,15 @@ public class ZMSCoreTest {
                 "athenz.great-service",
                 "athenz.great-service*",
                 "test.joe*",
-                "*"
+                "*",
+                "athenz:group.readers",
+                "athenz.sub:group.writers",
+                "athenz.sub.domain:group.my-group",
+                "athenz:group.group1.group2",
+                "athenz:ext.user",
+                "athenz:ext.user@test.example.com",
+                "athenz.sub:ext.oidc/group/my-group",
+                "my_domain:ext.123",
         };
 
         Schema schema = ZMSSchema.instance();
@@ -2339,7 +2418,13 @@ public class ZMSCoreTest {
                 "user.*joe",
                 "*test",
                 "user.joe*test",
-                "test.joe**"
+                "test.joe**",
+                "athenz:ext.",
+                ":group.name",
+                "athenz:group.",
+                ":ext.user",
+                "",
+                "athenz:notgroup.name",
         };
 
         for (String s : badMemberNames) {
@@ -2695,206 +2780,6 @@ public class ZMSCoreTest {
     }
 
     @Test
-    public void testRoleMetaMethod() {
-
-        RoleMeta rm = new RoleMeta()
-                .setMemberExpiryDays(30)
-                .setSelfServe(false)
-                .setTokenExpiryMins(300)
-                .setCertExpiryMins(120)
-                .setSignAlgorithm("rsa")
-                .setServiceExpiryDays(40)
-                .setGroupExpiryDays(50)
-                .setGroupReviewDays(55)
-                .setNotifyRoles("role1,domain:role.role2")
-                .setMemberReviewDays(70)
-                .setServiceReviewDays(80)
-                .setReviewEnabled(false)
-                .setAuditEnabled(false)
-                .setDeleteProtection(false)
-                .setUserAuthorityExpiration("attr1")
-                .setUserAuthorityFilter("attr2,attr3")
-                .setDescription("test role")
-                .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))));
-        assertTrue(rm.equals(rm));
-
-        assertFalse(rm.getSelfServe());
-        assertEquals(rm.getMemberExpiryDays(), Integer.valueOf(30));
-        assertEquals(rm.getServiceExpiryDays(), Integer.valueOf(40));
-        assertEquals(rm.getGroupExpiryDays(), Integer.valueOf(50));
-        assertEquals(rm.getGroupReviewDays(), Integer.valueOf(55));
-        assertEquals(rm.getTokenExpiryMins(), Integer.valueOf(300));
-        assertEquals(rm.getCertExpiryMins(), Integer.valueOf(120));
-        assertEquals(rm.getSignAlgorithm(), "rsa");
-        assertEquals(rm.getNotifyRoles(), "role1,domain:role.role2");
-        assertEquals(rm.getMemberReviewDays(), Integer.valueOf(70));
-        assertEquals(rm.getServiceReviewDays(), Integer.valueOf(80));
-        assertFalse(rm.getReviewEnabled());
-        assertFalse(rm.getAuditEnabled());
-        assertFalse(rm.getDeleteProtection());
-        assertEquals(rm.getUserAuthorityExpiration(), "attr1");
-        assertEquals(rm.getUserAuthorityFilter(), "attr2,attr3");
-        assertEquals(rm.getTags().get("tagKey").getList().get(0), "tagValue");
-        assertEquals(rm.getDescription(), "test role");
-
-        RoleMeta rm2 = new RoleMeta()
-                .setMemberExpiryDays(30)
-                .setSelfServe(false)
-                .setTokenExpiryMins(300)
-                .setCertExpiryMins(120)
-                .setSignAlgorithm("rsa")
-                .setServiceExpiryDays(40)
-                .setGroupExpiryDays(50)
-                .setGroupReviewDays(55)
-                .setNotifyRoles("role1,domain:role.role2")
-                .setMemberReviewDays(70)
-                .setServiceReviewDays(80)
-                .setReviewEnabled(false)
-                .setAuditEnabled(false)
-                .setDeleteProtection(false)
-                .setUserAuthorityExpiration("attr1")
-                .setUserAuthorityFilter("attr2,attr3")
-                .setDescription("test role")
-                .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))));
-
-        assertTrue(rm2.equals(rm));
-
-        rm2.setNotifyRoles("role1");
-        assertFalse(rm2.equals(rm));
-        rm2.setNotifyRoles(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setNotifyRoles("role1,domain:role.role2");
-        assertTrue(rm2.equals(rm));
-
-        rm2.setReviewEnabled(true);
-        assertFalse(rm2.equals(rm));
-        rm2.setReviewEnabled(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setReviewEnabled(false);
-        assertTrue(rm2.equals(rm));
-
-        rm2.setAuditEnabled(true);
-        assertFalse(rm2.equals(rm));
-        rm2.setAuditEnabled(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setAuditEnabled(false);
-        assertTrue(rm2.equals(rm));
-
-        rm2.setDeleteProtection(true);
-        assertFalse(rm2.equals(rm));
-        rm2.setDeleteProtection(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setDeleteProtection(false);
-        assertTrue(rm2.equals(rm));
-
-        rm2.setSignAlgorithm("ec");
-        assertFalse(rm2.equals(rm));
-        rm2.setSignAlgorithm(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setSignAlgorithm("rsa");
-        assertTrue(rm2.equals(rm));
-
-        rm2.setDescription("test role1");
-        assertFalse(rm2.equals(rm));
-        rm2.setDescription(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setDescription("test role");
-        assertTrue(rm2.equals(rm));
-
-        rm2.setMemberExpiryDays(45);
-        assertFalse(rm2.equals(rm));
-        rm2.setMemberExpiryDays(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setMemberExpiryDays(30);
-        assertTrue(rm2.equals(rm));
-
-        rm2.setServiceExpiryDays(45);
-        assertFalse(rm2.equals(rm));
-        rm2.setServiceExpiryDays(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setServiceExpiryDays(40);
-        assertTrue(rm2.equals(rm));
-
-        rm2.setGroupExpiryDays(55);
-        assertFalse(rm2.equals(rm));
-        rm2.setGroupExpiryDays(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setGroupExpiryDays(50);
-        assertTrue(rm2.equals(rm));
-
-        rm2.setGroupReviewDays(60);
-        assertFalse(rm2.equals(rm));
-        rm2.setGroupReviewDays(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setGroupReviewDays(55);
-        assertTrue(rm2.equals(rm));
-
-        rm2.setTokenExpiryMins(450);
-        assertFalse(rm2.equals(rm));
-        rm2.setTokenExpiryMins(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setTokenExpiryMins(300);
-        assertTrue(rm2.equals(rm));
-
-        rm2.setCertExpiryMins(150);
-        assertFalse(rm2.equals(rm));
-        rm2.setCertExpiryMins(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setCertExpiryMins(120);
-        assertTrue(rm2.equals(rm));
-
-        rm2.setMemberReviewDays(75);
-        assertFalse(rm2.equals(rm));
-        rm2.setMemberReviewDays(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setMemberReviewDays(70);
-        assertTrue(rm2.equals(rm));
-
-        rm2.setServiceReviewDays(85);
-        assertFalse(rm2.equals(rm));
-        rm2.setServiceReviewDays(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setServiceReviewDays(80);
-        assertTrue(rm2.equals(rm));
-
-        rm2.setSelfServe(true);
-        assertFalse(rm2.equals(rm));
-        rm2.setSelfServe(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setSelfServe(false);
-        assertTrue(rm2.equals(rm));
-
-        rm2.setUserAuthorityExpiration("attr11");
-        assertFalse(rm2.equals(rm));
-        rm2.setUserAuthorityExpiration(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setUserAuthorityExpiration("attr1");
-        assertTrue(rm2.equals(rm));
-
-        rm2.setUserAuthorityFilter("attr2");
-        assertFalse(rm2.equals(rm));
-        rm2.setUserAuthorityFilter(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setUserAuthorityFilter("attr2,attr3");
-        assertTrue(rm2.equals(rm));
-
-        rm2.setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue1"))));
-        assertFalse(rm2.equals(rm));
-        rm2.setTags(null);
-        assertFalse(rm2.equals(rm));
-        rm2.setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))));
-        assertTrue(rm2.equals(rm));
-
-        assertFalse(rm2.equals(null));
-        assertFalse(rm.equals(new String()));
-
-        Schema schema = ZMSSchema.instance();
-        Validator validator = new Validator(schema);
-        Result result = validator.validate(rm, "RoleMeta");
-        assertTrue(result.valid);
-    }
-
-    @Test
     public void testDomainRoleMembership() {
 
         DomainRoleMembership drm = new DomainRoleMembership();
@@ -2939,33 +2824,6 @@ public class ZMSCoreTest {
         drm2.setDomainRoleMembersList(null);
         assertFalse(drm2.equals(drm));
         assertFalse(drm2.equals(null));
-    }
-
-    @Test
-    public void testServiceIdentitySystemMetaMethod() {
-        Schema schema = ZMSSchema.instance();
-        Validator validator = new Validator(schema);
-
-        ServiceIdentitySystemMeta meta = new ServiceIdentitySystemMeta().setProviderEndpoint("https://host:443/endpoint");
-        assertTrue(meta.equals(meta));
-
-        Result result = validator.validate(meta, "ServiceIdentitySystemMeta");
-        assertTrue(result.valid);
-
-        assertEquals(meta.getProviderEndpoint(), "https://host:443/endpoint");
-
-        ServiceIdentitySystemMeta meta2 = new ServiceIdentitySystemMeta().setProviderEndpoint("https://host:443/endpoint");
-        assertTrue(meta2.equals(meta));
-
-        meta2.setProviderEndpoint("https://host:443/endpoint2");
-        assertFalse(meta2.equals(meta));
-        meta2.setProviderEndpoint(null);
-        assertFalse(meta2.equals(meta));
-        meta2.setProviderEndpoint("https://host:443/endpoint2");
-
-        assertFalse(meta2.equals(null));
-
-        assertFalse(meta.equals(new String()));
     }
 
     @Test
@@ -3099,6 +2957,10 @@ public class ZMSCoreTest {
         assertTrue(resultTvl.valid);
 
         tvl = new TagValueList().setList(Collections.singletonList("/homes/home/"));
+        resultTvl = validator.validate(tvl, "TagValueList");
+        assertTrue(resultTvl.valid);
+
+        tvl = new TagValueList().setList(Collections.singletonList("/home%test"));
         resultTvl = validator.validate(tvl, "TagValueList");
         assertTrue(resultTvl.valid);
     }
@@ -3341,5 +3203,131 @@ public class ZMSCoreTest {
         authHistory2.setTtl(1655282257L);
         assertEquals(a, a2);
         assertEquals(authHistory.getTtl(), authHistory2.getTtl());
+    }
+
+    @Test
+    public void testDomainAuditLogEntry() {
+
+        Timestamp timestamp = Timestamp.fromMillis(1655282257000L);
+        final String details = "{\"member\": \"user.joe\"}";
+
+        DomainAuditLogEntry entry1 = new DomainAuditLogEntry().setApi("putRole").setEntity("readers")
+                .setPrincipal("user.jane").setClientIp("10.1.1.1").setTimestamp(timestamp)
+                .setJustification("ticket-1234").setDetails(details);
+
+        assertEquals(entry1.getApi(), "putRole");
+        assertEquals(entry1.getEntity(), "readers");
+        assertEquals(entry1.getPrincipal(), "user.jane");
+        assertEquals(entry1.getClientIp(), "10.1.1.1");
+        assertEquals(entry1.getTimestamp(), timestamp);
+        assertEquals(entry1.getJustification(), "ticket-1234");
+        assertEquals(entry1.getDetails(), details);
+
+        Schema schema = ZMSSchema.instance();
+        Validator validator = new Validator(schema);
+        Result result = validator.validate(entry1, "DomainAuditLogEntry");
+        assertTrue(result.valid);
+
+        assertEquals(entry1, entry1);
+        assertFalse(entry1.equals(null));
+        assertFalse(entry1.equals(new Object()));
+
+        DomainAuditLogEntry entry2 = new DomainAuditLogEntry().setApi("putRole").setEntity("readers")
+                .setPrincipal("user.jane").setClientIp("10.1.1.1").setTimestamp(timestamp)
+                .setJustification("ticket-1234").setDetails(details);
+        assertEquals(entry1, entry2);
+
+        entry2.setApi("putPolicy");
+        assertNotEquals(entry1, entry2);
+        entry2.setApi(null);
+        assertNotEquals(entry1, entry2);
+        entry2.setApi("putRole");
+        assertEquals(entry1, entry2);
+
+        entry2.setEntity("writers");
+        assertNotEquals(entry1, entry2);
+        entry2.setEntity(null);
+        assertNotEquals(entry1, entry2);
+        entry2.setEntity("readers");
+        assertEquals(entry1, entry2);
+
+        entry2.setPrincipal("user.joe");
+        assertNotEquals(entry1, entry2);
+        entry2.setPrincipal(null);
+        assertNotEquals(entry1, entry2);
+        entry2.setPrincipal("user.jane");
+        assertEquals(entry1, entry2);
+
+        entry2.setClientIp("10.2.2.2");
+        assertNotEquals(entry1, entry2);
+        entry2.setClientIp(null);
+        assertNotEquals(entry1, entry2);
+        entry2.setClientIp("10.1.1.1");
+        assertEquals(entry1, entry2);
+
+        entry2.setTimestamp(Timestamp.fromMillis(1655282258000L));
+        assertNotEquals(entry1, entry2);
+        entry2.setTimestamp(null);
+        assertNotEquals(entry1, entry2);
+        entry2.setTimestamp(timestamp);
+        assertEquals(entry1, entry2);
+
+        entry2.setJustification("ticket-5678");
+        assertNotEquals(entry1, entry2);
+        entry2.setJustification(null);
+        assertNotEquals(entry1, entry2);
+        entry2.setJustification("ticket-1234");
+        assertEquals(entry1, entry2);
+
+        entry2.setDetails("{\"member\": \"user.jack\"}");
+        assertNotEquals(entry1, entry2);
+        entry2.setDetails(null);
+        assertNotEquals(entry1, entry2);
+        entry2.setDetails(details);
+        assertEquals(entry1, entry2);
+    }
+
+    @Test
+    public void testDomainAuditLog() {
+
+        DomainAuditLogEntry entry = new DomainAuditLogEntry().setApi("putRole").setPrincipal("user.jane")
+                .setTimestamp(Timestamp.fromMillis(1655282257000L));
+
+        DomainAuditLog log1 = new DomainAuditLog().setEntries(Collections.singletonList(entry));
+        assertEquals(log1.getEntries(), Collections.singletonList(entry));
+
+        Schema schema = ZMSSchema.instance();
+        Validator validator = new Validator(schema);
+        Result result = validator.validate(log1, "DomainAuditLog");
+        assertTrue(result.valid);
+
+        assertEquals(log1, log1);
+        assertFalse(log1.equals(null));
+        assertFalse(log1.equals(new Object()));
+
+        DomainAuditLog log2 = new DomainAuditLog();
+        assertNotEquals(log1, log2);
+        log2.setEntries(new ArrayList<>());
+        assertNotEquals(log1, log2);
+        log2.setEntries(Collections.singletonList(entry));
+        assertEquals(log1, log2);
+
+        log1.setPartial(true);
+        assertTrue(log1.getPartial());
+        result = validator.validate(log1, "DomainAuditLog");
+        assertTrue(result.valid);
+        assertNotEquals(log1, log2);
+        log2.setPartial(false);
+        assertNotEquals(log1, log2);
+        log2.setPartial(true);
+        assertEquals(log1, log2);
+    }
+
+    @Test
+    public void testResourceOwnerType() {
+        Schema schema = ZMSSchema.instance();
+        Validator validator = new Validator(schema);
+        Result result = validator.validate("abc:force", "ResourceOwnerName");
+        assertTrue(result.valid);
     }
 }

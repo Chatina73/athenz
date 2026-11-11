@@ -19,7 +19,7 @@
   <parent>
     <groupId>com.yahoo.athenz</groupId>
     <artifactId>athenz</artifactId>
-    <version>1.11.39-SNAPSHOT</version>
+    <version>1.12.52-SNAPSHOT</version>
     <relativePath>../../pom.xml</relativePath>
   </parent>
 
@@ -35,6 +35,11 @@
     <dependency>
       <groupId>${project.groupId}</groupId>
       <artifactId>athenz-jetty-container</artifactId>
+      <version>${project.parent.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>athenz-server-aws-common</artifactId>
       <version>${project.parent.version}</version>
     </dependency>
     <dependency>
@@ -78,5 +83,16 @@
       </plugin>
     </plugins>
   </build>
-
+  <profiles>
+    <profile>
+      <id>k8s</id>
+      <dependencies>
+        <dependency>
+          <groupId>${project.groupId}</groupId>
+          <artifactId>athenz-server-k8s-common</artifactId>
+          <version>${project.parent.version}</version>
+        </dependency>
+      </dependencies>
+    </profile>
+  </profiles>
 </project>

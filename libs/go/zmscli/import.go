@@ -12,7 +12,7 @@ import (
 	"github.com/AthenZ/athenz/clients/go/zms"
 )
 
-func parseRoleMember(memberStruct map[interface{}]interface{}) *zms.RoleMember {
+func parseRoleMember(memberStruct map[string]interface{}) *zms.RoleMember {
 	roleMember := zms.NewRoleMember()
 	roleMember.MemberName = zms.MemberName(memberStruct["name"].(string))
 
@@ -37,7 +37,7 @@ func parseRoleMember(memberStruct map[interface{}]interface{}) *zms.RoleMember {
 	return roleMember
 }
 
-func parseGroupMember(memberStruct map[interface{}]interface{}) *zms.GroupMember {
+func parseGroupMember(memberStruct map[string]interface{}) *zms.GroupMember {
 	groupMember := zms.NewGroupMember()
 	groupMember.MemberName = zms.GroupMemberName(memberStruct["name"].(string))
 	return groupMember
@@ -77,10 +77,14 @@ func groupExists(groupName zms.ResourceName, groups *zms.Groups) bool {
 
 func (cli Zms) importGroups(dn string, lstGroups []*zms.Group, existingGroups *zms.Groups, updateDomain bool) error {
 	for _, group := range lstGroups {
-		gn := localName(string(group.Name), ":group.")
-		_, _ = fmt.Fprintf(os.Stdout, "Processing group "+gn+"...\n")
+		gn := LocalName(string(group.Name), ":group.")
+		_, _ = fmt.Fprintf(os.Stdout, "Processing group %s...\n", gn)
 		b := cli.Verbose
 		cli.Verbose = true
+		groupAuditEnabled := false
+		if group.AuditEnabled != nil {
+			groupAuditEnabled = *group.AuditEnabled
+		}
 		var err error
 		if updateDomain && groupExists(group.Name, existingGroups) {
 			groupMembers := make([]string, 0)
@@ -89,11 +93,7 @@ func (cli Zms) importGroups(dn string, lstGroups []*zms.Group, existingGroups *z
 			}
 			_, err = cli.AddGroupMembers(dn, gn, groupMembers)
 		} else {
-			groupMembers := make([]*zms.GroupMember, 0)
-			for _, groupMember := range group.GroupMembers {
-				groupMembers = append(groupMembers, groupMember)
-			}
-			_, err = cli.AddGroup(dn, gn, groupMembers)
+			_, err = cli.AddGroup(dn, gn, groupAuditEnabled, group.GroupMembers)
 		}
 		cli.Verbose = b
 		if shouldReportError(updateDomain, cli.SkipErrors, err) {
@@ -105,20 +105,20 @@ func (cli Zms) importGroups(dn string, lstGroups []*zms.Group, existingGroups *z
 
 func (cli Zms) importGroupsOld(dn string, lstGroups []interface{}, skipErrors bool) error {
 	for _, group := range lstGroups {
-		groupMap := group.(map[interface{}]interface{})
+		groupMap := group.(map[string]interface{})
 		gn := groupMap["name"].(string)
-		_, _ = fmt.Fprintf(os.Stdout, "Processing group "+gn+"...\n")
+		_, _ = fmt.Fprintf(os.Stdout, "Processing group %s...\n", gn)
 		groupMembers := make([]*zms.GroupMember, 0)
 		if val, ok := groupMap["members"]; ok {
 			mem := val.([]interface{})
 			for _, m := range mem {
-				groupMember := parseGroupMember(m.(map[interface{}]interface{}))
+				groupMember := parseGroupMember(m.(map[string]interface{}))
 				groupMembers = append(groupMembers, groupMember)
 			}
 		}
 		b := cli.Verbose
 		cli.Verbose = true
-		_, err := cli.AddGroup(dn, gn, groupMembers)
+		_, err := cli.AddGroup(dn, gn, false, groupMembers)
 		cli.Verbose = b
 		if shouldReportError(skipErrors, cli.SkipErrors, err) {
 			return err
@@ -141,15 +141,20 @@ func roleExists(roleName zms.ResourceName, roles *zms.Roles) bool {
 
 func (cli Zms) importRoles(dn string, lstRoles []*zms.Role, existingRoles *zms.Roles, validatedAdmins []string, updateDomain bool) error {
 	for _, role := range lstRoles {
-		rn := localName(string(role.Name), ":role.")
-		_, _ = fmt.Fprintf(os.Stdout, "Processing role "+rn+"...\n")
+		rn := LocalName(string(role.Name), ":role.")
+		_, _ = fmt.Fprintf(os.Stdout, "Processing role %s...\n", rn)
+		roleAuditEnabled := false
+		if role.AuditEnabled != nil {
+			roleAuditEnabled = *role.AuditEnabled
+		}
 		if len(role.RoleMembers) > 0 {
 			roleMembers := make([]*zms.RoleMember, 0)
 			var err error
+			var adminRole *zms.Role
 			if rn == "admin" && validatedAdmins != nil {
 				// need to retrieve the current admin role
 				// and make sure to remove any existing admin
-				adminRole, err := cli.Zms.GetRole(zms.DomainName(dn), "admin", nil, nil, nil)
+				adminRole, err = cli.Zms.GetRole(zms.DomainName(dn), "admin", nil, nil, nil)
 				if err != nil {
 					return err
 				}
@@ -175,7 +180,7 @@ func (cli Zms) importRoles(dn string, lstRoles []*zms.Role, existingRoles *zms.R
 				if updateDomain && roleExists(role.Name, existingRoles) {
 					_, err = cli.AddRoleMembers(dn, rn, roleMembers)
 				} else {
-					_, err = cli.AddRegularRole(dn, rn, roleMembers)
+					_, err = cli.AddRegularRole(dn, rn, roleAuditEnabled, roleMembers)
 				}
 				cli.Verbose = b
 			}
@@ -193,7 +198,7 @@ func (cli Zms) importRoles(dn string, lstRoles []*zms.Role, existingRoles *zms.R
 				roleMembers := make([]*zms.RoleMember, 0)
 				b := cli.Verbose
 				cli.Verbose = true
-				_, err := cli.AddRegularRole(dn, rn, roleMembers)
+				_, err := cli.AddRegularRole(dn, rn, roleAuditEnabled, roleMembers)
 				cli.Verbose = b
 				if shouldReportError(updateDomain, cli.SkipErrors, err) {
 					return err
@@ -206,42 +211,43 @@ func (cli Zms) importRoles(dn string, lstRoles []*zms.Role, existingRoles *zms.R
 
 func (cli Zms) importRolesOld(dn string, lstRoles []interface{}, validatedAdmins []string, skipErrors bool) error {
 	for _, role := range lstRoles {
-		roleMap := role.(map[interface{}]interface{})
+		roleMap := role.(map[string]interface{})
 		rn := roleMap["name"].(string)
-		_, _ = fmt.Fprintf(os.Stdout, "Processing role "+rn+"...\n")
+		_, _ = fmt.Fprintf(os.Stdout, "Processing role %s...\n", rn)
 		if val, ok := roleMap["members"]; ok {
 			mem := val.([]interface{})
 			roleMembers := make([]*zms.RoleMember, 0)
 			var err error
+			var adminRole *zms.Role
 			if rn == "admin" && validatedAdmins != nil {
 				// need to retrieve the current admin role
 				// and make sure to remove any existing admin
-				role, err := cli.Zms.GetRole(zms.DomainName(dn), "admin", nil, nil, nil)
+				adminRole, err = cli.Zms.GetRole(zms.DomainName(dn), "admin", nil, nil, nil)
 				if err != nil {
 					return err
 				}
 				for _, mbr := range mem {
-					roleMember := parseRoleMember(mbr.(map[interface{}]interface{}))
-					if !cli.containsMember(role.RoleMembers, string(roleMember.MemberName)) {
+					roleMember := parseRoleMember(mbr.(map[string]interface{}))
+					if !cli.containsMember(adminRole.RoleMembers, string(roleMember.MemberName)) {
 						roleMembers = append(roleMembers, roleMember)
 					}
 				}
 				for _, admin := range validatedAdmins {
 					roleMember := zms.NewRoleMember()
 					roleMember.MemberName = zms.MemberName(admin)
-					if !cli.containsMember(roleMembers, admin) && !cli.containsMember(role.RoleMembers, admin) {
+					if !cli.containsMember(roleMembers, admin) && !cli.containsMember(adminRole.RoleMembers, admin) {
 						roleMembers = append(roleMembers, roleMember)
 					}
 				}
 				_, err = cli.AddRoleMembers(dn, rn, roleMembers)
 			} else {
 				for _, m := range mem {
-					roleMember := parseRoleMember(m.(map[interface{}]interface{}))
+					roleMember := parseRoleMember(m.(map[string]interface{}))
 					roleMembers = append(roleMembers, roleMember)
 				}
 				b := cli.Verbose
 				cli.Verbose = true
-				_, err = cli.AddRegularRole(dn, rn, roleMembers)
+				_, err = cli.AddRegularRole(dn, rn, false, roleMembers)
 				cli.Verbose = b
 			}
 			if shouldReportError(skipErrors, cli.SkipErrors, err) {
@@ -257,7 +263,7 @@ func (cli Zms) importRolesOld(dn string, lstRoles []interface{}, validatedAdmins
 			roleMembers := make([]*zms.RoleMember, 0)
 			b := cli.Verbose
 			cli.Verbose = true
-			_, err := cli.AddRegularRole(dn, rn, roleMembers)
+			_, err := cli.AddRegularRole(dn, rn, false, roleMembers)
 			cli.Verbose = b
 			if shouldReportError(skipErrors, cli.SkipErrors, err) {
 				return err
@@ -267,42 +273,52 @@ func (cli Zms) importRolesOld(dn string, lstRoles []interface{}, validatedAdmins
 	return nil
 }
 
-func (cli Zms) importPolicies(dn string, lstPolicies []*zms.Policy, skipErrors bool) error {
+func (cli Zms) importPolicies(dn string, lstPolicies []*zms.Policy, updateDomain bool) error {
 	for _, policy := range lstPolicies {
-		name := localName(string(policy.Name), ":policy.")
-		_, _ = fmt.Fprintf(os.Stdout, "Processing policy "+name+"...\n")
-		assertions := make([]*zms.Assertion, 0)
+		name := LocalName(string(policy.Name), ":policy.")
+		_, _ = fmt.Fprintf(os.Stdout, "Processing policy %s...\n", name)
 		if len(policy.Assertions) == 0 {
-			_, _ = fmt.Fprintf(os.Stdout, "Skipping empty policy: "+name+"\n")
+			_, _ = fmt.Fprintf(os.Stdout, "Skipping empty policy: %s\n", name)
 			continue
 		}
-		for _, a := range policy.Assertions {
-			if name == "admin" && a.Role == "admin" && a.Action == "*" && a.Resource == "*" {
+		if name == "admin" {
+			_, _ = fmt.Fprintln(os.Stdout, "Skipping admin policy")
+			continue
+		}
+		if updateDomain {
+			// if the policy already exists then we're going to only apply
+			// all the assertions
+			_, err := cli.Zms.GetPolicy(zms.DomainName(dn), zms.EntityName(name))
+			if err == nil {
+				for _, assertion := range policy.Assertions {
+					_, err := cli.Zms.PutAssertion(zms.DomainName(dn), zms.EntityName(name), cli.AuditRef, cli.ResourceOwner, assertion)
+					if shouldReportError(updateDomain, cli.SkipErrors, err) {
+						return err
+					}
+				}
 				continue
 			}
-
-			assertions = append(assertions, a)
 		}
 
-		if name != "admin" {
-			_, err := cli.AddPolicyWithAssertions(dn, name, assertions)
-			if shouldReportError(skipErrors, cli.SkipErrors, err) {
-				return err
-			}
+		// otherwise we'll be adding the full policy with assertions
+		_, err := cli.AddPolicyWithAssertions(dn, name, policy.Assertions)
+		if shouldReportError(updateDomain, cli.SkipErrors, err) {
+			return err
 		}
+
 	}
 	return nil
 }
 
 func (cli Zms) importPoliciesOld(dn string, lstPolicies []interface{}, skipErrors bool) error {
 	for _, policy := range lstPolicies {
-		policyMap := policy.(map[interface{}]interface{})
+		policyMap := policy.(map[string]interface{})
 		name := policyMap["name"].(string)
-		_, _ = fmt.Fprintf(os.Stdout, "Processing policy "+name+"...\n")
+		_, _ = fmt.Fprintf(os.Stdout, "Processing policy %s...\n", name)
 		assertions := make([]*zms.Assertion, 0)
 		if val, ok := policyMap["assertions"]; ok {
 			if val == nil {
-				_, _ = fmt.Fprintf(os.Stdout, "Skipping empty policy: "+name+"\n")
+				_, _ = fmt.Fprintf(os.Stdout, "Skipping empty policy: %s\n", name)
 				continue
 			}
 			lst := val.([]interface{})
@@ -333,7 +349,7 @@ func (cli Zms) importPoliciesOld(dn string, lstPolicies []interface{}, skipError
 func (cli Zms) generatePublicKeys(lstPublicKeys []interface{}) []*zms.PublicKeyEntry {
 	publicKeys := make([]*zms.PublicKeyEntry, 0)
 	for _, pubKey := range lstPublicKeys {
-		publicKeyMap := pubKey.(map[interface{}]interface{})
+		publicKeyMap := pubKey.(map[string]interface{})
 		// if we're using just version numbers then yaml
 		// will interpret the key id as integer
 		var keyID string
@@ -358,7 +374,7 @@ func (cli Zms) generatePublicKeys(lstPublicKeys []interface{}) []*zms.PublicKeyE
 func (cli Zms) importServices(dn string, lstServices []*zms.ServiceIdentity, skipErrors bool) error {
 	for _, service := range lstServices {
 		name := string(service.Name)
-		_, _ = fmt.Fprintf(os.Stdout, "Processing service "+name+"...\n")
+		_, _ = fmt.Fprintf(os.Stdout, "Processing service %s...\n", name)
 		publicKeys := service.PublicKeys
 		_, err := cli.AddServiceWithKeys(dn, name, publicKeys)
 		if shouldReportError(skipErrors, cli.SkipErrors, err) {
@@ -388,9 +404,9 @@ func (cli Zms) importServices(dn string, lstServices []*zms.ServiceIdentity, ski
 
 func (cli Zms) importServicesOld(dn string, lstServices []interface{}, skipErrors bool) error {
 	for _, service := range lstServices {
-		serviceMap := service.(map[interface{}]interface{})
+		serviceMap := service.(map[string]interface{})
 		name := serviceMap["name"].(string)
-		_, _ = fmt.Fprintf(os.Stdout, "Processing service "+name+"...\n")
+		_, _ = fmt.Fprintf(os.Stdout, "Processing service %s...\n", name)
 		var lstPublicKeys []interface{}
 		if val, ok := serviceMap["publicKeys"]; ok {
 			lstPublicKeys = val.([]interface{})

@@ -15,45 +15,683 @@
  */
 package com.yahoo.athenz.zts.token;
 
+import com.yahoo.athenz.auth.Principal;
+import com.yahoo.athenz.auth.impl.SimplePrincipal;
+import com.yahoo.athenz.auth.token.AccessToken;
+import com.yahoo.athenz.auth.token.OAuth2Token;
+import com.yahoo.athenz.auth.token.jwts.JwtsHelper;
+import com.yahoo.athenz.auth.util.CryptoException;
 import com.yahoo.athenz.zts.ZTSConsts;
+import com.yahoo.athenz.zts.utils.ZTSUtils;
 import org.eclipse.jetty.util.StringUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-public class AccessTokenRequest extends OAuthTokenRequest {
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-    private static boolean supportOpenIdScope = Boolean.parseBoolean(
-            System.getProperty(ZTSConsts.ZTS_PROP_OAUTH_OPENID_SCOPE, "false"));
+public class AccessTokenRequest {
 
-    public AccessTokenRequest(final String scope) {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AccessTokenRequest.class);
 
-        // the format of our scopes for role access token and id tokens are:
-        // access token/id token combo:
-        //   <domainName>:domain
-        //   <domainName>:role.<roleName>
-        //   openid <domainName>:service.<serviceName>
+    // define types of access token requests we support
 
-        super(scope, 1);
+    public enum RequestType {
+        ACCESS_TOKEN,
+        ACCESS_TOKEN_EXCHANGE,
+        ID_TOKEN_EXCHANGE,
+        JAG_TOKEN_EXCHANGE,
+        JAG_JWT_BEARER
+    }
 
-        // if we don't have a domain then it's invalid scope
+    private static final String KEY_SCOPE = "scope";
+    private static final String KEY_GRANT_TYPE = "grant_type";
+    private static final String KEY_EXPIRES_IN = "expires_in";
+    private static final String KEY_PROXY_FOR_PRINCIPAL = "proxy_for_principal";
+    private static final String KEY_AUTHORIZATION_DETAILS = "authorization_details";
+    private static final String KEY_PROXY_PRINCIPAL_SPIFFE_URIS = "proxy_principal_spiffe_uris";
+    private static final String KEY_OPENID_ISSUER = "openid_issuer";
+    private static final String KEY_CLIENT_ASSERTION = "client_assertion";
+    private static final String KEY_CLIENT_ASSERTION_TYPE = "client_assertion_type";
+    private static final String KEY_REQUESTED_TOKEN_TYPE = "requested_token_type";
+    private static final String KEY_AUDIENCE = "audience";
+    private static final String KEY_RESOURCE = "resource";
+    private static final String KEY_SUBJECT_TOKEN = "subject_token";
+    private static final String KEY_SUBJECT_TOKEN_TYPE = "subject_token_type";
+    private static final String KEY_ASSERTION = "assertion";
+    private static final String KEY_ACTOR = "actor";
+    private static final String KEY_ACTOR_TOKEN = "actor_token";
+    private static final String KEY_ACTOR_TOKEN_TYPE = "actor_token_type";
+    private static final String KEY_FULL_ARN = "full_arn";
+    private static final String KEY_ROLE_IN_AUD_CLAIM = "role_in_aud_claim";
+    private static final String KEY_KEY_TYPE = "key_type";
 
-        if (StringUtil.isEmpty(getDomainName())) {
-            throw error("No domains in scope", scope);
+    private static final String OAUTH_ASSERTION_TYPE_JWT_BEARER = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
+
+    private static final String OAUTH_GRANT_CLIENT_CREDENTIALS = "client_credentials";
+    private static final String OAUTH_GRANT_TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange";
+    private static final String OAUTH_GRANT_JWT_BEARER = "urn:ietf:params:oauth:grant-type:jwt-bearer";
+
+    String grantType = null;
+    String scope = null;
+    String proxyForPrincipal = null;
+    String authzDetails = null;
+    String clientAssertion = null;
+    String clientAssertionType = null;
+    String requestedTokenType = null;
+    String audience = null;
+    String resource = null;
+    String subjectToken = null;
+    String subjectTokenType = null;
+    String assertion = null;
+    String actor = null;
+    String actorToken = null;
+    String actorTokenType = null;
+    String keyType = null;
+    List<String> proxyPrincipalsSpiffeUris = null;
+    Principal principal = null;
+    int expiryTime = 0;
+    boolean useOpenIDIssuer = false;
+    boolean fullArn = false;
+    boolean roleInAudClaim = false;
+    RequestType requestType;
+    OAuth2Token actorTokenObj = null;
+    OAuth2Token subjectTokenObj = null;
+    AccessToken jagTokenObj = null;
+
+    public AccessTokenRequest(final String body, TokenConfigOptions options) {
+
+        String[] comps = body.split("&");
+        for (String comp : comps) {
+            int idx = comp.indexOf('=');
+            if (idx == -1) {
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("AccessTokenBody: skipping invalid component (missing separator): {}", comp);
+                }
+                continue;
+            }
+            final String key = decodeString(comp.substring(0, idx));
+            if (key == null) {
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("AccessTokenBody: skipping invalid component (null key): {}", comp);
+                }
+                continue;
+            }
+            final String value = decodeString(comp.substring(idx + 1));
+            if (value == null) {
+                continue;
+            }
+            switch (key) {
+                case KEY_GRANT_TYPE:
+                    grantType = value.toLowerCase();
+                    break;
+                case KEY_SCOPE:
+                    scope = value.toLowerCase();
+                    break;
+                case KEY_EXPIRES_IN:
+                    expiryTime = ZTSUtils.parseInt(value, 0);
+                    break;
+                case KEY_PROXY_FOR_PRINCIPAL:
+                    proxyForPrincipal = value.toLowerCase();
+                    break;
+                case KEY_AUTHORIZATION_DETAILS:
+                    authzDetails = value;
+                    break;
+                case KEY_PROXY_PRINCIPAL_SPIFFE_URIS:
+                    proxyPrincipalsSpiffeUris = getProxyPrincipalSpiffeUris(value.toLowerCase());
+                    break;
+                case KEY_OPENID_ISSUER:
+                    useOpenIDIssuer = Boolean.parseBoolean(value);
+                    break;
+                case KEY_FULL_ARN:
+                    fullArn = Boolean.parseBoolean(value);
+                    break;
+                case KEY_ROLE_IN_AUD_CLAIM:
+                    roleInAudClaim = Boolean.parseBoolean(value);
+                    break;
+                case KEY_CLIENT_ASSERTION_TYPE:
+                    clientAssertionType = value.toLowerCase();
+                    break;
+                case KEY_CLIENT_ASSERTION:
+                    clientAssertion = value;
+                    break;
+                case KEY_REQUESTED_TOKEN_TYPE:
+                    requestedTokenType = value.toLowerCase();
+                    break;
+                case KEY_AUDIENCE:
+                    audience = value;
+                    break;
+                case KEY_RESOURCE:
+                    resource = value;
+                    break;
+                case KEY_SUBJECT_TOKEN:
+                    subjectToken = value;
+                    break;
+                case KEY_SUBJECT_TOKEN_TYPE:
+                    subjectTokenType = value.toLowerCase();
+                    break;
+                case KEY_ASSERTION:
+                    assertion = value;
+                    break;
+                case KEY_ACTOR:
+                    actor = value;
+                    break;
+                case KEY_ACTOR_TOKEN:
+                    actorToken = value;
+                    break;
+                case KEY_ACTOR_TOKEN_TYPE:
+                    actorTokenType = value.toLowerCase();
+                    break;
+                case KEY_KEY_TYPE:
+                    keyType = value;
+                    break;
+            }
         }
 
-        // for openid scope we must have the openid scope
-        // along with the service name since the audience
-        // must be set for that service only
+        // validate the request data
 
-        if (openIdScope && StringUtil.isEmpty(serviceName)) {
-            throw error("No audience service name for openid scope", scope);
+        if (StringUtil.isEmpty(grantType)) {
+            throw new IllegalArgumentException("Invalid request: no grant type provided");
+        }
+
+        switch (grantType) {
+
+            case OAUTH_GRANT_CLIENT_CREDENTIALS:
+
+                // RFC 6749 access token request
+
+                requestType = RequestType.ACCESS_TOKEN;
+                validateAccessTokenRequest(options);
+
+                break;
+
+            case OAUTH_GRANT_TOKEN_EXCHANGE:
+
+                // Supported token exchange types: standard and jag
+                // OAuth 2.0 Token Exchange
+                // https://www.rfc-editor.org/rfc/rfc8693.html
+                // Identity Assertion Authorization Grant
+                // https://datatracker.ietf.org/doc/draft-ietf-oauth-identity-assertion-authz-grant/
+
+                if (ZTSConsts.OAUTH_TOKEN_TYPE_JAG.equals(requestedTokenType)) {
+                    requestType = RequestType.JAG_TOKEN_EXCHANGE;
+                    validateJAGTokenExchangeRequest(options);
+                } else if (ZTSConsts.OAUTH_TOKEN_TYPE_ID.equals(requestedTokenType)) {
+                    requestType = RequestType.ID_TOKEN_EXCHANGE;
+                    validateIdTokenExchangeRequest(options);
+                } else if (ZTSConsts.OAUTH_TOKEN_TYPE_ACCESS.equals(requestedTokenType) || StringUtil.isEmpty(requestedTokenType)) {
+                    requestType = RequestType.ACCESS_TOKEN_EXCHANGE;
+                    validateAccessTokenExchangeRequest(options);
+                } else {
+                    throw new IllegalArgumentException("Invalid requested token type: " + requestedTokenType);
+                }
+
+                break;
+
+            case OAUTH_GRANT_JWT_BEARER:
+
+                // we must have an assertion provided
+
+                if (StringUtil.isEmpty(assertion)) {
+                    throw new IllegalArgumentException("Invalid request: no assertion provided");
+                }
+
+                // JSON Web Token (JWT) Profile for OAuth 2.0 Client Authentication and Authorization Grants
+                // https://www.rfc-editor.org/rfc/rfc7523.html
+                // Identity Assertion Authorization Grant
+                // https://datatracker.ietf.org/doc/draft-ietf-oauth-identity-assertion-authz-grant/
+
+                // need to figure out if this is a standard token access request
+                // according to rfc7523 or a jag token exchange request. So we
+                // need to extract the token type from the assertion and validate accordingly.
+
+                String tokenType = null;
+                try {
+                    tokenType = JwtsHelper.extractJWTTokenType(assertion);
+                } catch (CryptoException ex) {
+                    throw new IllegalArgumentException("Invalid assertion token: " + ex.getMessage());
+                }
+                if (JwtsHelper.TYPE_JWT_JAG.equals(tokenType)) {
+                    requestType = RequestType.JAG_JWT_BEARER;
+                    validateJWTBearerRequest(options);
+                } else {
+                    requestType = RequestType.ACCESS_TOKEN;
+                    validateJWTAccessTokenRequest(options);
+                }
+                break;
+
+            default:
+                throw new IllegalArgumentException("Invalid grant request: " + grantType);
         }
     }
 
-    @Override
-    public boolean isOpenIdScope() {
-        return supportOpenIdScope && openIdScope;
+    void validateAccessTokenRequest(TokenConfigOptions options) {
+
+        // even though scope is optional in RFC 6749, because we're a multi-tenant
+        // service and we have no other way of identifying what access the client
+        // is looking for, we'll make the scope mandatory.
+
+        if (StringUtil.isEmpty(scope)) {
+            throw new IllegalArgumentException("Invalid request: no scope provided");
+        }
+
+        // if we're provided with a client assertion then we must
+        // have a client assertion type as well, so let's validate
+        // our specified token and generate a principal object
+
+        validateClientAssertion(options);
     }
 
-    public static void setSupportOpenIdScope(boolean value) {
-        supportOpenIdScope = value;
+    void validateJAGTokenExchangeRequest(TokenConfigOptions options) {
+
+        // even though scope is optional in RFC 6749, because we're a multi-tenant
+        // service and we have no other way of identifying what access the client
+        // is looking for, we'll make the scope mandatory.
+
+        if (StringUtil.isBlank(scope)) {
+            throw new IllegalArgumentException("Invalid request: no scope provided");
+        }
+
+        // we must have audience specified
+
+        if (StringUtil.isBlank(audience)) {
+            throw new IllegalArgumentException("Invalid request: no audience provided");
+        }
+
+        // for token exchange requests we must have subject token and type.
+        // currently we're only supporting id tokens as subject tokens so
+        // we'll validate accordingly. the actor_token and actor_token_type
+        // are optional and not used in the ID Token Authz Grant spec.
+
+        if (!ZTSConsts.OAUTH_TOKEN_TYPE_ID.equals(subjectTokenType)) {
+            throw new IllegalArgumentException("Invalid subject token type: " + subjectTokenType);
+        }
+        validateSubjectToken(options);
+
+        // if we're provided with a client assertion then we must
+        // have a client assertion type as well, so let's validate
+        // our specified token and generate a principal object
+
+        validateClientAssertion(options);
+    }
+
+    void validateIdTokenExchangeRequest(TokenConfigOptions options) {
+
+        // we must have audience specified
+
+        if (StringUtil.isEmpty(audience)) {
+            throw new IllegalArgumentException("Invalid request: no audience provided");
+        }
+
+        // for id token exchange requests subject token must be an id token
+
+        if (!ZTSConsts.OAUTH_TOKEN_TYPE_ID.equals(subjectTokenType)) {
+            throw new IllegalArgumentException("Invalid subject token type: " + subjectTokenType);
+        }
+        validateSubjectToken(options);
+    }
+
+    void validateAccessTokenExchangeRequest(TokenConfigOptions options) {
+
+        // for token exchange requests we must have subject token and type.
+        // we currently only support id and access tokens as subject tokens.
+
+        if (!validJwtTokenType(subjectTokenType)) {
+            throw new IllegalArgumentException("Invalid subject token type: " + subjectTokenType);
+        }
+        validateSubjectToken(options);
+
+        // we must have audience specified
+
+        if (StringUtil.isEmpty(audience)) {
+            throw new IllegalArgumentException("Invalid request: no audience provided");
+        }
+
+        // if we have an actor token specified then we must have
+        // an actor token type as well. So let's validate accordingly.
+
+        validateActorToken(options);
+    }
+
+    boolean validJwtTokenType(final String tokenType) {
+        return (ZTSConsts.OAUTH_TOKEN_TYPE_ID.equals(tokenType) ||
+                ZTSConsts.OAUTH_TOKEN_TYPE_ACCESS.equals(tokenType) ||
+                ZTSConsts.OAUTH_TOKEN_TYPE_JWT.equals(tokenType));
+    }
+
+    void validateJWTAccessTokenRequest(TokenConfigOptions options) {
+
+        // let's check if we have a valid assertion token
+        // provided and, if yes, generate our principal object
+        // and set our scope claim
+
+        try {
+            AccessToken token = new AccessToken(assertion, options.getPublicKeyProvider(),
+                    options.getOauth2Issuers());
+
+            // the assertion must be a valid self-presented client credential
+
+            validateClientAuthToken(token, options);
+
+            // if we have a scope parameter specified then we're good,
+            // otherwise we must have our scope claim set in the token
+
+            if (StringUtil.isEmpty(scope)) {
+                scope = token.getScopeStd();
+            }
+            if (StringUtil.isEmpty(scope)) {
+                throw new IllegalArgumentException("Invalid assertion: no scope claim provided");
+            }
+
+            principal = SimplePrincipal.create(token.getClientIdDomainName(),
+                    token.getClientIdServiceName(), assertion, token.getIssueTime(), null);
+
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Invalid client assertion: " + ex.getMessage());
+        }
+    }
+
+    void validateJWTBearerRequest(TokenConfigOptions options) {
+
+        // we need to validate the jag assertion with our processor
+        // which will validate that our token is properly signed and
+        // typed as oauth-id-jag+jwt
+
+        try {
+            jagTokenObj = new AccessToken(assertion, options.getJwtJAGProcessor());
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Invalid assertion token: " + ex.getMessage());
+        }
+    }
+
+    void validateSubjectToken(TokenConfigOptions options) {
+        if (StringUtil.isEmpty(subjectToken)) {
+            throw new IllegalArgumentException("Invalid request: no subject token provided");
+        }
+        try {
+            subjectTokenObj = new OAuth2Token(subjectToken, options.getJwtIDTProcessor());
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Invalid subject token: " + ex.getMessage());
+        }
+    }
+
+    void validateActorToken(TokenConfigOptions options) {
+        if (StringUtil.isEmpty(actorToken)) {
+            return;
+        }
+
+        if (!validJwtTokenType(actorTokenType)) {
+            throw new IllegalArgumentException("Invalid actor token type: " + actorTokenType);
+        }
+
+        try {
+            actorTokenObj = new OAuth2Token(actorToken, options.getPublicKeyProvider(),
+                    options.getOauth2Issuers());
+
+            // actor token becomes our principal object
+
+            principal = SimplePrincipal.create(actorTokenObj.getClientIdDomainName(),
+                    actorTokenObj.getClientIdServiceName(), null, actorTokenObj.getIssueTime(), null);
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Invalid actor token: " + ex.getMessage());
+        }
+
+        // now let's verify the fields in our subject token
+        // it must have a may_act claim with the subject claim
+        // that must match our actor token subject
+
+        LinkedHashMap<String, Object> mayAct = subjectTokenObj.getMayAct();
+        if (mayAct == null || !mayAct.containsKey(OAuth2Token.CLAIM_SUBJECT)) {
+            throw new IllegalArgumentException("Invalid subject token: missing may_act claim");
+        }
+
+        final String mayActSub = (String) mayAct.get(OAuth2Token.CLAIM_SUBJECT);
+        if (!mayActSub.equals(actorTokenObj.getSubject())) {
+            throw new IllegalArgumentException("Invalid subject token: may_act sub does not match actor token subject");
+        }
+    }
+
+    void validateClientAssertion(TokenConfigOptions options) {
+
+        if (!StringUtil.isEmpty(clientAssertion)) {
+
+            if (StringUtil.isEmpty(clientAssertionType)) {
+                throw new IllegalArgumentException("Invalid request: no client assertion type provided");
+            } else if (!OAUTH_ASSERTION_TYPE_JWT_BEARER.equals(clientAssertionType)) {
+                throw new IllegalArgumentException("Invalid client assertion type: " + clientAssertionType);
+            }
+
+            // now let's check if we have a valid client assertion
+            // token provided and, if yes, generate our principal object
+
+            try {
+                OAuth2Token token = new OAuth2Token(clientAssertion, options.getPublicKeyProvider(),
+                        options.getOauth2Issuers());
+
+                // the assertion must be a valid self-presented client credential
+
+                validateClientAuthToken(token, options);
+
+                principal = SimplePrincipal.create(token.getClientIdDomainName(),
+                        token.getClientIdServiceName(), clientAssertion, token.getIssueTime(), null);
+            } catch (Exception ex) {
+                throw new IllegalArgumentException("Invalid client assertion: " + ex.getMessage());
+            }
+        }
+    }
+
+    void validateClientAuthToken(OAuth2Token token, TokenConfigOptions options) {
+
+        // A JWT presented for client authentication (RFC 7521 / 7523) asserts the
+        // identity of the client that presents it. When ZTS itself signed the
+        // token we must confirm two things that the self-signed branch of
+        // OAuth2Token already guarantees for service-signed tokens, otherwise a
+        // token ZTS minted for a different purpose can be replayed here to
+        // authenticate the caller as the token's subject:
+        //
+        //  1. RFC 7523 section 3 - the aud claim MUST identify this ZTS server as
+        //     the intended audience. This rejects tokens minted for a relying
+        //     party (e.g. an OIDC id token whose audience is the relying service)
+        //     or for a resource domain (e.g. a regular access token).
+        //
+        //  2. Caller binding - an on-behalf-of / delegation token records the
+        //     acting-for user in the subject and the holder service in client_id.
+        //     The presenter authenticates as itself, so the subject must be the
+        //     holder: if a client_id claim is present it MUST match the subject.
+        //     This mirrors the client_id binding enforced for jag token exchange.
+
+        final String audience = token.getAudience();
+        Set<String> oauth2Issuers = options.getOauth2Issuers();
+        if (oauth2Issuers == null || !oauth2Issuers.contains(audience)) {
+            throw new IllegalArgumentException("audience " + audience
+                    + " does not identify the token endpoint");
+        }
+
+        final Object clientId = token.getClaim(OAuth2Token.CLAIM_CLIENT_ID);
+        if (clientId != null && !clientId.equals(token.getSubject())) {
+            throw new IllegalArgumentException("subject " + token.getSubject()
+                    + " does not match client_id " + clientId);
+        }
+    }
+
+    public String getActorToken() {
+        return actorToken;
+    }
+
+    public String getActorTokenType() {
+        return actorTokenType;
+    }
+
+    public String getKeyType() {
+        return keyType;
+    }
+
+    public RequestType getRequestType() {
+        return requestType;
+    }
+
+    public String getGrantType() {
+        return grantType;
+    }
+
+    public String getClientAssertion() {
+        return clientAssertion;
+    }
+
+    public String getClientAssertionType() {
+        return clientAssertionType;
+    }
+
+    public String getRequestedTokenType() {
+        return requestedTokenType;
+    }
+
+    public String getAudience() {
+        return audience;
+    }
+
+    public String getResource() {
+        return resource;
+    }
+
+    public String getSubjectToken() {
+        return subjectToken;
+    }
+
+    public String getSubjectTokenType() {
+        return subjectTokenType;
+    }
+
+    public String getAssertion() {
+        return assertion;
+    }
+
+    public String getScope() {
+        return scope;
+    }
+
+    public String getActor() {
+        return actor;
+    }
+
+    public String getProxyForPrincipal() {
+        return proxyForPrincipal;
+    }
+
+    public String getAuthzDetails() {
+        return authzDetails;
+    }
+
+    public List<String> getProxyPrincipalsSpiffeUris() {
+        return proxyPrincipalsSpiffeUris;
+    }
+
+    public int getExpiryTime() {
+        return expiryTime;
+    }
+
+    public boolean isUseOpenIDIssuer() {
+        return useOpenIDIssuer;
+    }
+
+    public boolean isFullArn() {
+        return fullArn;
+    }
+
+    public boolean isRoleInAudClaim() {
+        return roleInAudClaim;
+    }
+
+    public Principal getPrincipal() {
+        return principal;
+    }
+
+    public OAuth2Token getActorTokenObj() {
+        return actorTokenObj;
+    }
+
+    public OAuth2Token getSubjectTokenObj() {
+        return subjectTokenObj;
+    }
+
+    public AccessToken getJagTokenObj() {
+        return jagTokenObj;
+    }
+
+    public String getQueryLogData() {
+
+        StringBuilder stringBuilder = new StringBuilder();
+        if (!StringUtil.isEmpty(scope)) {
+            stringBuilder.append("scope=").append(URLEncoder.encode(scope, StandardCharsets.UTF_8));
+        }
+        if (expiryTime > 0) {
+            stringBuilder.append("&expires_in=").append(expiryTime);
+        }
+        if (!StringUtil.isEmpty(proxyForPrincipal)) {
+            stringBuilder.append("&proxy_for_principal=").append(URLEncoder.encode(proxyForPrincipal, StandardCharsets.UTF_8));
+        }
+        if (!StringUtil.isEmpty(authzDetails)) {
+            stringBuilder.append("&authorization_details=").append(URLEncoder.encode(authzDetails, StandardCharsets.UTF_8));
+        }
+        if (proxyPrincipalsSpiffeUris != null && !proxyPrincipalsSpiffeUris.isEmpty()) {
+            stringBuilder.append("&proxy_principal_spiffe_uris=");
+            for (String uri : proxyPrincipalsSpiffeUris) {
+                stringBuilder.append(URLEncoder.encode(uri, StandardCharsets.UTF_8)).append(',');
+            }
+            stringBuilder.setLength(stringBuilder.length() - 1);
+        }
+        if (!StringUtil.isEmpty(keyType)) {
+            stringBuilder.append("&key_type=").append(URLEncoder.encode(keyType, StandardCharsets.UTF_8));
+        }
+
+        // make sure our log line is limited to 1024 characters
+        // the data is already url encoded
+
+        stringBuilder.setLength(Math.min(stringBuilder.length(), 1024));
+        return stringBuilder.toString();
+    }
+
+    String decodeString(final String encodedString) {
+        try {
+            return URLDecoder.decode(encodedString, StandardCharsets.UTF_8);
+        } catch (Exception ex) {
+            LOGGER.error("Unable to decode: {}, error: {}", encodedString, ex.getMessage());
+            return null;
+        }
+    }
+
+    List<String> getProxyPrincipalSpiffeUris(final String proxyPrincipalSpiffeUris) {
+
+        if (proxyPrincipalSpiffeUris.isEmpty()) {
+            return null;
+        }
+
+        List<String> uris = Stream.of(proxyPrincipalSpiffeUris.split(","))
+                .map(String::trim)
+                .collect(Collectors.toList());
+
+        // verify that all values are valid spiffe uris structurally
+
+        for (String uri : uris) {
+            if (!uri.startsWith(ZTSConsts.ZTS_CERT_SPIFFE_URI)) {
+                throw new IllegalArgumentException("Invalid spiffe uri specified: " + uri);
+            }
+
+            try {
+                new URI(uri);
+            } catch (URISyntaxException ex) {
+                throw new IllegalArgumentException("Invalid spiffe uri specified: " + uri);
+            }
+        }
+
+        return uris;
     }
 }

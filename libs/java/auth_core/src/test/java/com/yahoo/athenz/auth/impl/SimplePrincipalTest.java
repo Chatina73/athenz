@@ -215,6 +215,7 @@ public class SimplePrincipalTest {
         X509Certificate cert = Mockito.mock(X509Certificate.class);
         ((SimplePrincipal) p).setX509Certificate(cert);
         ((SimplePrincipal) p).setState(Principal.State.ACTIVE);
+        ((SimplePrincipal) p).setIssuerIdentity("partner1");
 
         assertEquals(p.toString(), "user.jdoe");
         assertEquals(p.getOriginalRequestor(), "athenz.ci");
@@ -222,6 +223,7 @@ public class SimplePrincipalTest {
         assertEquals(p.getKeyId(), "v1");
         assertEquals(p.getX509Certificate(), cert);
         assertEquals(p.getState(), Principal.State.ACTIVE);
+        assertEquals(p.getIssuerIdentity(), "partner1");
 
         Principal p2 = SimplePrincipal.create("user", "jdoe", fakeCreds, 101, userAuthority);
         assertTrue(p.equals(p2));
@@ -230,7 +232,7 @@ public class SimplePrincipalTest {
 
         Principal p3 = SimplePrincipal.create("user", "jdoe1", fakeCreds, 101, userAuthority);
         assertFalse(p.equals(p3));
-        assertTrue(p.hashCode() != p3.hashCode());
+        assertNotEquals(p.hashCode(), p3.hashCode());
     }
 
     @Test
@@ -239,6 +241,59 @@ public class SimplePrincipalTest {
         
         check.setIP("10.10.10.10");
         assertEquals(check.getIP(),"10.10.10.10");
+    }
+
+    @Test
+    public void testSimplePrincipalExternalMember() {
+
+        Principal p = SimplePrincipal.create("external", "external:member1");
+        assertNotNull(p);
+
+        assertEquals(p.getFullName(), "external:member1");
+        assertEquals(p.getDomain(), "external");
+        assertNull(p.getName());
+        assertNull(p.getCredentials());
+        assertNull(p.getUnsignedCredentials());
+        assertNull(p.getAuthority());
+        assertNull(p.getRoles());
+        assertNull(p.getApplicationId());
+        assertNull(p.getAuthorizedService());
+        assertNull(p.getX509Certificate());
+        assertNull(p.getIP());
+        assertNull(p.getOriginalRequestor());
+        assertNull(p.getKeyService());
+        assertNull(p.getKeyId());
+        assertNull(p.getRolePrincipalName());
+        assertNull(p.getIssuerIdentity());
+        assertFalse(p.getMtlsRestricted());
+        assertEquals(p.getState(), Principal.State.ACTIVE);
+        assertEquals(p.getIssueTime(), 0);
+    }
+
+    @Test
+    public void testSimplePrincipalExternalMemberEquals() {
+
+        Principal p1 = SimplePrincipal.create("external", "external:member1");
+        Principal p2 = SimplePrincipal.create("external", "external:member1");
+        Principal p3 = SimplePrincipal.create("external", "external:member2");
+
+        assertTrue(p1.equals(p1));
+        assertTrue(p1.equals(p2));
+        assertFalse(p1.equals(p3));
+        assertFalse(p1.equals(null));
+
+        assertEquals(p1.hashCode(), p2.hashCode());
+        assertNotEquals(p1.hashCode(), p3.hashCode());
+    }
+
+    @Test
+    public void testSimplePrincipalExternalMemberEqualsRegularPrincipal() {
+
+        Principal extPrincipal = SimplePrincipal.create("user", "user.jdoe");
+        Principal regPrincipal = SimplePrincipal.create("user", "jdoe", fakeCreds, null);
+
+        assertEquals(extPrincipal.getFullName(), regPrincipal.getFullName());
+        assertTrue(extPrincipal.equals(regPrincipal));
     }
 
     @Test

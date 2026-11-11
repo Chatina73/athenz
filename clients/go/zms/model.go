@@ -29,6 +29,9 @@ type DomainName string
 // only the domain and entity.
 type EntityName string
 
+// EntityNameList - A comma separated list of entity names
+type EntityNameList string
+
 // ServiceName - A service name will generally be a unique subdomain.
 type ServiceName string
 
@@ -65,11 +68,19 @@ type AuthorityName string
 // roles and : for IPv6 addresses
 type SignedToken string
 
+// ExternalMemberName - External Member name. Even though the pattern is open
+// to support all possible external members, the server only supports '*' for
+// wildcard matches only if it's provided as the last character.
+type ExternalMemberName string
+
 // GroupName - A group name
 type GroupName string
 
 // GroupMemberName - A group member name
 type GroupMemberName string
+
+// PrincipalName - A principal name for role/group membership queries
+type PrincipalName string
 
 // MemberName - Role Member name - could be one of four values: *, DomainName.*
 // or ServiceName[*], or GroupNames
@@ -80,6 +91,9 @@ type AuthorityKeyword string
 
 // AuthorityKeywords -
 type AuthorityKeywords string
+
+// TagKey -
+type TagKey string
 
 // TagValue - TagValue to contain generic string patterns
 type TagValue string
@@ -149,6 +163,65 @@ type AssertionConditionValuePattern string
 // AssertionConditionValue -
 type AssertionConditionValue string
 
+// ResourceOwnerName -
+type ResourceOwnerName string
+
+// ResourceDomainOwnership - The representation of the domain ownership object
+type ResourceDomainOwnership struct {
+
+	//
+	// owner of the object's meta attribute
+	//
+	MetaOwner SimpleName `json:"metaOwner,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// owner of the object itself - checked for object deletion
+	//
+	ObjectOwner SimpleName `json:"objectOwner,omitempty" rdl:"optional" yaml:",omitempty"`
+}
+
+// NewResourceDomainOwnership - creates an initialized ResourceDomainOwnership instance, returns a pointer to it
+func NewResourceDomainOwnership(init ...*ResourceDomainOwnership) *ResourceDomainOwnership {
+	var o *ResourceDomainOwnership
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(ResourceDomainOwnership)
+	}
+	return o
+}
+
+type rawResourceDomainOwnership ResourceDomainOwnership
+
+// UnmarshalJSON is defined for proper JSON decoding of a ResourceDomainOwnership
+func (self *ResourceDomainOwnership) UnmarshalJSON(b []byte) error {
+	var m rawResourceDomainOwnership
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := ResourceDomainOwnership(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *ResourceDomainOwnership) Validate() error {
+	if self.MetaOwner != "" {
+		val := rdl.Validate(ZMSSchema(), "SimpleName", self.MetaOwner)
+		if !val.Valid {
+			return fmt.Errorf("ResourceDomainOwnership.metaOwner does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	if self.ObjectOwner != "" {
+		val := rdl.Validate(ZMSSchema(), "SimpleName", self.ObjectOwner)
+		if !val.Valid {
+			return fmt.Errorf("ResourceDomainOwnership.objectOwner does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
 // DomainMeta - Set of metadata attributes that all domains may have and can be
 // changed.
 type DomainMeta struct {
@@ -180,6 +253,11 @@ type DomainMeta struct {
 	// enabled)
 	//
 	Account string `json:"account" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// associated aws account name (system attribute)
+	//
+	AwsAccountName string `json:"awsAccountName" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// associated product id (system attribute - uniqueness check - if enabled)
@@ -220,7 +298,7 @@ type DomainMeta struct {
 	//
 	// rsa or ec signing algorithm to be used for tokens
 	//
-	SignAlgorithm SimpleName `json:"signAlgorithm,omitempty" rdl:"optional" yaml:",omitempty"`
+	SignAlgorithm string `json:"signAlgorithm" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// all services in the domain roles will have specified max expiry days
@@ -244,6 +322,16 @@ type DomainMeta struct {
 	AzureSubscription string `json:"azureSubscription" rdl:"optional" yaml:",omitempty"`
 
 	//
+	// associated azure tenant id (system attribute)
+	//
+	AzureTenant string `json:"azureTenant" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// associated azure client id (system attribute)
+	//
+	AzureClient string `json:"azureClient" rdl:"optional" yaml:",omitempty"`
+
+	//
 	// associated gcp project id (system attribute - uniqueness check - if
 	// enabled)
 	//
@@ -257,7 +345,7 @@ type DomainMeta struct {
 	//
 	// key-value pair tags, tag might contain multiple values
 	//
-	Tags map[CompoundName]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
+	Tags map[TagKey]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// associated business service with domain
@@ -278,6 +366,64 @@ type DomainMeta struct {
 	// features enabled per domain (system attribute)
 	//
 	FeatureFlags *int32 `json:"featureFlags,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// list of domain contacts (PE-Owner, Product-Owner, etc), each type can have
+	// a single value
+	//
+	Contacts map[SimpleName]string `json:"contacts,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// domain environment e.g. production, staging, etc
+	//
+	Environment string `json:"environment" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// ownership information for the domain (read-only attribute)
+	//
+	ResourceOwnership *ResourceDomainOwnership `json:"resourceOwnership,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// requested x509 cert signer key id (system attribute)
+	//
+	X509CertSignerKeyId string `json:"x509CertSignerKeyId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// requested ssh cert signer key id (system attribute)
+	//
+	SshCertSignerKeyId string `json:"sshCertSignerKeyId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// slack channel for any notifications in this domain
+	//
+	SlackChannel string `json:"slackChannel" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// oncall team name/id for any incidents in this domain
+	//
+	OnCall string `json:"onCall" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Indicates whether to automatically delete assertions for a tenant's assume
+	// role
+	//
+	AutoDeleteTenantAssumeRoleAssertions *bool `json:"autoDeleteTenantAssumeRoleAssertions,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Indicates whether client ID self-update is enabled for services in this
+	// domain
+	//
+	ClientIdSelfUpdate *bool `json:"clientIdSelfUpdate,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// class name responsible for validating external members
+	//
+	ExternalMemberValidator string `json:"externalMemberValidator" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// cost center for this domain for any chargebacks
+	//
+	CostCenter string `json:"costCenter" rdl:"optional" yaml:",omitempty"`
 }
 
 // NewDomainMeta - creates an initialized DomainMeta instance, returns a pointer to it
@@ -300,6 +446,14 @@ func (self *DomainMeta) Init() *DomainMeta {
 	if self.AuditEnabled == nil {
 		d := false
 		self.AuditEnabled = &d
+	}
+	if self.AutoDeleteTenantAssumeRoleAssertions == nil {
+		d := false
+		self.AutoDeleteTenantAssumeRoleAssertions = &d
+	}
+	if self.ClientIdSelfUpdate == nil {
+		d := false
+		self.ClientIdSelfUpdate = &d
 	}
 	return self
 }
@@ -338,6 +492,12 @@ func (self *DomainMeta) Validate() error {
 			return fmt.Errorf("DomainMeta.account does not contain a valid String (%v)", val.Error)
 		}
 	}
+	if self.AwsAccountName != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AwsAccountName)
+		if !val.Valid {
+			return fmt.Errorf("DomainMeta.awsAccountName does not contain a valid String (%v)", val.Error)
+		}
+	}
 	if self.ApplicationId != "" {
 		val := rdl.Validate(ZMSSchema(), "String", self.ApplicationId)
 		if !val.Valid {
@@ -351,9 +511,9 @@ func (self *DomainMeta) Validate() error {
 		}
 	}
 	if self.SignAlgorithm != "" {
-		val := rdl.Validate(ZMSSchema(), "SimpleName", self.SignAlgorithm)
+		val := rdl.Validate(ZMSSchema(), "String", self.SignAlgorithm)
 		if !val.Valid {
-			return fmt.Errorf("DomainMeta.signAlgorithm does not contain a valid SimpleName (%v)", val.Error)
+			return fmt.Errorf("DomainMeta.signAlgorithm does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.UserAuthorityFilter != "" {
@@ -366,6 +526,18 @@ func (self *DomainMeta) Validate() error {
 		val := rdl.Validate(ZMSSchema(), "String", self.AzureSubscription)
 		if !val.Valid {
 			return fmt.Errorf("DomainMeta.azureSubscription does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.AzureTenant != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AzureTenant)
+		if !val.Valid {
+			return fmt.Errorf("DomainMeta.azureTenant does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.AzureClient != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AzureClient)
+		if !val.Valid {
+			return fmt.Errorf("DomainMeta.azureClient does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.GcpProject != "" {
@@ -390,6 +562,48 @@ func (self *DomainMeta) Validate() error {
 		val := rdl.Validate(ZMSSchema(), "String", self.ProductId)
 		if !val.Valid {
 			return fmt.Errorf("DomainMeta.productId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Environment != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.Environment)
+		if !val.Valid {
+			return fmt.Errorf("DomainMeta.environment does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.X509CertSignerKeyId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.X509CertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("DomainMeta.x509CertSignerKeyId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.SshCertSignerKeyId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.SshCertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("DomainMeta.sshCertSignerKeyId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.SlackChannel != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.SlackChannel)
+		if !val.Valid {
+			return fmt.Errorf("DomainMeta.slackChannel does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.OnCall != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.OnCall)
+		if !val.Valid {
+			return fmt.Errorf("DomainMeta.onCall does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.ExternalMemberValidator != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.ExternalMemberValidator)
+		if !val.Valid {
+			return fmt.Errorf("DomainMeta.externalMemberValidator does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.CostCenter != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.CostCenter)
+		if !val.Valid {
+			return fmt.Errorf("DomainMeta.costCenter does not contain a valid String (%v)", val.Error)
 		}
 	}
 	return nil
@@ -432,6 +646,11 @@ type Domain struct {
 	Account string `json:"account" rdl:"optional" yaml:",omitempty"`
 
 	//
+	// associated aws account name (system attribute)
+	//
+	AwsAccountName string `json:"awsAccountName" rdl:"optional" yaml:",omitempty"`
+
+	//
 	// associated product id (system attribute - uniqueness check - if enabled)
 	//
 	YpmId *int32 `json:"ypmId,omitempty" rdl:"optional" yaml:",omitempty"`
@@ -470,7 +689,7 @@ type Domain struct {
 	//
 	// rsa or ec signing algorithm to be used for tokens
 	//
-	SignAlgorithm SimpleName `json:"signAlgorithm,omitempty" rdl:"optional" yaml:",omitempty"`
+	SignAlgorithm string `json:"signAlgorithm" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// all services in the domain roles will have specified max expiry days
@@ -494,6 +713,16 @@ type Domain struct {
 	AzureSubscription string `json:"azureSubscription" rdl:"optional" yaml:",omitempty"`
 
 	//
+	// associated azure tenant id (system attribute)
+	//
+	AzureTenant string `json:"azureTenant" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// associated azure client id (system attribute)
+	//
+	AzureClient string `json:"azureClient" rdl:"optional" yaml:",omitempty"`
+
+	//
 	// associated gcp project id (system attribute - uniqueness check - if
 	// enabled)
 	//
@@ -507,7 +736,7 @@ type Domain struct {
 	//
 	// key-value pair tags, tag might contain multiple values
 	//
-	Tags map[CompoundName]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
+	Tags map[TagKey]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// associated business service with domain
@@ -528,6 +757,64 @@ type Domain struct {
 	// features enabled per domain (system attribute)
 	//
 	FeatureFlags *int32 `json:"featureFlags,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// list of domain contacts (PE-Owner, Product-Owner, etc), each type can have
+	// a single value
+	//
+	Contacts map[SimpleName]string `json:"contacts,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// domain environment e.g. production, staging, etc
+	//
+	Environment string `json:"environment" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// ownership information for the domain (read-only attribute)
+	//
+	ResourceOwnership *ResourceDomainOwnership `json:"resourceOwnership,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// requested x509 cert signer key id (system attribute)
+	//
+	X509CertSignerKeyId string `json:"x509CertSignerKeyId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// requested ssh cert signer key id (system attribute)
+	//
+	SshCertSignerKeyId string `json:"sshCertSignerKeyId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// slack channel for any notifications in this domain
+	//
+	SlackChannel string `json:"slackChannel" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// oncall team name/id for any incidents in this domain
+	//
+	OnCall string `json:"onCall" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Indicates whether to automatically delete assertions for a tenant's assume
+	// role
+	//
+	AutoDeleteTenantAssumeRoleAssertions *bool `json:"autoDeleteTenantAssumeRoleAssertions,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Indicates whether client ID self-update is enabled for services in this
+	// domain
+	//
+	ClientIdSelfUpdate *bool `json:"clientIdSelfUpdate,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// class name responsible for validating external members
+	//
+	ExternalMemberValidator string `json:"externalMemberValidator" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// cost center for this domain for any chargebacks
+	//
+	CostCenter string `json:"costCenter" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// the common name to be referred to, the symbolic id. It is immutable
@@ -566,6 +853,14 @@ func (self *Domain) Init() *Domain {
 		d := false
 		self.AuditEnabled = &d
 	}
+	if self.AutoDeleteTenantAssumeRoleAssertions == nil {
+		d := false
+		self.AutoDeleteTenantAssumeRoleAssertions = &d
+	}
+	if self.ClientIdSelfUpdate == nil {
+		d := false
+		self.ClientIdSelfUpdate = &d
+	}
 	return self
 }
 
@@ -603,6 +898,12 @@ func (self *Domain) Validate() error {
 			return fmt.Errorf("Domain.account does not contain a valid String (%v)", val.Error)
 		}
 	}
+	if self.AwsAccountName != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AwsAccountName)
+		if !val.Valid {
+			return fmt.Errorf("Domain.awsAccountName does not contain a valid String (%v)", val.Error)
+		}
+	}
 	if self.ApplicationId != "" {
 		val := rdl.Validate(ZMSSchema(), "String", self.ApplicationId)
 		if !val.Valid {
@@ -616,9 +917,9 @@ func (self *Domain) Validate() error {
 		}
 	}
 	if self.SignAlgorithm != "" {
-		val := rdl.Validate(ZMSSchema(), "SimpleName", self.SignAlgorithm)
+		val := rdl.Validate(ZMSSchema(), "String", self.SignAlgorithm)
 		if !val.Valid {
-			return fmt.Errorf("Domain.signAlgorithm does not contain a valid SimpleName (%v)", val.Error)
+			return fmt.Errorf("Domain.signAlgorithm does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.UserAuthorityFilter != "" {
@@ -631,6 +932,18 @@ func (self *Domain) Validate() error {
 		val := rdl.Validate(ZMSSchema(), "String", self.AzureSubscription)
 		if !val.Valid {
 			return fmt.Errorf("Domain.azureSubscription does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.AzureTenant != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AzureTenant)
+		if !val.Valid {
+			return fmt.Errorf("Domain.azureTenant does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.AzureClient != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AzureClient)
+		if !val.Valid {
+			return fmt.Errorf("Domain.azureClient does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.GcpProject != "" {
@@ -655,6 +968,48 @@ func (self *Domain) Validate() error {
 		val := rdl.Validate(ZMSSchema(), "String", self.ProductId)
 		if !val.Valid {
 			return fmt.Errorf("Domain.productId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Environment != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.Environment)
+		if !val.Valid {
+			return fmt.Errorf("Domain.environment does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.X509CertSignerKeyId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.X509CertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("Domain.x509CertSignerKeyId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.SshCertSignerKeyId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.SshCertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("Domain.sshCertSignerKeyId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.SlackChannel != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.SlackChannel)
+		if !val.Valid {
+			return fmt.Errorf("Domain.slackChannel does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.OnCall != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.OnCall)
+		if !val.Valid {
+			return fmt.Errorf("Domain.onCall does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.ExternalMemberValidator != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.ExternalMemberValidator)
+		if !val.Valid {
+			return fmt.Errorf("Domain.externalMemberValidator does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.CostCenter != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.CostCenter)
+		if !val.Valid {
+			return fmt.Errorf("Domain.costCenter does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.Name == "" {
@@ -842,6 +1197,12 @@ type DomainOptions struct {
 	// enforce domains are associated with unique gcp projects
 	//
 	EnforceUniqueGCPProjects bool `json:"enforceUniqueGCPProjects"`
+
+	//
+	// allow a domain's account field to contain multiple comma-separated aws
+	// accounts
+	//
+	AllowMultipleAWSAccounts bool `json:"allowMultipleAWSAccounts"`
 }
 
 // NewDomainOptions - creates an initialized DomainOptions instance, returns a pointer to it
@@ -1092,8 +1453,8 @@ type RoleMember struct {
 	SystemDisabled *int32 `json:"systemDisabled,omitempty" rdl:"optional" yaml:",omitempty"`
 
 	//
-	// server use only - principal type: unknown(0), user(1), service(2), or
-	// group(3)
+	// server use only - principal type: unknown(0), user(1), service(2),
+	// group(3), headless(4), or external(5)
 	//
 	PrincipalType *int32 `json:"principalType,omitempty" rdl:"optional" yaml:",omitempty"`
 
@@ -1172,6 +1533,73 @@ func (self *RoleMember) Validate() error {
 	return nil
 }
 
+// ResourceRoleOwnership - The representation of the role ownership object
+type ResourceRoleOwnership struct {
+
+	//
+	// owner of the object's meta attribute
+	//
+	MetaOwner SimpleName `json:"metaOwner,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// owner of the object's members attribute
+	//
+	MembersOwner SimpleName `json:"membersOwner,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// owner of the object itself - checked for object deletion
+	//
+	ObjectOwner SimpleName `json:"objectOwner,omitempty" rdl:"optional" yaml:",omitempty"`
+}
+
+// NewResourceRoleOwnership - creates an initialized ResourceRoleOwnership instance, returns a pointer to it
+func NewResourceRoleOwnership(init ...*ResourceRoleOwnership) *ResourceRoleOwnership {
+	var o *ResourceRoleOwnership
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(ResourceRoleOwnership)
+	}
+	return o
+}
+
+type rawResourceRoleOwnership ResourceRoleOwnership
+
+// UnmarshalJSON is defined for proper JSON decoding of a ResourceRoleOwnership
+func (self *ResourceRoleOwnership) UnmarshalJSON(b []byte) error {
+	var m rawResourceRoleOwnership
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := ResourceRoleOwnership(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *ResourceRoleOwnership) Validate() error {
+	if self.MetaOwner != "" {
+		val := rdl.Validate(ZMSSchema(), "SimpleName", self.MetaOwner)
+		if !val.Valid {
+			return fmt.Errorf("ResourceRoleOwnership.metaOwner does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	if self.MembersOwner != "" {
+		val := rdl.Validate(ZMSSchema(), "SimpleName", self.MembersOwner)
+		if !val.Valid {
+			return fmt.Errorf("ResourceRoleOwnership.membersOwner does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	if self.ObjectOwner != "" {
+		val := rdl.Validate(ZMSSchema(), "SimpleName", self.ObjectOwner)
+		if !val.Valid {
+			return fmt.Errorf("ResourceRoleOwnership.objectOwner does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
 // RoleMeta - Set of metadata attributes that all roles may have and can be
 // changed by domain admins.
 type RoleMeta struct {
@@ -1201,7 +1629,7 @@ type RoleMeta struct {
 	//
 	// rsa or ec signing algorithm to be used for tokens
 	//
-	SignAlgorithm SimpleName `json:"signAlgorithm,omitempty" rdl:"optional" yaml:",omitempty"`
+	SignAlgorithm string `json:"signAlgorithm" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// all services in the role will have specified max expiry days
@@ -1252,7 +1680,7 @@ type RoleMeta struct {
 	//
 	// key-value pair tags, tag might contain multiple values
 	//
-	Tags map[CompoundName]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
+	Tags map[TagKey]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// a description of the role
@@ -1270,6 +1698,42 @@ type RoleMeta struct {
 	// If true, ask for delete confirmation in audit and review enabled roles.
 	//
 	DeleteProtection *bool `json:"deleteProtection,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// last review timestamp of the role
+	//
+	LastReviewedDate *rdl.Timestamp `json:"lastReviewedDate,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Flag indicates whether to allow expired members to renew their membership
+	//
+	SelfRenew *bool `json:"selfRenew,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Number of minutes members can renew their membership if self review option
+	// is enabled
+	//
+	SelfRenewMins *int32 `json:"selfRenewMins,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Maximum number of members allowed in the group
+	//
+	MaxMembers *int32 `json:"maxMembers,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// ownership information for the role (read-only attribute)
+	//
+	ResourceOwnership *ResourceRoleOwnership `json:"resourceOwnership,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// membership filtered based on configured principal domains
+	//
+	PrincipalDomainFilter string `json:"principalDomainFilter" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// additional details included in the notifications
+	//
+	NotifyDetails string `json:"notifyDetails" rdl:"optional" yaml:",omitempty"`
 }
 
 // NewRoleMeta - creates an initialized RoleMeta instance, returns a pointer to it
@@ -1300,9 +1764,9 @@ func (self *RoleMeta) UnmarshalJSON(b []byte) error {
 // Validate - checks for missing required fields, etc
 func (self *RoleMeta) Validate() error {
 	if self.SignAlgorithm != "" {
-		val := rdl.Validate(ZMSSchema(), "SimpleName", self.SignAlgorithm)
+		val := rdl.Validate(ZMSSchema(), "String", self.SignAlgorithm)
 		if !val.Valid {
-			return fmt.Errorf("RoleMeta.signAlgorithm does not contain a valid SimpleName (%v)", val.Error)
+			return fmt.Errorf("RoleMeta.signAlgorithm does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.NotifyRoles != "" {
@@ -1327,6 +1791,18 @@ func (self *RoleMeta) Validate() error {
 		val := rdl.Validate(ZMSSchema(), "String", self.Description)
 		if !val.Valid {
 			return fmt.Errorf("RoleMeta.description does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.PrincipalDomainFilter != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.PrincipalDomainFilter)
+		if !val.Valid {
+			return fmt.Errorf("RoleMeta.principalDomainFilter does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.NotifyDetails != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.NotifyDetails)
+		if !val.Valid {
+			return fmt.Errorf("RoleMeta.notifyDetails does not contain a valid String (%v)", val.Error)
 		}
 	}
 	return nil
@@ -1366,7 +1842,7 @@ type Role struct {
 	//
 	// rsa or ec signing algorithm to be used for tokens
 	//
-	SignAlgorithm SimpleName `json:"signAlgorithm,omitempty" rdl:"optional" yaml:",omitempty"`
+	SignAlgorithm string `json:"signAlgorithm" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// all services in the role will have specified max expiry days
@@ -1417,7 +1893,7 @@ type Role struct {
 	//
 	// key-value pair tags, tag might contain multiple values
 	//
-	Tags map[CompoundName]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
+	Tags map[TagKey]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// a description of the role
@@ -1435,6 +1911,42 @@ type Role struct {
 	// If true, ask for delete confirmation in audit and review enabled roles.
 	//
 	DeleteProtection *bool `json:"deleteProtection,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// last review timestamp of the role
+	//
+	LastReviewedDate *rdl.Timestamp `json:"lastReviewedDate,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Flag indicates whether to allow expired members to renew their membership
+	//
+	SelfRenew *bool `json:"selfRenew,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Number of minutes members can renew their membership if self review option
+	// is enabled
+	//
+	SelfRenewMins *int32 `json:"selfRenewMins,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Maximum number of members allowed in the group
+	//
+	MaxMembers *int32 `json:"maxMembers,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// ownership information for the role (read-only attribute)
+	//
+	ResourceOwnership *ResourceRoleOwnership `json:"resourceOwnership,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// membership filtered based on configured principal domains
+	//
+	PrincipalDomainFilter string `json:"principalDomainFilter" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// additional details included in the notifications
+	//
+	NotifyDetails string `json:"notifyDetails" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// name of the role
@@ -1466,11 +1978,6 @@ type Role struct {
 	// an audit log for role membership changes
 	//
 	AuditLog []*RoleAuditLog `json:"auditLog,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// last review timestamp of the role
-	//
-	LastReviewedDate *rdl.Timestamp `json:"lastReviewedDate,omitempty" rdl:"optional" yaml:",omitempty"`
 }
 
 // NewRole - creates an initialized Role instance, returns a pointer to it
@@ -1501,9 +2008,9 @@ func (self *Role) UnmarshalJSON(b []byte) error {
 // Validate - checks for missing required fields, etc
 func (self *Role) Validate() error {
 	if self.SignAlgorithm != "" {
-		val := rdl.Validate(ZMSSchema(), "SimpleName", self.SignAlgorithm)
+		val := rdl.Validate(ZMSSchema(), "String", self.SignAlgorithm)
 		if !val.Valid {
-			return fmt.Errorf("Role.signAlgorithm does not contain a valid SimpleName (%v)", val.Error)
+			return fmt.Errorf("Role.signAlgorithm does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.NotifyRoles != "" {
@@ -1528,6 +2035,18 @@ func (self *Role) Validate() error {
 		val := rdl.Validate(ZMSSchema(), "String", self.Description)
 		if !val.Valid {
 			return fmt.Errorf("Role.description does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.PrincipalDomainFilter != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.PrincipalDomainFilter)
+		if !val.Valid {
+			return fmt.Errorf("Role.principalDomainFilter does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.NotifyDetails != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.NotifyDetails)
+		if !val.Valid {
+			return fmt.Errorf("Role.notifyDetails does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.Name == "" {
@@ -1850,6 +2369,17 @@ type MemberRole struct {
 	// specified in roleName
 	//
 	TrustRoleName ResourceName `json:"trustRoleName,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// list of roles whose members should be notified for member
+	// review/approval/expiry
+	//
+	NotifyRoles string `json:"notifyRoles" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// additional details included in the notifications
+	//
+	NotifyDetails string `json:"notifyDetails" rdl:"optional" yaml:",omitempty"`
 }
 
 // NewMemberRole - creates an initialized MemberRole instance, returns a pointer to it
@@ -1930,6 +2460,18 @@ func (self *MemberRole) Validate() error {
 		val := rdl.Validate(ZMSSchema(), "ResourceName", self.TrustRoleName)
 		if !val.Valid {
 			return fmt.Errorf("MemberRole.trustRoleName does not contain a valid ResourceName (%v)", val.Error)
+		}
+	}
+	if self.NotifyRoles != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.NotifyRoles)
+		if !val.Valid {
+			return fmt.Errorf("MemberRole.notifyRoles does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.NotifyDetails != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.NotifyDetails)
+		if !val.Valid {
+			return fmt.Errorf("MemberRole.notifyDetails does not contain a valid String (%v)", val.Error)
 		}
 	}
 	return nil
@@ -2498,6 +3040,62 @@ func (self *Assertion) Validate() error {
 	return nil
 }
 
+// ResourcePolicyOwnership - The representation of the policy ownership object
+type ResourcePolicyOwnership struct {
+
+	//
+	// owner of the object's assertions attribute
+	//
+	AssertionsOwner SimpleName `json:"assertionsOwner,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// owner of the object itself - checked for object deletion
+	//
+	ObjectOwner SimpleName `json:"objectOwner,omitempty" rdl:"optional" yaml:",omitempty"`
+}
+
+// NewResourcePolicyOwnership - creates an initialized ResourcePolicyOwnership instance, returns a pointer to it
+func NewResourcePolicyOwnership(init ...*ResourcePolicyOwnership) *ResourcePolicyOwnership {
+	var o *ResourcePolicyOwnership
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(ResourcePolicyOwnership)
+	}
+	return o
+}
+
+type rawResourcePolicyOwnership ResourcePolicyOwnership
+
+// UnmarshalJSON is defined for proper JSON decoding of a ResourcePolicyOwnership
+func (self *ResourcePolicyOwnership) UnmarshalJSON(b []byte) error {
+	var m rawResourcePolicyOwnership
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := ResourcePolicyOwnership(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *ResourcePolicyOwnership) Validate() error {
+	if self.AssertionsOwner != "" {
+		val := rdl.Validate(ZMSSchema(), "SimpleName", self.AssertionsOwner)
+		if !val.Valid {
+			return fmt.Errorf("ResourcePolicyOwnership.assertionsOwner does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	if self.ObjectOwner != "" {
+		val := rdl.Validate(ZMSSchema(), "SimpleName", self.ObjectOwner)
+		if !val.Valid {
+			return fmt.Errorf("ResourcePolicyOwnership.objectOwner does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
 // Policy - The representation for a Policy with set of assertions.
 type Policy struct {
 
@@ -2539,7 +3137,12 @@ type Policy struct {
 	//
 	// key-value pair tags, tag might contain multiple values
 	//
-	Tags map[CompoundName]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
+	Tags map[TagKey]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// ownership information for the policy (read-only attribute)
+	//
+	ResourceOwnership *ResourcePolicyOwnership `json:"resourceOwnership,omitempty" rdl:"optional" yaml:",omitempty"`
 }
 
 // NewPolicy - creates an initialized Policy instance, returns a pointer to it
@@ -2772,6 +3375,120 @@ func (self *PublicKeyEntry) Validate() error {
 	return nil
 }
 
+// CredsEntry - The representation of the credentials for a service identity
+// object.
+type CredsEntry struct {
+
+	//
+	// the secret for the service
+	//
+	Value string `json:"value" rdl:"optional" yaml:",omitempty"`
+}
+
+// NewCredsEntry - creates an initialized CredsEntry instance, returns a pointer to it
+func NewCredsEntry(init ...*CredsEntry) *CredsEntry {
+	var o *CredsEntry
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(CredsEntry)
+	}
+	return o
+}
+
+type rawCredsEntry CredsEntry
+
+// UnmarshalJSON is defined for proper JSON decoding of a CredsEntry
+func (self *CredsEntry) UnmarshalJSON(b []byte) error {
+	var m rawCredsEntry
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := CredsEntry(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *CredsEntry) Validate() error {
+	if self.Value != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.Value)
+		if !val.Valid {
+			return fmt.Errorf("CredsEntry.value does not contain a valid String (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
+// ResourceServiceIdentityOwnership - The representation of the service
+// identity ownership object
+type ResourceServiceIdentityOwnership struct {
+
+	//
+	// owner of the object's public keys attribute
+	//
+	PublicKeysOwner SimpleName `json:"publicKeysOwner,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// owner of the object's host list attribute
+	//
+	HostsOwner SimpleName `json:"hostsOwner,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// owner of the object itself - checked for object deletion
+	//
+	ObjectOwner SimpleName `json:"objectOwner,omitempty" rdl:"optional" yaml:",omitempty"`
+}
+
+// NewResourceServiceIdentityOwnership - creates an initialized ResourceServiceIdentityOwnership instance, returns a pointer to it
+func NewResourceServiceIdentityOwnership(init ...*ResourceServiceIdentityOwnership) *ResourceServiceIdentityOwnership {
+	var o *ResourceServiceIdentityOwnership
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(ResourceServiceIdentityOwnership)
+	}
+	return o
+}
+
+type rawResourceServiceIdentityOwnership ResourceServiceIdentityOwnership
+
+// UnmarshalJSON is defined for proper JSON decoding of a ResourceServiceIdentityOwnership
+func (self *ResourceServiceIdentityOwnership) UnmarshalJSON(b []byte) error {
+	var m rawResourceServiceIdentityOwnership
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := ResourceServiceIdentityOwnership(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *ResourceServiceIdentityOwnership) Validate() error {
+	if self.PublicKeysOwner != "" {
+		val := rdl.Validate(ZMSSchema(), "SimpleName", self.PublicKeysOwner)
+		if !val.Valid {
+			return fmt.Errorf("ResourceServiceIdentityOwnership.publicKeysOwner does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	if self.HostsOwner != "" {
+		val := rdl.Validate(ZMSSchema(), "SimpleName", self.HostsOwner)
+		if !val.Valid {
+			return fmt.Errorf("ResourceServiceIdentityOwnership.hostsOwner does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	if self.ObjectOwner != "" {
+		val := rdl.Validate(ZMSSchema(), "SimpleName", self.ObjectOwner)
+		if !val.Valid {
+			return fmt.Errorf("ResourceServiceIdentityOwnership.objectOwner does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
 // ServiceIdentity - The representation of the service identity object.
 type ServiceIdentity struct {
 
@@ -2823,7 +3540,37 @@ type ServiceIdentity struct {
 	//
 	// key-value pair tags, tag might contain multiple values
 	//
-	Tags map[CompoundName]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
+	Tags map[TagKey]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// ownership information for the service (read-only attribute)
+	//
+	ResourceOwnership *ResourceServiceIdentityOwnership `json:"resourceOwnership,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// requested x509 cert signer key id (system attribute)
+	//
+	X509CertSignerKeyId string `json:"x509CertSignerKeyId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// requested ssh cert signer key id (system attribute)
+	//
+	SshCertSignerKeyId string `json:"sshCertSignerKeyId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// the credentials for the service
+	//
+	Creds string `json:"creds" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// the OAuth2 client id for the service (system attribute)
+	//
+	ClientId string `json:"clientId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// features enabled per service (system attribute)
+	//
+	FeatureFlags *int32 `json:"featureFlags,omitempty" rdl:"optional" yaml:",omitempty"`
 }
 
 // NewServiceIdentity - creates an initialized ServiceIdentity instance, returns a pointer to it
@@ -2891,6 +3638,30 @@ func (self *ServiceIdentity) Validate() error {
 			return fmt.Errorf("ServiceIdentity.group does not contain a valid String (%v)", val.Error)
 		}
 	}
+	if self.X509CertSignerKeyId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.X509CertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("ServiceIdentity.x509CertSignerKeyId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.SshCertSignerKeyId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.SshCertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("ServiceIdentity.sshCertSignerKeyId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Creds != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.Creds)
+		if !val.Valid {
+			return fmt.Errorf("ServiceIdentity.creds does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.ClientId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.ClientId)
+		if !val.Valid {
+			return fmt.Errorf("ServiceIdentity.clientId does not contain a valid String (%v)", val.Error)
+		}
+	}
 	return nil
 }
 
@@ -2901,6 +3672,13 @@ type ServiceIdentities struct {
 	// list of services
 	//
 	List []*ServiceIdentity `json:"list"`
+
+	//
+	// if set, the value indicates the total number of services in the system that
+	// match the query criteria but not returned due to limit constraints; thus, the
+	// result in the list is a partial set.
+	//
+	ServiceMatchCount int64 `json:"serviceMatchCount"`
 }
 
 // NewServiceIdentities - creates an initialized ServiceIdentities instance, returns a pointer to it
@@ -3016,6 +3794,26 @@ type ServiceIdentitySystemMeta struct {
 	// provider callback endpoint
 	//
 	ProviderEndpoint string `json:"providerEndpoint" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// requested x509 cert signer key id
+	//
+	X509CertSignerKeyId string `json:"x509CertSignerKeyId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// requested ssh cert signer key id
+	//
+	SshCertSignerKeyId string `json:"sshCertSignerKeyId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// the OAuth2 client id for the service
+	//
+	ClientId string `json:"clientId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// features enabled per service
+	//
+	FeatureFlags *int32 `json:"featureFlags,omitempty" rdl:"optional" yaml:",omitempty"`
 }
 
 // NewServiceIdentitySystemMeta - creates an initialized ServiceIdentitySystemMeta instance, returns a pointer to it
@@ -3051,6 +3849,1101 @@ func (self *ServiceIdentitySystemMeta) Validate() error {
 			return fmt.Errorf("ServiceIdentitySystemMeta.providerEndpoint does not contain a valid String (%v)", val.Error)
 		}
 	}
+	if self.X509CertSignerKeyId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.X509CertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("ServiceIdentitySystemMeta.x509CertSignerKeyId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.SshCertSignerKeyId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.SshCertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("ServiceIdentitySystemMeta.sshCertSignerKeyId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.ClientId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.ClientId)
+		if !val.Valid {
+			return fmt.Errorf("ServiceIdentitySystemMeta.clientId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
+// GroupAuditLog - An audit log entry for group membership change.
+type GroupAuditLog struct {
+
+	//
+	// name of the group member
+	//
+	Member GroupMemberName `json:"member"`
+
+	//
+	// name of the principal executing the change
+	//
+	Admin ResourceName `json:"admin"`
+
+	//
+	// timestamp of the entry
+	//
+	Created rdl.Timestamp `json:"created"`
+
+	//
+	// log action - e.g. add, delete, approve, etc
+	//
+	Action string `json:"action"`
+
+	//
+	// audit reference string for the change as supplied by admin
+	//
+	AuditRef string `json:"auditRef" rdl:"optional" yaml:",omitempty"`
+}
+
+// NewGroupAuditLog - creates an initialized GroupAuditLog instance, returns a pointer to it
+func NewGroupAuditLog(init ...*GroupAuditLog) *GroupAuditLog {
+	var o *GroupAuditLog
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(GroupAuditLog)
+	}
+	return o
+}
+
+type rawGroupAuditLog GroupAuditLog
+
+// UnmarshalJSON is defined for proper JSON decoding of a GroupAuditLog
+func (self *GroupAuditLog) UnmarshalJSON(b []byte) error {
+	var m rawGroupAuditLog
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := GroupAuditLog(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *GroupAuditLog) Validate() error {
+	if self.Member == "" {
+		return fmt.Errorf("GroupAuditLog.member is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZMSSchema(), "GroupMemberName", self.Member)
+		if !val.Valid {
+			return fmt.Errorf("GroupAuditLog.member does not contain a valid GroupMemberName (%v)", val.Error)
+		}
+	}
+	if self.Admin == "" {
+		return fmt.Errorf("GroupAuditLog.admin is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZMSSchema(), "ResourceName", self.Admin)
+		if !val.Valid {
+			return fmt.Errorf("GroupAuditLog.admin does not contain a valid ResourceName (%v)", val.Error)
+		}
+	}
+	if self.Created.IsZero() {
+		return fmt.Errorf("GroupAuditLog: Missing required field: created")
+	}
+	if self.Action == "" {
+		return fmt.Errorf("GroupAuditLog.action is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZMSSchema(), "String", self.Action)
+		if !val.Valid {
+			return fmt.Errorf("GroupAuditLog.action does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.AuditRef != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AuditRef)
+		if !val.Valid {
+			return fmt.Errorf("GroupAuditLog.auditRef does not contain a valid String (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
+// GroupMember -
+type GroupMember struct {
+
+	//
+	// name of the member
+	//
+	MemberName GroupMemberName `json:"memberName,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// name of the group
+	//
+	GroupName ResourceName `json:"groupName,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// name of the domain
+	//
+	DomainName DomainName `json:"domainName,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// the expiration timestamp
+	//
+	Expiration *rdl.Timestamp `json:"expiration,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Flag to indicate whether membership is active
+	//
+	Active *bool `json:"active,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Flag to indicate whether membership is approved either by delegates ( in
+	// case of auditEnabled groups ) or by domain admins ( in case of selfserve
+	// groups )
+	//
+	Approved *bool `json:"approved,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// audit reference string for the change as supplied by admin
+	//
+	AuditRef string `json:"auditRef" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// for pending membership requests, the request time
+	//
+	RequestTime *rdl.Timestamp `json:"requestTime,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// for pending membership requests, time when last notification was sent
+	//
+	LastNotifiedTime *rdl.Timestamp `json:"lastNotifiedTime,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// pending members only - name of the principal requesting the change
+	//
+	RequestPrincipal ResourceName `json:"requestPrincipal,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// for pending membership requests, time when last notification was sent (for
+	// file store)
+	//
+	ReviewLastNotifiedTime *rdl.Timestamp `json:"reviewLastNotifiedTime,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// user disabled by system based on configured group setting
+	//
+	SystemDisabled *int32 `json:"systemDisabled,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// server use only - principal type: unknown(0), user(1), service(2),
+	// headless(4), or external(5)
+	//
+	PrincipalType *int32 `json:"principalType,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// for pending membership requests, the request state - e.g. add, delete
+	//
+	PendingState string `json:"pendingState" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// list of roles whose members should be notified for member
+	// review/approval/expiry
+	//
+	NotifyRoles string `json:"notifyRoles" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// additional details included in the notifications
+	//
+	NotifyDetails string `json:"notifyDetails" rdl:"optional" yaml:",omitempty"`
+}
+
+// NewGroupMember - creates an initialized GroupMember instance, returns a pointer to it
+func NewGroupMember(init ...*GroupMember) *GroupMember {
+	var o *GroupMember
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(GroupMember)
+	}
+	return o.Init()
+}
+
+// Init - sets up the instance according to its default field values, if any
+func (self *GroupMember) Init() *GroupMember {
+	if self.Active == nil {
+		d := true
+		self.Active = &d
+	}
+	if self.Approved == nil {
+		d := true
+		self.Approved = &d
+	}
+	return self
+}
+
+type rawGroupMember GroupMember
+
+// UnmarshalJSON is defined for proper JSON decoding of a GroupMember
+func (self *GroupMember) UnmarshalJSON(b []byte) error {
+	var m rawGroupMember
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := GroupMember(m)
+		*self = *((&o).Init())
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *GroupMember) Validate() error {
+	if self.MemberName != "" {
+		val := rdl.Validate(ZMSSchema(), "GroupMemberName", self.MemberName)
+		if !val.Valid {
+			return fmt.Errorf("GroupMember.memberName does not contain a valid GroupMemberName (%v)", val.Error)
+		}
+	}
+	if self.GroupName != "" {
+		val := rdl.Validate(ZMSSchema(), "ResourceName", self.GroupName)
+		if !val.Valid {
+			return fmt.Errorf("GroupMember.groupName does not contain a valid ResourceName (%v)", val.Error)
+		}
+	}
+	if self.DomainName != "" {
+		val := rdl.Validate(ZMSSchema(), "DomainName", self.DomainName)
+		if !val.Valid {
+			return fmt.Errorf("GroupMember.domainName does not contain a valid DomainName (%v)", val.Error)
+		}
+	}
+	if self.AuditRef != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AuditRef)
+		if !val.Valid {
+			return fmt.Errorf("GroupMember.auditRef does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.RequestPrincipal != "" {
+		val := rdl.Validate(ZMSSchema(), "ResourceName", self.RequestPrincipal)
+		if !val.Valid {
+			return fmt.Errorf("GroupMember.requestPrincipal does not contain a valid ResourceName (%v)", val.Error)
+		}
+	}
+	if self.PendingState != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.PendingState)
+		if !val.Valid {
+			return fmt.Errorf("GroupMember.pendingState does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.NotifyRoles != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.NotifyRoles)
+		if !val.Valid {
+			return fmt.Errorf("GroupMember.notifyRoles does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.NotifyDetails != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.NotifyDetails)
+		if !val.Valid {
+			return fmt.Errorf("GroupMember.notifyDetails does not contain a valid String (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
+// GroupMembership - The representation for a group membership.
+type GroupMembership struct {
+
+	//
+	// name of the member
+	//
+	MemberName GroupMemberName `json:"memberName"`
+
+	//
+	// flag to indicate whether or the user is a member or not
+	//
+	IsMember *bool `json:"isMember,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// name of the group
+	//
+	GroupName ResourceName `json:"groupName,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// the expiration timestamp
+	//
+	Expiration *rdl.Timestamp `json:"expiration,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Flag to indicate whether membership is active
+	//
+	Active *bool `json:"active,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Flag to indicate whether membership is approved either by delegates ( in
+	// case of auditEnabled groups ) or by domain admins ( in case of selfserve
+	// groups )
+	//
+	Approved *bool `json:"approved,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// audit reference string for the change as supplied by admin
+	//
+	AuditRef string `json:"auditRef" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// pending members only - name of the principal requesting the change
+	//
+	RequestPrincipal ResourceName `json:"requestPrincipal,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// user disabled by system based on configured group setting
+	//
+	SystemDisabled *int32 `json:"systemDisabled,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// for pending membership requests, the request state - e.g. add, delete
+	//
+	PendingState string `json:"pendingState" rdl:"optional" yaml:",omitempty"`
+}
+
+// NewGroupMembership - creates an initialized GroupMembership instance, returns a pointer to it
+func NewGroupMembership(init ...*GroupMembership) *GroupMembership {
+	var o *GroupMembership
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(GroupMembership)
+	}
+	return o.Init()
+}
+
+// Init - sets up the instance according to its default field values, if any
+func (self *GroupMembership) Init() *GroupMembership {
+	if self.IsMember == nil {
+		d := true
+		self.IsMember = &d
+	}
+	if self.Active == nil {
+		d := true
+		self.Active = &d
+	}
+	if self.Approved == nil {
+		d := true
+		self.Approved = &d
+	}
+	return self
+}
+
+type rawGroupMembership GroupMembership
+
+// UnmarshalJSON is defined for proper JSON decoding of a GroupMembership
+func (self *GroupMembership) UnmarshalJSON(b []byte) error {
+	var m rawGroupMembership
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := GroupMembership(m)
+		*self = *((&o).Init())
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *GroupMembership) Validate() error {
+	if self.MemberName == "" {
+		return fmt.Errorf("GroupMembership.memberName is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZMSSchema(), "GroupMemberName", self.MemberName)
+		if !val.Valid {
+			return fmt.Errorf("GroupMembership.memberName does not contain a valid GroupMemberName (%v)", val.Error)
+		}
+	}
+	if self.GroupName != "" {
+		val := rdl.Validate(ZMSSchema(), "ResourceName", self.GroupName)
+		if !val.Valid {
+			return fmt.Errorf("GroupMembership.groupName does not contain a valid ResourceName (%v)", val.Error)
+		}
+	}
+	if self.AuditRef != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AuditRef)
+		if !val.Valid {
+			return fmt.Errorf("GroupMembership.auditRef does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.RequestPrincipal != "" {
+		val := rdl.Validate(ZMSSchema(), "ResourceName", self.RequestPrincipal)
+		if !val.Valid {
+			return fmt.Errorf("GroupMembership.requestPrincipal does not contain a valid ResourceName (%v)", val.Error)
+		}
+	}
+	if self.PendingState != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.PendingState)
+		if !val.Valid {
+			return fmt.Errorf("GroupMembership.pendingState does not contain a valid String (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
+// ResourceGroupOwnership - The representation of the group ownership object
+type ResourceGroupOwnership struct {
+
+	//
+	// owner of the object's meta attribute
+	//
+	MetaOwner SimpleName `json:"metaOwner,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// owner of the object's members attribute
+	//
+	MembersOwner SimpleName `json:"membersOwner,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// owner of the object itself - checked for object deletion
+	//
+	ObjectOwner SimpleName `json:"objectOwner,omitempty" rdl:"optional" yaml:",omitempty"`
+}
+
+// NewResourceGroupOwnership - creates an initialized ResourceGroupOwnership instance, returns a pointer to it
+func NewResourceGroupOwnership(init ...*ResourceGroupOwnership) *ResourceGroupOwnership {
+	var o *ResourceGroupOwnership
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(ResourceGroupOwnership)
+	}
+	return o
+}
+
+type rawResourceGroupOwnership ResourceGroupOwnership
+
+// UnmarshalJSON is defined for proper JSON decoding of a ResourceGroupOwnership
+func (self *ResourceGroupOwnership) UnmarshalJSON(b []byte) error {
+	var m rawResourceGroupOwnership
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := ResourceGroupOwnership(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *ResourceGroupOwnership) Validate() error {
+	if self.MetaOwner != "" {
+		val := rdl.Validate(ZMSSchema(), "SimpleName", self.MetaOwner)
+		if !val.Valid {
+			return fmt.Errorf("ResourceGroupOwnership.metaOwner does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	if self.MembersOwner != "" {
+		val := rdl.Validate(ZMSSchema(), "SimpleName", self.MembersOwner)
+		if !val.Valid {
+			return fmt.Errorf("ResourceGroupOwnership.membersOwner does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	if self.ObjectOwner != "" {
+		val := rdl.Validate(ZMSSchema(), "SimpleName", self.ObjectOwner)
+		if !val.Valid {
+			return fmt.Errorf("ResourceGroupOwnership.objectOwner does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
+// GroupMeta - Set of metadata attributes that all groups may have and can be
+// changed by domain admins.
+type GroupMeta struct {
+
+	//
+	// Flag indicates whether or not group allows self service. Users can add
+	// themselves in the group, but it has to be approved by domain admins to be
+	// effective.
+	//
+	SelfServe *bool `json:"selfServe,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Flag indicates whether or not group updates require another review and
+	// approval
+	//
+	ReviewEnabled *bool `json:"reviewEnabled,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// list of roles whose members should be notified for member review/approval
+	//
+	NotifyRoles string `json:"notifyRoles" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// membership filtered based on user authority configured attributes
+	//
+	UserAuthorityFilter string `json:"userAuthorityFilter" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// expiration enforced by a user authority configured attribute
+	//
+	UserAuthorityExpiration string `json:"userAuthorityExpiration" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// all user members in the group will have specified max expiry days
+	//
+	MemberExpiryDays *int32 `json:"memberExpiryDays,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// all services in the group will have specified max expiry days
+	//
+	ServiceExpiryDays *int32 `json:"serviceExpiryDays,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// key-value pair tags, tag might contain multiple values
+	//
+	Tags map[TagKey]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Flag indicates whether or not group updates should require GRC approval. If
+	// true, the auditRef parameter must be supplied(not empty) for any API defining
+	// it
+	//
+	AuditEnabled *bool `json:"auditEnabled,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// If true, ask for delete confirmation in audit and review enabled groups.
+	//
+	DeleteProtection *bool `json:"deleteProtection,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// last review timestamp of the group
+	//
+	LastReviewedDate *rdl.Timestamp `json:"lastReviewedDate,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Flag indicates whether to allow expired members to renew their membership
+	//
+	SelfRenew *bool `json:"selfRenew,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Number of minutes members can renew their membership if self review option
+	// is enabled
+	//
+	SelfRenewMins *int32 `json:"selfRenewMins,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Maximum number of members allowed in the group
+	//
+	MaxMembers *int32 `json:"maxMembers,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// ownership information for the group (read-only attribute)
+	//
+	ResourceOwnership *ResourceGroupOwnership `json:"resourceOwnership,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// membership filtered based on configured principal domains
+	//
+	PrincipalDomainFilter string `json:"principalDomainFilter" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// additional details included in the notifications
+	//
+	NotifyDetails string `json:"notifyDetails" rdl:"optional" yaml:",omitempty"`
+}
+
+// NewGroupMeta - creates an initialized GroupMeta instance, returns a pointer to it
+func NewGroupMeta(init ...*GroupMeta) *GroupMeta {
+	var o *GroupMeta
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(GroupMeta)
+	}
+	return o
+}
+
+type rawGroupMeta GroupMeta
+
+// UnmarshalJSON is defined for proper JSON decoding of a GroupMeta
+func (self *GroupMeta) UnmarshalJSON(b []byte) error {
+	var m rawGroupMeta
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := GroupMeta(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *GroupMeta) Validate() error {
+	if self.NotifyRoles != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.NotifyRoles)
+		if !val.Valid {
+			return fmt.Errorf("GroupMeta.notifyRoles does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.UserAuthorityFilter != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.UserAuthorityFilter)
+		if !val.Valid {
+			return fmt.Errorf("GroupMeta.userAuthorityFilter does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.UserAuthorityExpiration != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.UserAuthorityExpiration)
+		if !val.Valid {
+			return fmt.Errorf("GroupMeta.userAuthorityExpiration does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.PrincipalDomainFilter != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.PrincipalDomainFilter)
+		if !val.Valid {
+			return fmt.Errorf("GroupMeta.principalDomainFilter does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.NotifyDetails != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.NotifyDetails)
+		if !val.Valid {
+			return fmt.Errorf("GroupMeta.notifyDetails does not contain a valid String (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
+// Group - The representation for a Group with set of members.
+type Group struct {
+
+	//
+	// Flag indicates whether or not group allows self service. Users can add
+	// themselves in the group, but it has to be approved by domain admins to be
+	// effective.
+	//
+	SelfServe *bool `json:"selfServe,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Flag indicates whether or not group updates require another review and
+	// approval
+	//
+	ReviewEnabled *bool `json:"reviewEnabled,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// list of roles whose members should be notified for member review/approval
+	//
+	NotifyRoles string `json:"notifyRoles" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// membership filtered based on user authority configured attributes
+	//
+	UserAuthorityFilter string `json:"userAuthorityFilter" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// expiration enforced by a user authority configured attribute
+	//
+	UserAuthorityExpiration string `json:"userAuthorityExpiration" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// all user members in the group will have specified max expiry days
+	//
+	MemberExpiryDays *int32 `json:"memberExpiryDays,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// all services in the group will have specified max expiry days
+	//
+	ServiceExpiryDays *int32 `json:"serviceExpiryDays,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// key-value pair tags, tag might contain multiple values
+	//
+	Tags map[TagKey]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Flag indicates whether or not group updates should require GRC approval. If
+	// true, the auditRef parameter must be supplied(not empty) for any API defining
+	// it
+	//
+	AuditEnabled *bool `json:"auditEnabled,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// If true, ask for delete confirmation in audit and review enabled groups.
+	//
+	DeleteProtection *bool `json:"deleteProtection,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// last review timestamp of the group
+	//
+	LastReviewedDate *rdl.Timestamp `json:"lastReviewedDate,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Flag indicates whether to allow expired members to renew their membership
+	//
+	SelfRenew *bool `json:"selfRenew,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Number of minutes members can renew their membership if self review option
+	// is enabled
+	//
+	SelfRenewMins *int32 `json:"selfRenewMins,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Maximum number of members allowed in the group
+	//
+	MaxMembers *int32 `json:"maxMembers,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// ownership information for the group (read-only attribute)
+	//
+	ResourceOwnership *ResourceGroupOwnership `json:"resourceOwnership,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// membership filtered based on configured principal domains
+	//
+	PrincipalDomainFilter string `json:"principalDomainFilter" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// additional details included in the notifications
+	//
+	NotifyDetails string `json:"notifyDetails" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// name of the group
+	//
+	Name ResourceName `json:"name"`
+
+	//
+	// last modification timestamp of the group
+	//
+	Modified *rdl.Timestamp `json:"modified,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// members with expiration
+	//
+	GroupMembers []*GroupMember `json:"groupMembers,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// an audit log for group membership changes
+	//
+	AuditLog []*GroupAuditLog `json:"auditLog,omitempty" rdl:"optional" yaml:",omitempty"`
+}
+
+// NewGroup - creates an initialized Group instance, returns a pointer to it
+func NewGroup(init ...*Group) *Group {
+	var o *Group
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(Group)
+	}
+	return o
+}
+
+type rawGroup Group
+
+// UnmarshalJSON is defined for proper JSON decoding of a Group
+func (self *Group) UnmarshalJSON(b []byte) error {
+	var m rawGroup
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := Group(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *Group) Validate() error {
+	if self.NotifyRoles != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.NotifyRoles)
+		if !val.Valid {
+			return fmt.Errorf("Group.notifyRoles does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.UserAuthorityFilter != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.UserAuthorityFilter)
+		if !val.Valid {
+			return fmt.Errorf("Group.userAuthorityFilter does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.UserAuthorityExpiration != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.UserAuthorityExpiration)
+		if !val.Valid {
+			return fmt.Errorf("Group.userAuthorityExpiration does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.PrincipalDomainFilter != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.PrincipalDomainFilter)
+		if !val.Valid {
+			return fmt.Errorf("Group.principalDomainFilter does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.NotifyDetails != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.NotifyDetails)
+		if !val.Valid {
+			return fmt.Errorf("Group.notifyDetails does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Name == "" {
+		return fmt.Errorf("Group.name is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZMSSchema(), "ResourceName", self.Name)
+		if !val.Valid {
+			return fmt.Errorf("Group.name does not contain a valid ResourceName (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
+// Groups - The representation for a list of groups with full details
+type Groups struct {
+
+	//
+	// list of group objects
+	//
+	List []*Group `json:"list"`
+}
+
+// NewGroups - creates an initialized Groups instance, returns a pointer to it
+func NewGroups(init ...*Groups) *Groups {
+	var o *Groups
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(Groups)
+	}
+	return o.Init()
+}
+
+// Init - sets up the instance according to its default field values, if any
+func (self *Groups) Init() *Groups {
+	if self.List == nil {
+		self.List = make([]*Group, 0)
+	}
+	return self
+}
+
+type rawGroups Groups
+
+// UnmarshalJSON is defined for proper JSON decoding of a Groups
+func (self *Groups) UnmarshalJSON(b []byte) error {
+	var m rawGroups
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := Groups(m)
+		*self = *((&o).Init())
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *Groups) Validate() error {
+	if self.List == nil {
+		return fmt.Errorf("Groups: Missing required field: list")
+	}
+	return nil
+}
+
+// DomainGroupMember -
+type DomainGroupMember struct {
+
+	//
+	// name of the member
+	//
+	MemberName GroupMemberName `json:"memberName"`
+
+	//
+	// groups for this member
+	//
+	MemberGroups []*GroupMember `json:"memberGroups"`
+}
+
+// NewDomainGroupMember - creates an initialized DomainGroupMember instance, returns a pointer to it
+func NewDomainGroupMember(init ...*DomainGroupMember) *DomainGroupMember {
+	var o *DomainGroupMember
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(DomainGroupMember)
+	}
+	return o.Init()
+}
+
+// Init - sets up the instance according to its default field values, if any
+func (self *DomainGroupMember) Init() *DomainGroupMember {
+	if self.MemberGroups == nil {
+		self.MemberGroups = make([]*GroupMember, 0)
+	}
+	return self
+}
+
+type rawDomainGroupMember DomainGroupMember
+
+// UnmarshalJSON is defined for proper JSON decoding of a DomainGroupMember
+func (self *DomainGroupMember) UnmarshalJSON(b []byte) error {
+	var m rawDomainGroupMember
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := DomainGroupMember(m)
+		*self = *((&o).Init())
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *DomainGroupMember) Validate() error {
+	if self.MemberName == "" {
+		return fmt.Errorf("DomainGroupMember.memberName is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZMSSchema(), "GroupMemberName", self.MemberName)
+		if !val.Valid {
+			return fmt.Errorf("DomainGroupMember.memberName does not contain a valid GroupMemberName (%v)", val.Error)
+		}
+	}
+	if self.MemberGroups == nil {
+		return fmt.Errorf("DomainGroupMember: Missing required field: memberGroups")
+	}
+	return nil
+}
+
+// DomainGroupMembers -
+type DomainGroupMembers struct {
+
+	//
+	// name of the domain
+	//
+	DomainName DomainName `json:"domainName"`
+
+	//
+	// group members
+	//
+	Members []*DomainGroupMember `json:"members"`
+}
+
+// NewDomainGroupMembers - creates an initialized DomainGroupMembers instance, returns a pointer to it
+func NewDomainGroupMembers(init ...*DomainGroupMembers) *DomainGroupMembers {
+	var o *DomainGroupMembers
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(DomainGroupMembers)
+	}
+	return o.Init()
+}
+
+// Init - sets up the instance according to its default field values, if any
+func (self *DomainGroupMembers) Init() *DomainGroupMembers {
+	if self.Members == nil {
+		self.Members = make([]*DomainGroupMember, 0)
+	}
+	return self
+}
+
+type rawDomainGroupMembers DomainGroupMembers
+
+// UnmarshalJSON is defined for proper JSON decoding of a DomainGroupMembers
+func (self *DomainGroupMembers) UnmarshalJSON(b []byte) error {
+	var m rawDomainGroupMembers
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := DomainGroupMembers(m)
+		*self = *((&o).Init())
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *DomainGroupMembers) Validate() error {
+	if self.DomainName == "" {
+		return fmt.Errorf("DomainGroupMembers.domainName is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZMSSchema(), "DomainName", self.DomainName)
+		if !val.Valid {
+			return fmt.Errorf("DomainGroupMembers.domainName does not contain a valid DomainName (%v)", val.Error)
+		}
+	}
+	if self.Members == nil {
+		return fmt.Errorf("DomainGroupMembers: Missing required field: members")
+	}
+	return nil
+}
+
+// DomainGroupMembership -
+type DomainGroupMembership struct {
+	DomainGroupMembersList []*DomainGroupMembers `json:"domainGroupMembersList"`
+}
+
+// NewDomainGroupMembership - creates an initialized DomainGroupMembership instance, returns a pointer to it
+func NewDomainGroupMembership(init ...*DomainGroupMembership) *DomainGroupMembership {
+	var o *DomainGroupMembership
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(DomainGroupMembership)
+	}
+	return o.Init()
+}
+
+// Init - sets up the instance according to its default field values, if any
+func (self *DomainGroupMembership) Init() *DomainGroupMembership {
+	if self.DomainGroupMembersList == nil {
+		self.DomainGroupMembersList = make([]*DomainGroupMembers, 0)
+	}
+	return self
+}
+
+type rawDomainGroupMembership DomainGroupMembership
+
+// UnmarshalJSON is defined for proper JSON decoding of a DomainGroupMembership
+func (self *DomainGroupMembership) UnmarshalJSON(b []byte) error {
+	var m rawDomainGroupMembership
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := DomainGroupMembership(m)
+		*self = *((&o).Init())
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *DomainGroupMembership) Validate() error {
+	if self.DomainGroupMembersList == nil {
+		return fmt.Errorf("DomainGroupMembership: Missing required field: domainGroupMembersList")
+	}
+	return nil
+}
+
+// GroupSystemMeta - Set of system metadata attributes that all groups may have
+// and can be changed by system admins.
+type GroupSystemMeta struct {
+
+	//
+	// Flag indicates whether or not group updates should be approved by GRC. If
+	// true, the auditRef parameter must be supplied(not empty) for any API defining
+	// it.
+	//
+	AuditEnabled *bool `json:"auditEnabled,omitempty" rdl:"optional" yaml:",omitempty"`
+}
+
+// NewGroupSystemMeta - creates an initialized GroupSystemMeta instance, returns a pointer to it
+func NewGroupSystemMeta(init ...*GroupSystemMeta) *GroupSystemMeta {
+	var o *GroupSystemMeta
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(GroupSystemMeta)
+	}
+	return o
+}
+
+type rawGroupSystemMeta GroupSystemMeta
+
+// UnmarshalJSON is defined for proper JSON decoding of a GroupSystemMeta
+func (self *GroupSystemMeta) UnmarshalJSON(b []byte) error {
+	var m rawGroupSystemMeta
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := GroupSystemMeta(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *GroupSystemMeta) Validate() error {
 	return nil
 }
 
@@ -3092,6 +4985,12 @@ type TemplateMetaData struct {
 	// template
 	//
 	AutoUpdate *bool `json:"autoUpdate,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// require existing direct admins to retain delegated access; omitted inherits
+	// the ZMS default
+	//
+	PreserveAdminAccess *bool `json:"preserveAdminAccess,omitempty" rdl:"optional" yaml:",omitempty"`
 }
 
 // NewTemplateMetaData - creates an initialized TemplateMetaData instance, returns a pointer to it
@@ -3154,6 +5053,11 @@ type Template struct {
 	// list of policies defined in this template
 	//
 	Policies []*Policy `json:"policies"`
+
+	//
+	// list of groups defined in this template
+	//
+	Groups []*Group `json:"groups,omitempty" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// list of services defined in this template
@@ -3275,7 +5179,7 @@ type TemplateParam struct {
 	//
 	// value of the parameter
 	//
-	Value CompoundName `json:"value"`
+	Value string `json:"value"`
 }
 
 // NewTemplateParam - creates an initialized TemplateParam instance, returns a pointer to it
@@ -3316,9 +5220,9 @@ func (self *TemplateParam) Validate() error {
 	if self.Value == "" {
 		return fmt.Errorf("TemplateParam.value is missing but is a required field")
 	} else {
-		val := rdl.Validate(ZMSSchema(), "CompoundName", self.Value)
+		val := rdl.Validate(ZMSSchema(), "String", self.Value)
 		if !val.Valid {
-			return fmt.Errorf("TemplateParam.value does not contain a valid CompoundName (%v)", val.Error)
+			return fmt.Errorf("TemplateParam.value does not contain a valid String (%v)", val.Error)
 		}
 	}
 	return nil
@@ -3563,6 +5467,11 @@ type TopLevelDomain struct {
 	Account string `json:"account" rdl:"optional" yaml:",omitempty"`
 
 	//
+	// associated aws account name (system attribute)
+	//
+	AwsAccountName string `json:"awsAccountName" rdl:"optional" yaml:",omitempty"`
+
+	//
 	// associated product id (system attribute - uniqueness check - if enabled)
 	//
 	YpmId *int32 `json:"ypmId,omitempty" rdl:"optional" yaml:",omitempty"`
@@ -3601,7 +5510,7 @@ type TopLevelDomain struct {
 	//
 	// rsa or ec signing algorithm to be used for tokens
 	//
-	SignAlgorithm SimpleName `json:"signAlgorithm,omitempty" rdl:"optional" yaml:",omitempty"`
+	SignAlgorithm string `json:"signAlgorithm" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// all services in the domain roles will have specified max expiry days
@@ -3625,6 +5534,16 @@ type TopLevelDomain struct {
 	AzureSubscription string `json:"azureSubscription" rdl:"optional" yaml:",omitempty"`
 
 	//
+	// associated azure tenant id (system attribute)
+	//
+	AzureTenant string `json:"azureTenant" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// associated azure client id (system attribute)
+	//
+	AzureClient string `json:"azureClient" rdl:"optional" yaml:",omitempty"`
+
+	//
 	// associated gcp project id (system attribute - uniqueness check - if
 	// enabled)
 	//
@@ -3638,7 +5557,7 @@ type TopLevelDomain struct {
 	//
 	// key-value pair tags, tag might contain multiple values
 	//
-	Tags map[CompoundName]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
+	Tags map[TagKey]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// associated business service with domain
@@ -3659,6 +5578,64 @@ type TopLevelDomain struct {
 	// features enabled per domain (system attribute)
 	//
 	FeatureFlags *int32 `json:"featureFlags,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// list of domain contacts (PE-Owner, Product-Owner, etc), each type can have
+	// a single value
+	//
+	Contacts map[SimpleName]string `json:"contacts,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// domain environment e.g. production, staging, etc
+	//
+	Environment string `json:"environment" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// ownership information for the domain (read-only attribute)
+	//
+	ResourceOwnership *ResourceDomainOwnership `json:"resourceOwnership,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// requested x509 cert signer key id (system attribute)
+	//
+	X509CertSignerKeyId string `json:"x509CertSignerKeyId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// requested ssh cert signer key id (system attribute)
+	//
+	SshCertSignerKeyId string `json:"sshCertSignerKeyId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// slack channel for any notifications in this domain
+	//
+	SlackChannel string `json:"slackChannel" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// oncall team name/id for any incidents in this domain
+	//
+	OnCall string `json:"onCall" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Indicates whether to automatically delete assertions for a tenant's assume
+	// role
+	//
+	AutoDeleteTenantAssumeRoleAssertions *bool `json:"autoDeleteTenantAssumeRoleAssertions,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Indicates whether client ID self-update is enabled for services in this
+	// domain
+	//
+	ClientIdSelfUpdate *bool `json:"clientIdSelfUpdate,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// class name responsible for validating external members
+	//
+	ExternalMemberValidator string `json:"externalMemberValidator" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// cost center for this domain for any chargebacks
+	//
+	CostCenter string `json:"costCenter" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// name of the domain
@@ -3696,6 +5673,14 @@ func (self *TopLevelDomain) Init() *TopLevelDomain {
 	if self.AuditEnabled == nil {
 		d := false
 		self.AuditEnabled = &d
+	}
+	if self.AutoDeleteTenantAssumeRoleAssertions == nil {
+		d := false
+		self.AutoDeleteTenantAssumeRoleAssertions = &d
+	}
+	if self.ClientIdSelfUpdate == nil {
+		d := false
+		self.ClientIdSelfUpdate = &d
 	}
 	if self.AdminUsers == nil {
 		self.AdminUsers = make([]ResourceName, 0)
@@ -3737,6 +5722,12 @@ func (self *TopLevelDomain) Validate() error {
 			return fmt.Errorf("TopLevelDomain.account does not contain a valid String (%v)", val.Error)
 		}
 	}
+	if self.AwsAccountName != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AwsAccountName)
+		if !val.Valid {
+			return fmt.Errorf("TopLevelDomain.awsAccountName does not contain a valid String (%v)", val.Error)
+		}
+	}
 	if self.ApplicationId != "" {
 		val := rdl.Validate(ZMSSchema(), "String", self.ApplicationId)
 		if !val.Valid {
@@ -3750,9 +5741,9 @@ func (self *TopLevelDomain) Validate() error {
 		}
 	}
 	if self.SignAlgorithm != "" {
-		val := rdl.Validate(ZMSSchema(), "SimpleName", self.SignAlgorithm)
+		val := rdl.Validate(ZMSSchema(), "String", self.SignAlgorithm)
 		if !val.Valid {
-			return fmt.Errorf("TopLevelDomain.signAlgorithm does not contain a valid SimpleName (%v)", val.Error)
+			return fmt.Errorf("TopLevelDomain.signAlgorithm does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.UserAuthorityFilter != "" {
@@ -3765,6 +5756,18 @@ func (self *TopLevelDomain) Validate() error {
 		val := rdl.Validate(ZMSSchema(), "String", self.AzureSubscription)
 		if !val.Valid {
 			return fmt.Errorf("TopLevelDomain.azureSubscription does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.AzureTenant != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AzureTenant)
+		if !val.Valid {
+			return fmt.Errorf("TopLevelDomain.azureTenant does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.AzureClient != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AzureClient)
+		if !val.Valid {
+			return fmt.Errorf("TopLevelDomain.azureClient does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.GcpProject != "" {
@@ -3789,6 +5792,48 @@ func (self *TopLevelDomain) Validate() error {
 		val := rdl.Validate(ZMSSchema(), "String", self.ProductId)
 		if !val.Valid {
 			return fmt.Errorf("TopLevelDomain.productId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Environment != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.Environment)
+		if !val.Valid {
+			return fmt.Errorf("TopLevelDomain.environment does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.X509CertSignerKeyId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.X509CertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("TopLevelDomain.x509CertSignerKeyId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.SshCertSignerKeyId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.SshCertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("TopLevelDomain.sshCertSignerKeyId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.SlackChannel != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.SlackChannel)
+		if !val.Valid {
+			return fmt.Errorf("TopLevelDomain.slackChannel does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.OnCall != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.OnCall)
+		if !val.Valid {
+			return fmt.Errorf("TopLevelDomain.onCall does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.ExternalMemberValidator != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.ExternalMemberValidator)
+		if !val.Valid {
+			return fmt.Errorf("TopLevelDomain.externalMemberValidator does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.CostCenter != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.CostCenter)
+		if !val.Valid {
+			return fmt.Errorf("TopLevelDomain.costCenter does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.Name == "" {
@@ -3837,6 +5882,11 @@ type SubDomain struct {
 	Account string `json:"account" rdl:"optional" yaml:",omitempty"`
 
 	//
+	// associated aws account name (system attribute)
+	//
+	AwsAccountName string `json:"awsAccountName" rdl:"optional" yaml:",omitempty"`
+
+	//
 	// associated product id (system attribute - uniqueness check - if enabled)
 	//
 	YpmId *int32 `json:"ypmId,omitempty" rdl:"optional" yaml:",omitempty"`
@@ -3875,7 +5925,7 @@ type SubDomain struct {
 	//
 	// rsa or ec signing algorithm to be used for tokens
 	//
-	SignAlgorithm SimpleName `json:"signAlgorithm,omitempty" rdl:"optional" yaml:",omitempty"`
+	SignAlgorithm string `json:"signAlgorithm" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// all services in the domain roles will have specified max expiry days
@@ -3899,6 +5949,16 @@ type SubDomain struct {
 	AzureSubscription string `json:"azureSubscription" rdl:"optional" yaml:",omitempty"`
 
 	//
+	// associated azure tenant id (system attribute)
+	//
+	AzureTenant string `json:"azureTenant" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// associated azure client id (system attribute)
+	//
+	AzureClient string `json:"azureClient" rdl:"optional" yaml:",omitempty"`
+
+	//
 	// associated gcp project id (system attribute - uniqueness check - if
 	// enabled)
 	//
@@ -3912,7 +5972,7 @@ type SubDomain struct {
 	//
 	// key-value pair tags, tag might contain multiple values
 	//
-	Tags map[CompoundName]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
+	Tags map[TagKey]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// associated business service with domain
@@ -3933,6 +5993,64 @@ type SubDomain struct {
 	// features enabled per domain (system attribute)
 	//
 	FeatureFlags *int32 `json:"featureFlags,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// list of domain contacts (PE-Owner, Product-Owner, etc), each type can have
+	// a single value
+	//
+	Contacts map[SimpleName]string `json:"contacts,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// domain environment e.g. production, staging, etc
+	//
+	Environment string `json:"environment" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// ownership information for the domain (read-only attribute)
+	//
+	ResourceOwnership *ResourceDomainOwnership `json:"resourceOwnership,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// requested x509 cert signer key id (system attribute)
+	//
+	X509CertSignerKeyId string `json:"x509CertSignerKeyId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// requested ssh cert signer key id (system attribute)
+	//
+	SshCertSignerKeyId string `json:"sshCertSignerKeyId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// slack channel for any notifications in this domain
+	//
+	SlackChannel string `json:"slackChannel" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// oncall team name/id for any incidents in this domain
+	//
+	OnCall string `json:"onCall" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Indicates whether to automatically delete assertions for a tenant's assume
+	// role
+	//
+	AutoDeleteTenantAssumeRoleAssertions *bool `json:"autoDeleteTenantAssumeRoleAssertions,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Indicates whether client ID self-update is enabled for services in this
+	// domain
+	//
+	ClientIdSelfUpdate *bool `json:"clientIdSelfUpdate,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// class name responsible for validating external members
+	//
+	ExternalMemberValidator string `json:"externalMemberValidator" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// cost center for this domain for any chargebacks
+	//
+	CostCenter string `json:"costCenter" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// name of the domain
@@ -3976,6 +6094,14 @@ func (self *SubDomain) Init() *SubDomain {
 		d := false
 		self.AuditEnabled = &d
 	}
+	if self.AutoDeleteTenantAssumeRoleAssertions == nil {
+		d := false
+		self.AutoDeleteTenantAssumeRoleAssertions = &d
+	}
+	if self.ClientIdSelfUpdate == nil {
+		d := false
+		self.ClientIdSelfUpdate = &d
+	}
 	if self.AdminUsers == nil {
 		self.AdminUsers = make([]ResourceName, 0)
 	}
@@ -4016,6 +6142,12 @@ func (self *SubDomain) Validate() error {
 			return fmt.Errorf("SubDomain.account does not contain a valid String (%v)", val.Error)
 		}
 	}
+	if self.AwsAccountName != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AwsAccountName)
+		if !val.Valid {
+			return fmt.Errorf("SubDomain.awsAccountName does not contain a valid String (%v)", val.Error)
+		}
+	}
 	if self.ApplicationId != "" {
 		val := rdl.Validate(ZMSSchema(), "String", self.ApplicationId)
 		if !val.Valid {
@@ -4029,9 +6161,9 @@ func (self *SubDomain) Validate() error {
 		}
 	}
 	if self.SignAlgorithm != "" {
-		val := rdl.Validate(ZMSSchema(), "SimpleName", self.SignAlgorithm)
+		val := rdl.Validate(ZMSSchema(), "String", self.SignAlgorithm)
 		if !val.Valid {
-			return fmt.Errorf("SubDomain.signAlgorithm does not contain a valid SimpleName (%v)", val.Error)
+			return fmt.Errorf("SubDomain.signAlgorithm does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.UserAuthorityFilter != "" {
@@ -4044,6 +6176,18 @@ func (self *SubDomain) Validate() error {
 		val := rdl.Validate(ZMSSchema(), "String", self.AzureSubscription)
 		if !val.Valid {
 			return fmt.Errorf("SubDomain.azureSubscription does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.AzureTenant != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AzureTenant)
+		if !val.Valid {
+			return fmt.Errorf("SubDomain.azureTenant does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.AzureClient != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AzureClient)
+		if !val.Valid {
+			return fmt.Errorf("SubDomain.azureClient does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.GcpProject != "" {
@@ -4068,6 +6212,48 @@ func (self *SubDomain) Validate() error {
 		val := rdl.Validate(ZMSSchema(), "String", self.ProductId)
 		if !val.Valid {
 			return fmt.Errorf("SubDomain.productId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Environment != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.Environment)
+		if !val.Valid {
+			return fmt.Errorf("SubDomain.environment does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.X509CertSignerKeyId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.X509CertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("SubDomain.x509CertSignerKeyId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.SshCertSignerKeyId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.SshCertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("SubDomain.sshCertSignerKeyId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.SlackChannel != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.SlackChannel)
+		if !val.Valid {
+			return fmt.Errorf("SubDomain.slackChannel does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.OnCall != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.OnCall)
+		if !val.Valid {
+			return fmt.Errorf("SubDomain.onCall does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.ExternalMemberValidator != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.ExternalMemberValidator)
+		if !val.Valid {
+			return fmt.Errorf("SubDomain.externalMemberValidator does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.CostCenter != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.CostCenter)
+		if !val.Valid {
+			return fmt.Errorf("SubDomain.costCenter does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.Name == "" {
@@ -4125,6 +6311,11 @@ type UserDomain struct {
 	Account string `json:"account" rdl:"optional" yaml:",omitempty"`
 
 	//
+	// associated aws account name (system attribute)
+	//
+	AwsAccountName string `json:"awsAccountName" rdl:"optional" yaml:",omitempty"`
+
+	//
 	// associated product id (system attribute - uniqueness check - if enabled)
 	//
 	YpmId *int32 `json:"ypmId,omitempty" rdl:"optional" yaml:",omitempty"`
@@ -4163,7 +6354,7 @@ type UserDomain struct {
 	//
 	// rsa or ec signing algorithm to be used for tokens
 	//
-	SignAlgorithm SimpleName `json:"signAlgorithm,omitempty" rdl:"optional" yaml:",omitempty"`
+	SignAlgorithm string `json:"signAlgorithm" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// all services in the domain roles will have specified max expiry days
@@ -4187,6 +6378,16 @@ type UserDomain struct {
 	AzureSubscription string `json:"azureSubscription" rdl:"optional" yaml:",omitempty"`
 
 	//
+	// associated azure tenant id (system attribute)
+	//
+	AzureTenant string `json:"azureTenant" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// associated azure client id (system attribute)
+	//
+	AzureClient string `json:"azureClient" rdl:"optional" yaml:",omitempty"`
+
+	//
 	// associated gcp project id (system attribute - uniqueness check - if
 	// enabled)
 	//
@@ -4200,7 +6401,7 @@ type UserDomain struct {
 	//
 	// key-value pair tags, tag might contain multiple values
 	//
-	Tags map[CompoundName]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
+	Tags map[TagKey]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// associated business service with domain
@@ -4221,6 +6422,64 @@ type UserDomain struct {
 	// features enabled per domain (system attribute)
 	//
 	FeatureFlags *int32 `json:"featureFlags,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// list of domain contacts (PE-Owner, Product-Owner, etc), each type can have
+	// a single value
+	//
+	Contacts map[SimpleName]string `json:"contacts,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// domain environment e.g. production, staging, etc
+	//
+	Environment string `json:"environment" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// ownership information for the domain (read-only attribute)
+	//
+	ResourceOwnership *ResourceDomainOwnership `json:"resourceOwnership,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// requested x509 cert signer key id (system attribute)
+	//
+	X509CertSignerKeyId string `json:"x509CertSignerKeyId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// requested ssh cert signer key id (system attribute)
+	//
+	SshCertSignerKeyId string `json:"sshCertSignerKeyId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// slack channel for any notifications in this domain
+	//
+	SlackChannel string `json:"slackChannel" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// oncall team name/id for any incidents in this domain
+	//
+	OnCall string `json:"onCall" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Indicates whether to automatically delete assertions for a tenant's assume
+	// role
+	//
+	AutoDeleteTenantAssumeRoleAssertions *bool `json:"autoDeleteTenantAssumeRoleAssertions,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Indicates whether client ID self-update is enabled for services in this
+	// domain
+	//
+	ClientIdSelfUpdate *bool `json:"clientIdSelfUpdate,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// class name responsible for validating external members
+	//
+	ExternalMemberValidator string `json:"externalMemberValidator" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// cost center for this domain for any chargebacks
+	//
+	CostCenter string `json:"costCenter" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// user id which will be the domain name
@@ -4253,6 +6512,14 @@ func (self *UserDomain) Init() *UserDomain {
 	if self.AuditEnabled == nil {
 		d := false
 		self.AuditEnabled = &d
+	}
+	if self.AutoDeleteTenantAssumeRoleAssertions == nil {
+		d := false
+		self.AutoDeleteTenantAssumeRoleAssertions = &d
+	}
+	if self.ClientIdSelfUpdate == nil {
+		d := false
+		self.ClientIdSelfUpdate = &d
 	}
 	return self
 }
@@ -4291,6 +6558,12 @@ func (self *UserDomain) Validate() error {
 			return fmt.Errorf("UserDomain.account does not contain a valid String (%v)", val.Error)
 		}
 	}
+	if self.AwsAccountName != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AwsAccountName)
+		if !val.Valid {
+			return fmt.Errorf("UserDomain.awsAccountName does not contain a valid String (%v)", val.Error)
+		}
+	}
 	if self.ApplicationId != "" {
 		val := rdl.Validate(ZMSSchema(), "String", self.ApplicationId)
 		if !val.Valid {
@@ -4304,9 +6577,9 @@ func (self *UserDomain) Validate() error {
 		}
 	}
 	if self.SignAlgorithm != "" {
-		val := rdl.Validate(ZMSSchema(), "SimpleName", self.SignAlgorithm)
+		val := rdl.Validate(ZMSSchema(), "String", self.SignAlgorithm)
 		if !val.Valid {
-			return fmt.Errorf("UserDomain.signAlgorithm does not contain a valid SimpleName (%v)", val.Error)
+			return fmt.Errorf("UserDomain.signAlgorithm does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.UserAuthorityFilter != "" {
@@ -4319,6 +6592,18 @@ func (self *UserDomain) Validate() error {
 		val := rdl.Validate(ZMSSchema(), "String", self.AzureSubscription)
 		if !val.Valid {
 			return fmt.Errorf("UserDomain.azureSubscription does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.AzureTenant != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AzureTenant)
+		if !val.Valid {
+			return fmt.Errorf("UserDomain.azureTenant does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.AzureClient != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AzureClient)
+		if !val.Valid {
+			return fmt.Errorf("UserDomain.azureClient does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.GcpProject != "" {
@@ -4343,6 +6628,48 @@ func (self *UserDomain) Validate() error {
 		val := rdl.Validate(ZMSSchema(), "String", self.ProductId)
 		if !val.Valid {
 			return fmt.Errorf("UserDomain.productId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Environment != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.Environment)
+		if !val.Valid {
+			return fmt.Errorf("UserDomain.environment does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.X509CertSignerKeyId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.X509CertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("UserDomain.x509CertSignerKeyId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.SshCertSignerKeyId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.SshCertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("UserDomain.sshCertSignerKeyId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.SlackChannel != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.SlackChannel)
+		if !val.Valid {
+			return fmt.Errorf("UserDomain.slackChannel does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.OnCall != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.OnCall)
+		if !val.Valid {
+			return fmt.Errorf("UserDomain.onCall does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.ExternalMemberValidator != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.ExternalMemberValidator)
+		if !val.Valid {
+			return fmt.Errorf("UserDomain.externalMemberValidator does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.CostCenter != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.CostCenter)
+		if !val.Valid {
+			return fmt.Errorf("UserDomain.costCenter does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.Name == "" {
@@ -4412,27 +6739,27 @@ type AuthHistory struct {
 	//
 	// Name of the domain from URI
 	//
-	UriDomain DomainName `json:"uriDomain"`
+	UriDomain DomainName `json:"uriDomain,omitempty" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// Principal domain
 	//
-	PrincipalDomain DomainName `json:"principalDomain"`
+	PrincipalDomain DomainName `json:"principalDomain,omitempty" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// Principal name
 	//
-	PrincipalName SimpleName `json:"principalName"`
+	PrincipalName SimpleName `json:"principalName,omitempty" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// Last authorization event timestamp
 	//
-	Timestamp rdl.Timestamp `json:"timestamp"`
+	Timestamp *rdl.Timestamp `json:"timestamp,omitempty" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// Last authorization endpoint used
 	//
-	Endpoint string `json:"endpoint"`
+	Endpoint string `json:"endpoint" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// Time until the record will expire
@@ -4467,36 +6794,25 @@ func (self *AuthHistory) UnmarshalJSON(b []byte) error {
 
 // Validate - checks for missing required fields, etc
 func (self *AuthHistory) Validate() error {
-	if self.UriDomain == "" {
-		return fmt.Errorf("AuthHistory.uriDomain is missing but is a required field")
-	} else {
+	if self.UriDomain != "" {
 		val := rdl.Validate(ZMSSchema(), "DomainName", self.UriDomain)
 		if !val.Valid {
 			return fmt.Errorf("AuthHistory.uriDomain does not contain a valid DomainName (%v)", val.Error)
 		}
 	}
-	if self.PrincipalDomain == "" {
-		return fmt.Errorf("AuthHistory.principalDomain is missing but is a required field")
-	} else {
+	if self.PrincipalDomain != "" {
 		val := rdl.Validate(ZMSSchema(), "DomainName", self.PrincipalDomain)
 		if !val.Valid {
 			return fmt.Errorf("AuthHistory.principalDomain does not contain a valid DomainName (%v)", val.Error)
 		}
 	}
-	if self.PrincipalName == "" {
-		return fmt.Errorf("AuthHistory.principalName is missing but is a required field")
-	} else {
+	if self.PrincipalName != "" {
 		val := rdl.Validate(ZMSSchema(), "SimpleName", self.PrincipalName)
 		if !val.Valid {
 			return fmt.Errorf("AuthHistory.principalName does not contain a valid SimpleName (%v)", val.Error)
 		}
 	}
-	if self.Timestamp.IsZero() {
-		return fmt.Errorf("AuthHistory: Missing required field: timestamp")
-	}
-	if self.Endpoint == "" {
-		return fmt.Errorf("AuthHistory.endpoint is missing but is a required field")
-	} else {
+	if self.Endpoint != "" {
 		val := rdl.Validate(ZMSSchema(), "String", self.Endpoint)
 		if !val.Valid {
 			return fmt.Errorf("AuthHistory.endpoint does not contain a valid String (%v)", val.Error)
@@ -4562,6 +6878,175 @@ func (self *AuthHistoryDependencies) Validate() error {
 	}
 	if self.OutgoingDependencies == nil {
 		return fmt.Errorf("AuthHistoryDependencies: Missing required field: outgoingDependencies")
+	}
+	return nil
+}
+
+// DomainAuditLogEntry - A single audit log record for a change made in the
+// domain
+type DomainAuditLogEntry struct {
+
+	//
+	// name of the api that made the change e.g. putRole
+	//
+	Api string `json:"api"`
+
+	//
+	// name of the entity that was changed e.g. role, group, policy name
+	//
+	Entity string `json:"entity" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// principal that made the change
+	//
+	Principal string `json:"principal"`
+
+	//
+	// IP address of the client that made the change
+	//
+	ClientIp string `json:"clientIp" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// timestamp when the change was made
+	//
+	Timestamp rdl.Timestamp `json:"timestamp"`
+
+	//
+	// audit reference/justification provided with the change
+	//
+	Justification string `json:"justification" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// details of the change, typically a json formatted string
+	//
+	Details string `json:"details" rdl:"optional" yaml:",omitempty"`
+}
+
+// NewDomainAuditLogEntry - creates an initialized DomainAuditLogEntry instance, returns a pointer to it
+func NewDomainAuditLogEntry(init ...*DomainAuditLogEntry) *DomainAuditLogEntry {
+	var o *DomainAuditLogEntry
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(DomainAuditLogEntry)
+	}
+	return o
+}
+
+type rawDomainAuditLogEntry DomainAuditLogEntry
+
+// UnmarshalJSON is defined for proper JSON decoding of a DomainAuditLogEntry
+func (self *DomainAuditLogEntry) UnmarshalJSON(b []byte) error {
+	var m rawDomainAuditLogEntry
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := DomainAuditLogEntry(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *DomainAuditLogEntry) Validate() error {
+	if self.Api == "" {
+		return fmt.Errorf("DomainAuditLogEntry.api is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZMSSchema(), "String", self.Api)
+		if !val.Valid {
+			return fmt.Errorf("DomainAuditLogEntry.api does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Entity != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.Entity)
+		if !val.Valid {
+			return fmt.Errorf("DomainAuditLogEntry.entity does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Principal == "" {
+		return fmt.Errorf("DomainAuditLogEntry.principal is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZMSSchema(), "String", self.Principal)
+		if !val.Valid {
+			return fmt.Errorf("DomainAuditLogEntry.principal does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.ClientIp != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.ClientIp)
+		if !val.Valid {
+			return fmt.Errorf("DomainAuditLogEntry.clientIp does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Timestamp.IsZero() {
+		return fmt.Errorf("DomainAuditLogEntry: Missing required field: timestamp")
+	}
+	if self.Justification != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.Justification)
+		if !val.Valid {
+			return fmt.Errorf("DomainAuditLogEntry.justification does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Details != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.Details)
+		if !val.Valid {
+			return fmt.Errorf("DomainAuditLogEntry.details does not contain a valid String (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
+// DomainAuditLog - The list of audit log records for the domain
+type DomainAuditLog struct {
+
+	//
+	// list of audit log records sorted by timestamp, most recent first
+	//
+	Entries []*DomainAuditLogEntry `json:"entries"`
+
+	//
+	// true if the result set was limited and additional records matching the
+	// query are available
+	//
+	Partial *bool `json:"partial,omitempty" rdl:"optional" yaml:",omitempty"`
+}
+
+// NewDomainAuditLog - creates an initialized DomainAuditLog instance, returns a pointer to it
+func NewDomainAuditLog(init ...*DomainAuditLog) *DomainAuditLog {
+	var o *DomainAuditLog
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(DomainAuditLog)
+	}
+	return o.Init()
+}
+
+// Init - sets up the instance according to its default field values, if any
+func (self *DomainAuditLog) Init() *DomainAuditLog {
+	if self.Entries == nil {
+		self.Entries = make([]*DomainAuditLogEntry, 0)
+	}
+	return self
+}
+
+type rawDomainAuditLog DomainAuditLog
+
+// UnmarshalJSON is defined for proper JSON decoding of a DomainAuditLog
+func (self *DomainAuditLog) UnmarshalJSON(b []byte) error {
+	var m rawDomainAuditLog
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := DomainAuditLog(m)
+		*self = *((&o).Init())
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *DomainAuditLog) Validate() error {
+	if self.Entries == nil {
+		return fmt.Errorf("DomainAuditLog: Missing required field: entries")
 	}
 	return nil
 }
@@ -4951,901 +7436,6 @@ func (self *EntityList) Validate() error {
 	if self.Names == nil {
 		return fmt.Errorf("EntityList: Missing required field: names")
 	}
-	return nil
-}
-
-// GroupAuditLog - An audit log entry for group membership change.
-type GroupAuditLog struct {
-
-	//
-	// name of the group member
-	//
-	Member GroupMemberName `json:"member"`
-
-	//
-	// name of the principal executing the change
-	//
-	Admin ResourceName `json:"admin"`
-
-	//
-	// timestamp of the entry
-	//
-	Created rdl.Timestamp `json:"created"`
-
-	//
-	// log action - e.g. add, delete, approve, etc
-	//
-	Action string `json:"action"`
-
-	//
-	// audit reference string for the change as supplied by admin
-	//
-	AuditRef string `json:"auditRef" rdl:"optional" yaml:",omitempty"`
-}
-
-// NewGroupAuditLog - creates an initialized GroupAuditLog instance, returns a pointer to it
-func NewGroupAuditLog(init ...*GroupAuditLog) *GroupAuditLog {
-	var o *GroupAuditLog
-	if len(init) == 1 {
-		o = init[0]
-	} else {
-		o = new(GroupAuditLog)
-	}
-	return o
-}
-
-type rawGroupAuditLog GroupAuditLog
-
-// UnmarshalJSON is defined for proper JSON decoding of a GroupAuditLog
-func (self *GroupAuditLog) UnmarshalJSON(b []byte) error {
-	var m rawGroupAuditLog
-	err := json.Unmarshal(b, &m)
-	if err == nil {
-		o := GroupAuditLog(m)
-		*self = o
-		err = self.Validate()
-	}
-	return err
-}
-
-// Validate - checks for missing required fields, etc
-func (self *GroupAuditLog) Validate() error {
-	if self.Member == "" {
-		return fmt.Errorf("GroupAuditLog.member is missing but is a required field")
-	} else {
-		val := rdl.Validate(ZMSSchema(), "GroupMemberName", self.Member)
-		if !val.Valid {
-			return fmt.Errorf("GroupAuditLog.member does not contain a valid GroupMemberName (%v)", val.Error)
-		}
-	}
-	if self.Admin == "" {
-		return fmt.Errorf("GroupAuditLog.admin is missing but is a required field")
-	} else {
-		val := rdl.Validate(ZMSSchema(), "ResourceName", self.Admin)
-		if !val.Valid {
-			return fmt.Errorf("GroupAuditLog.admin does not contain a valid ResourceName (%v)", val.Error)
-		}
-	}
-	if self.Created.IsZero() {
-		return fmt.Errorf("GroupAuditLog: Missing required field: created")
-	}
-	if self.Action == "" {
-		return fmt.Errorf("GroupAuditLog.action is missing but is a required field")
-	} else {
-		val := rdl.Validate(ZMSSchema(), "String", self.Action)
-		if !val.Valid {
-			return fmt.Errorf("GroupAuditLog.action does not contain a valid String (%v)", val.Error)
-		}
-	}
-	if self.AuditRef != "" {
-		val := rdl.Validate(ZMSSchema(), "String", self.AuditRef)
-		if !val.Valid {
-			return fmt.Errorf("GroupAuditLog.auditRef does not contain a valid String (%v)", val.Error)
-		}
-	}
-	return nil
-}
-
-// GroupMember -
-type GroupMember struct {
-
-	//
-	// name of the member
-	//
-	MemberName GroupMemberName `json:"memberName,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// name of the group
-	//
-	GroupName ResourceName `json:"groupName,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// name of the domain
-	//
-	DomainName DomainName `json:"domainName,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// the expiration timestamp
-	//
-	Expiration *rdl.Timestamp `json:"expiration,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// Flag to indicate whether membership is active
-	//
-	Active *bool `json:"active,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// Flag to indicate whether membership is approved either by delegates ( in
-	// case of auditEnabled groups ) or by domain admins ( in case of selfserve
-	// groups )
-	//
-	Approved *bool `json:"approved,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// audit reference string for the change as supplied by admin
-	//
-	AuditRef string `json:"auditRef" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// for pending membership requests, the request time
-	//
-	RequestTime *rdl.Timestamp `json:"requestTime,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// for pending membership requests, time when last notification was sent
-	//
-	LastNotifiedTime *rdl.Timestamp `json:"lastNotifiedTime,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// pending members only - name of the principal requesting the change
-	//
-	RequestPrincipal ResourceName `json:"requestPrincipal,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// for pending membership requests, time when last notification was sent (for
-	// file store)
-	//
-	ReviewLastNotifiedTime *rdl.Timestamp `json:"reviewLastNotifiedTime,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// user disabled by system based on configured group setting
-	//
-	SystemDisabled *int32 `json:"systemDisabled,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// server use only - principal type: unknown(0), user(1) or service(2)
-	//
-	PrincipalType *int32 `json:"principalType,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// for pending membership requests, the request state - e.g. add, delete
-	//
-	PendingState string `json:"pendingState" rdl:"optional" yaml:",omitempty"`
-}
-
-// NewGroupMember - creates an initialized GroupMember instance, returns a pointer to it
-func NewGroupMember(init ...*GroupMember) *GroupMember {
-	var o *GroupMember
-	if len(init) == 1 {
-		o = init[0]
-	} else {
-		o = new(GroupMember)
-	}
-	return o.Init()
-}
-
-// Init - sets up the instance according to its default field values, if any
-func (self *GroupMember) Init() *GroupMember {
-	if self.Active == nil {
-		d := true
-		self.Active = &d
-	}
-	if self.Approved == nil {
-		d := true
-		self.Approved = &d
-	}
-	return self
-}
-
-type rawGroupMember GroupMember
-
-// UnmarshalJSON is defined for proper JSON decoding of a GroupMember
-func (self *GroupMember) UnmarshalJSON(b []byte) error {
-	var m rawGroupMember
-	err := json.Unmarshal(b, &m)
-	if err == nil {
-		o := GroupMember(m)
-		*self = *((&o).Init())
-		err = self.Validate()
-	}
-	return err
-}
-
-// Validate - checks for missing required fields, etc
-func (self *GroupMember) Validate() error {
-	if self.MemberName != "" {
-		val := rdl.Validate(ZMSSchema(), "GroupMemberName", self.MemberName)
-		if !val.Valid {
-			return fmt.Errorf("GroupMember.memberName does not contain a valid GroupMemberName (%v)", val.Error)
-		}
-	}
-	if self.GroupName != "" {
-		val := rdl.Validate(ZMSSchema(), "ResourceName", self.GroupName)
-		if !val.Valid {
-			return fmt.Errorf("GroupMember.groupName does not contain a valid ResourceName (%v)", val.Error)
-		}
-	}
-	if self.DomainName != "" {
-		val := rdl.Validate(ZMSSchema(), "DomainName", self.DomainName)
-		if !val.Valid {
-			return fmt.Errorf("GroupMember.domainName does not contain a valid DomainName (%v)", val.Error)
-		}
-	}
-	if self.AuditRef != "" {
-		val := rdl.Validate(ZMSSchema(), "String", self.AuditRef)
-		if !val.Valid {
-			return fmt.Errorf("GroupMember.auditRef does not contain a valid String (%v)", val.Error)
-		}
-	}
-	if self.RequestPrincipal != "" {
-		val := rdl.Validate(ZMSSchema(), "ResourceName", self.RequestPrincipal)
-		if !val.Valid {
-			return fmt.Errorf("GroupMember.requestPrincipal does not contain a valid ResourceName (%v)", val.Error)
-		}
-	}
-	if self.PendingState != "" {
-		val := rdl.Validate(ZMSSchema(), "String", self.PendingState)
-		if !val.Valid {
-			return fmt.Errorf("GroupMember.pendingState does not contain a valid String (%v)", val.Error)
-		}
-	}
-	return nil
-}
-
-// GroupMembership - The representation for a group membership.
-type GroupMembership struct {
-
-	//
-	// name of the member
-	//
-	MemberName GroupMemberName `json:"memberName"`
-
-	//
-	// flag to indicate whether or the user is a member or not
-	//
-	IsMember *bool `json:"isMember,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// name of the group
-	//
-	GroupName ResourceName `json:"groupName,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// the expiration timestamp
-	//
-	Expiration *rdl.Timestamp `json:"expiration,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// Flag to indicate whether membership is active
-	//
-	Active *bool `json:"active,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// Flag to indicate whether membership is approved either by delegates ( in
-	// case of auditEnabled groups ) or by domain admins ( in case of selfserve
-	// groups )
-	//
-	Approved *bool `json:"approved,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// audit reference string for the change as supplied by admin
-	//
-	AuditRef string `json:"auditRef" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// pending members only - name of the principal requesting the change
-	//
-	RequestPrincipal ResourceName `json:"requestPrincipal,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// user disabled by system based on configured group setting
-	//
-	SystemDisabled *int32 `json:"systemDisabled,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// for pending membership requests, the request state - e.g. add, delete
-	//
-	PendingState string `json:"pendingState" rdl:"optional" yaml:",omitempty"`
-}
-
-// NewGroupMembership - creates an initialized GroupMembership instance, returns a pointer to it
-func NewGroupMembership(init ...*GroupMembership) *GroupMembership {
-	var o *GroupMembership
-	if len(init) == 1 {
-		o = init[0]
-	} else {
-		o = new(GroupMembership)
-	}
-	return o.Init()
-}
-
-// Init - sets up the instance according to its default field values, if any
-func (self *GroupMembership) Init() *GroupMembership {
-	if self.IsMember == nil {
-		d := true
-		self.IsMember = &d
-	}
-	if self.Active == nil {
-		d := true
-		self.Active = &d
-	}
-	if self.Approved == nil {
-		d := true
-		self.Approved = &d
-	}
-	return self
-}
-
-type rawGroupMembership GroupMembership
-
-// UnmarshalJSON is defined for proper JSON decoding of a GroupMembership
-func (self *GroupMembership) UnmarshalJSON(b []byte) error {
-	var m rawGroupMembership
-	err := json.Unmarshal(b, &m)
-	if err == nil {
-		o := GroupMembership(m)
-		*self = *((&o).Init())
-		err = self.Validate()
-	}
-	return err
-}
-
-// Validate - checks for missing required fields, etc
-func (self *GroupMembership) Validate() error {
-	if self.MemberName == "" {
-		return fmt.Errorf("GroupMembership.memberName is missing but is a required field")
-	} else {
-		val := rdl.Validate(ZMSSchema(), "GroupMemberName", self.MemberName)
-		if !val.Valid {
-			return fmt.Errorf("GroupMembership.memberName does not contain a valid GroupMemberName (%v)", val.Error)
-		}
-	}
-	if self.GroupName != "" {
-		val := rdl.Validate(ZMSSchema(), "ResourceName", self.GroupName)
-		if !val.Valid {
-			return fmt.Errorf("GroupMembership.groupName does not contain a valid ResourceName (%v)", val.Error)
-		}
-	}
-	if self.AuditRef != "" {
-		val := rdl.Validate(ZMSSchema(), "String", self.AuditRef)
-		if !val.Valid {
-			return fmt.Errorf("GroupMembership.auditRef does not contain a valid String (%v)", val.Error)
-		}
-	}
-	if self.RequestPrincipal != "" {
-		val := rdl.Validate(ZMSSchema(), "ResourceName", self.RequestPrincipal)
-		if !val.Valid {
-			return fmt.Errorf("GroupMembership.requestPrincipal does not contain a valid ResourceName (%v)", val.Error)
-		}
-	}
-	if self.PendingState != "" {
-		val := rdl.Validate(ZMSSchema(), "String", self.PendingState)
-		if !val.Valid {
-			return fmt.Errorf("GroupMembership.pendingState does not contain a valid String (%v)", val.Error)
-		}
-	}
-	return nil
-}
-
-// GroupMeta - Set of metadata attributes that all groups may have and can be
-// changed by domain admins.
-type GroupMeta struct {
-
-	//
-	// Flag indicates whether or not group allows self service. Users can add
-	// themselves in the group, but it has to be approved by domain admins to be
-	// effective.
-	//
-	SelfServe *bool `json:"selfServe,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// Flag indicates whether or not group updates require another review and
-	// approval
-	//
-	ReviewEnabled *bool `json:"reviewEnabled,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// list of roles whose members should be notified for member review/approval
-	//
-	NotifyRoles string `json:"notifyRoles" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// membership filtered based on user authority configured attributes
-	//
-	UserAuthorityFilter string `json:"userAuthorityFilter" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// expiration enforced by a user authority configured attribute
-	//
-	UserAuthorityExpiration string `json:"userAuthorityExpiration" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// all user members in the group will have specified max expiry days
-	//
-	MemberExpiryDays *int32 `json:"memberExpiryDays,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// all services in the group will have specified max expiry days
-	//
-	ServiceExpiryDays *int32 `json:"serviceExpiryDays,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// key-value pair tags, tag might contain multiple values
-	//
-	Tags map[CompoundName]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// Flag indicates whether or not group updates should require GRC approval. If
-	// true, the auditRef parameter must be supplied(not empty) for any API defining
-	// it
-	//
-	AuditEnabled *bool `json:"auditEnabled,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// If true, ask for delete confirmation in audit and review enabled groups.
-	//
-	DeleteProtection *bool `json:"deleteProtection,omitempty" rdl:"optional" yaml:",omitempty"`
-}
-
-// NewGroupMeta - creates an initialized GroupMeta instance, returns a pointer to it
-func NewGroupMeta(init ...*GroupMeta) *GroupMeta {
-	var o *GroupMeta
-	if len(init) == 1 {
-		o = init[0]
-	} else {
-		o = new(GroupMeta)
-	}
-	return o
-}
-
-type rawGroupMeta GroupMeta
-
-// UnmarshalJSON is defined for proper JSON decoding of a GroupMeta
-func (self *GroupMeta) UnmarshalJSON(b []byte) error {
-	var m rawGroupMeta
-	err := json.Unmarshal(b, &m)
-	if err == nil {
-		o := GroupMeta(m)
-		*self = o
-		err = self.Validate()
-	}
-	return err
-}
-
-// Validate - checks for missing required fields, etc
-func (self *GroupMeta) Validate() error {
-	if self.NotifyRoles != "" {
-		val := rdl.Validate(ZMSSchema(), "String", self.NotifyRoles)
-		if !val.Valid {
-			return fmt.Errorf("GroupMeta.notifyRoles does not contain a valid String (%v)", val.Error)
-		}
-	}
-	if self.UserAuthorityFilter != "" {
-		val := rdl.Validate(ZMSSchema(), "String", self.UserAuthorityFilter)
-		if !val.Valid {
-			return fmt.Errorf("GroupMeta.userAuthorityFilter does not contain a valid String (%v)", val.Error)
-		}
-	}
-	if self.UserAuthorityExpiration != "" {
-		val := rdl.Validate(ZMSSchema(), "String", self.UserAuthorityExpiration)
-		if !val.Valid {
-			return fmt.Errorf("GroupMeta.userAuthorityExpiration does not contain a valid String (%v)", val.Error)
-		}
-	}
-	return nil
-}
-
-// Group - The representation for a Group with set of members.
-type Group struct {
-
-	//
-	// Flag indicates whether or not group allows self service. Users can add
-	// themselves in the group, but it has to be approved by domain admins to be
-	// effective.
-	//
-	SelfServe *bool `json:"selfServe,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// Flag indicates whether or not group updates require another review and
-	// approval
-	//
-	ReviewEnabled *bool `json:"reviewEnabled,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// list of roles whose members should be notified for member review/approval
-	//
-	NotifyRoles string `json:"notifyRoles" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// membership filtered based on user authority configured attributes
-	//
-	UserAuthorityFilter string `json:"userAuthorityFilter" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// expiration enforced by a user authority configured attribute
-	//
-	UserAuthorityExpiration string `json:"userAuthorityExpiration" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// all user members in the group will have specified max expiry days
-	//
-	MemberExpiryDays *int32 `json:"memberExpiryDays,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// all services in the group will have specified max expiry days
-	//
-	ServiceExpiryDays *int32 `json:"serviceExpiryDays,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// key-value pair tags, tag might contain multiple values
-	//
-	Tags map[CompoundName]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// Flag indicates whether or not group updates should require GRC approval. If
-	// true, the auditRef parameter must be supplied(not empty) for any API defining
-	// it
-	//
-	AuditEnabled *bool `json:"auditEnabled,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// If true, ask for delete confirmation in audit and review enabled groups.
-	//
-	DeleteProtection *bool `json:"deleteProtection,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// name of the group
-	//
-	Name ResourceName `json:"name"`
-
-	//
-	// last modification timestamp of the group
-	//
-	Modified *rdl.Timestamp `json:"modified,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// members with expiration
-	//
-	GroupMembers []*GroupMember `json:"groupMembers,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// an audit log for group membership changes
-	//
-	AuditLog []*GroupAuditLog `json:"auditLog,omitempty" rdl:"optional" yaml:",omitempty"`
-
-	//
-	// last review timestamp of the group
-	//
-	LastReviewedDate *rdl.Timestamp `json:"lastReviewedDate,omitempty" rdl:"optional" yaml:",omitempty"`
-}
-
-// NewGroup - creates an initialized Group instance, returns a pointer to it
-func NewGroup(init ...*Group) *Group {
-	var o *Group
-	if len(init) == 1 {
-		o = init[0]
-	} else {
-		o = new(Group)
-	}
-	return o
-}
-
-type rawGroup Group
-
-// UnmarshalJSON is defined for proper JSON decoding of a Group
-func (self *Group) UnmarshalJSON(b []byte) error {
-	var m rawGroup
-	err := json.Unmarshal(b, &m)
-	if err == nil {
-		o := Group(m)
-		*self = o
-		err = self.Validate()
-	}
-	return err
-}
-
-// Validate - checks for missing required fields, etc
-func (self *Group) Validate() error {
-	if self.NotifyRoles != "" {
-		val := rdl.Validate(ZMSSchema(), "String", self.NotifyRoles)
-		if !val.Valid {
-			return fmt.Errorf("Group.notifyRoles does not contain a valid String (%v)", val.Error)
-		}
-	}
-	if self.UserAuthorityFilter != "" {
-		val := rdl.Validate(ZMSSchema(), "String", self.UserAuthorityFilter)
-		if !val.Valid {
-			return fmt.Errorf("Group.userAuthorityFilter does not contain a valid String (%v)", val.Error)
-		}
-	}
-	if self.UserAuthorityExpiration != "" {
-		val := rdl.Validate(ZMSSchema(), "String", self.UserAuthorityExpiration)
-		if !val.Valid {
-			return fmt.Errorf("Group.userAuthorityExpiration does not contain a valid String (%v)", val.Error)
-		}
-	}
-	if self.Name == "" {
-		return fmt.Errorf("Group.name is missing but is a required field")
-	} else {
-		val := rdl.Validate(ZMSSchema(), "ResourceName", self.Name)
-		if !val.Valid {
-			return fmt.Errorf("Group.name does not contain a valid ResourceName (%v)", val.Error)
-		}
-	}
-	return nil
-}
-
-// Groups - The representation for a list of groups with full details
-type Groups struct {
-
-	//
-	// list of group objects
-	//
-	List []*Group `json:"list"`
-}
-
-// NewGroups - creates an initialized Groups instance, returns a pointer to it
-func NewGroups(init ...*Groups) *Groups {
-	var o *Groups
-	if len(init) == 1 {
-		o = init[0]
-	} else {
-		o = new(Groups)
-	}
-	return o.Init()
-}
-
-// Init - sets up the instance according to its default field values, if any
-func (self *Groups) Init() *Groups {
-	if self.List == nil {
-		self.List = make([]*Group, 0)
-	}
-	return self
-}
-
-type rawGroups Groups
-
-// UnmarshalJSON is defined for proper JSON decoding of a Groups
-func (self *Groups) UnmarshalJSON(b []byte) error {
-	var m rawGroups
-	err := json.Unmarshal(b, &m)
-	if err == nil {
-		o := Groups(m)
-		*self = *((&o).Init())
-		err = self.Validate()
-	}
-	return err
-}
-
-// Validate - checks for missing required fields, etc
-func (self *Groups) Validate() error {
-	if self.List == nil {
-		return fmt.Errorf("Groups: Missing required field: list")
-	}
-	return nil
-}
-
-// DomainGroupMember -
-type DomainGroupMember struct {
-
-	//
-	// name of the member
-	//
-	MemberName GroupMemberName `json:"memberName"`
-
-	//
-	// groups for this member
-	//
-	MemberGroups []*GroupMember `json:"memberGroups"`
-}
-
-// NewDomainGroupMember - creates an initialized DomainGroupMember instance, returns a pointer to it
-func NewDomainGroupMember(init ...*DomainGroupMember) *DomainGroupMember {
-	var o *DomainGroupMember
-	if len(init) == 1 {
-		o = init[0]
-	} else {
-		o = new(DomainGroupMember)
-	}
-	return o.Init()
-}
-
-// Init - sets up the instance according to its default field values, if any
-func (self *DomainGroupMember) Init() *DomainGroupMember {
-	if self.MemberGroups == nil {
-		self.MemberGroups = make([]*GroupMember, 0)
-	}
-	return self
-}
-
-type rawDomainGroupMember DomainGroupMember
-
-// UnmarshalJSON is defined for proper JSON decoding of a DomainGroupMember
-func (self *DomainGroupMember) UnmarshalJSON(b []byte) error {
-	var m rawDomainGroupMember
-	err := json.Unmarshal(b, &m)
-	if err == nil {
-		o := DomainGroupMember(m)
-		*self = *((&o).Init())
-		err = self.Validate()
-	}
-	return err
-}
-
-// Validate - checks for missing required fields, etc
-func (self *DomainGroupMember) Validate() error {
-	if self.MemberName == "" {
-		return fmt.Errorf("DomainGroupMember.memberName is missing but is a required field")
-	} else {
-		val := rdl.Validate(ZMSSchema(), "GroupMemberName", self.MemberName)
-		if !val.Valid {
-			return fmt.Errorf("DomainGroupMember.memberName does not contain a valid GroupMemberName (%v)", val.Error)
-		}
-	}
-	if self.MemberGroups == nil {
-		return fmt.Errorf("DomainGroupMember: Missing required field: memberGroups")
-	}
-	return nil
-}
-
-// DomainGroupMembers -
-type DomainGroupMembers struct {
-
-	//
-	// name of the domain
-	//
-	DomainName DomainName `json:"domainName"`
-
-	//
-	// group members
-	//
-	Members []*DomainGroupMember `json:"members"`
-}
-
-// NewDomainGroupMembers - creates an initialized DomainGroupMembers instance, returns a pointer to it
-func NewDomainGroupMembers(init ...*DomainGroupMembers) *DomainGroupMembers {
-	var o *DomainGroupMembers
-	if len(init) == 1 {
-		o = init[0]
-	} else {
-		o = new(DomainGroupMembers)
-	}
-	return o.Init()
-}
-
-// Init - sets up the instance according to its default field values, if any
-func (self *DomainGroupMembers) Init() *DomainGroupMembers {
-	if self.Members == nil {
-		self.Members = make([]*DomainGroupMember, 0)
-	}
-	return self
-}
-
-type rawDomainGroupMembers DomainGroupMembers
-
-// UnmarshalJSON is defined for proper JSON decoding of a DomainGroupMembers
-func (self *DomainGroupMembers) UnmarshalJSON(b []byte) error {
-	var m rawDomainGroupMembers
-	err := json.Unmarshal(b, &m)
-	if err == nil {
-		o := DomainGroupMembers(m)
-		*self = *((&o).Init())
-		err = self.Validate()
-	}
-	return err
-}
-
-// Validate - checks for missing required fields, etc
-func (self *DomainGroupMembers) Validate() error {
-	if self.DomainName == "" {
-		return fmt.Errorf("DomainGroupMembers.domainName is missing but is a required field")
-	} else {
-		val := rdl.Validate(ZMSSchema(), "DomainName", self.DomainName)
-		if !val.Valid {
-			return fmt.Errorf("DomainGroupMembers.domainName does not contain a valid DomainName (%v)", val.Error)
-		}
-	}
-	if self.Members == nil {
-		return fmt.Errorf("DomainGroupMembers: Missing required field: members")
-	}
-	return nil
-}
-
-// DomainGroupMembership -
-type DomainGroupMembership struct {
-	DomainGroupMembersList []*DomainGroupMembers `json:"domainGroupMembersList"`
-}
-
-// NewDomainGroupMembership - creates an initialized DomainGroupMembership instance, returns a pointer to it
-func NewDomainGroupMembership(init ...*DomainGroupMembership) *DomainGroupMembership {
-	var o *DomainGroupMembership
-	if len(init) == 1 {
-		o = init[0]
-	} else {
-		o = new(DomainGroupMembership)
-	}
-	return o.Init()
-}
-
-// Init - sets up the instance according to its default field values, if any
-func (self *DomainGroupMembership) Init() *DomainGroupMembership {
-	if self.DomainGroupMembersList == nil {
-		self.DomainGroupMembersList = make([]*DomainGroupMembers, 0)
-	}
-	return self
-}
-
-type rawDomainGroupMembership DomainGroupMembership
-
-// UnmarshalJSON is defined for proper JSON decoding of a DomainGroupMembership
-func (self *DomainGroupMembership) UnmarshalJSON(b []byte) error {
-	var m rawDomainGroupMembership
-	err := json.Unmarshal(b, &m)
-	if err == nil {
-		o := DomainGroupMembership(m)
-		*self = *((&o).Init())
-		err = self.Validate()
-	}
-	return err
-}
-
-// Validate - checks for missing required fields, etc
-func (self *DomainGroupMembership) Validate() error {
-	if self.DomainGroupMembersList == nil {
-		return fmt.Errorf("DomainGroupMembership: Missing required field: domainGroupMembersList")
-	}
-	return nil
-}
-
-// GroupSystemMeta - Set of system metadata attributes that all groups may have
-// and can be changed by system admins.
-type GroupSystemMeta struct {
-
-	//
-	// Flag indicates whether or not group updates should be approved by GRC. If
-	// true, the auditRef parameter must be supplied(not empty) for any API defining
-	// it.
-	//
-	AuditEnabled *bool `json:"auditEnabled,omitempty" rdl:"optional" yaml:",omitempty"`
-}
-
-// NewGroupSystemMeta - creates an initialized GroupSystemMeta instance, returns a pointer to it
-func NewGroupSystemMeta(init ...*GroupSystemMeta) *GroupSystemMeta {
-	var o *GroupSystemMeta
-	if len(init) == 1 {
-		o = init[0]
-	} else {
-		o = new(GroupSystemMeta)
-	}
-	return o
-}
-
-type rawGroupSystemMeta GroupSystemMeta
-
-// UnmarshalJSON is defined for proper JSON decoding of a GroupSystemMeta
-func (self *GroupSystemMeta) UnmarshalJSON(b []byte) error {
-	var m rawGroupSystemMeta
-	err := json.Unmarshal(b, &m)
-	if err == nil {
-		o := GroupSystemMeta(m)
-		*self = o
-		err = self.Validate()
-	}
-	return err
-}
-
-// Validate - checks for missing required fields, etc
-func (self *GroupSystemMeta) Validate() error {
 	return nil
 }
 
@@ -6592,6 +8182,11 @@ type DomainData struct {
 	Account string `json:"account" rdl:"optional" yaml:",omitempty"`
 
 	//
+	// associated aws account name (system attribute)
+	//
+	AwsAccountName string `json:"awsAccountName" rdl:"optional" yaml:",omitempty"`
+
+	//
 	// associated product id (system attribute - uniqueness check - if enabled)
 	//
 	YpmId *int32 `json:"ypmId,omitempty" rdl:"optional" yaml:",omitempty"`
@@ -6630,7 +8225,7 @@ type DomainData struct {
 	//
 	// rsa or ec signing algorithm to be used for tokens
 	//
-	SignAlgorithm SimpleName `json:"signAlgorithm,omitempty" rdl:"optional" yaml:",omitempty"`
+	SignAlgorithm string `json:"signAlgorithm" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// all services in the domain roles will have specified max expiry days
@@ -6654,6 +8249,16 @@ type DomainData struct {
 	AzureSubscription string `json:"azureSubscription" rdl:"optional" yaml:",omitempty"`
 
 	//
+	// associated azure tenant id (system attribute)
+	//
+	AzureTenant string `json:"azureTenant" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// associated azure client id (system attribute)
+	//
+	AzureClient string `json:"azureClient" rdl:"optional" yaml:",omitempty"`
+
+	//
 	// associated gcp project id (system attribute - uniqueness check - if
 	// enabled)
 	//
@@ -6667,7 +8272,7 @@ type DomainData struct {
 	//
 	// key-value pair tags, tag might contain multiple values
 	//
-	Tags map[CompoundName]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
+	Tags map[TagKey]*TagValueList `json:"tags,omitempty" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// associated business service with domain
@@ -6688,6 +8293,64 @@ type DomainData struct {
 	// features enabled per domain (system attribute)
 	//
 	FeatureFlags *int32 `json:"featureFlags,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// list of domain contacts (PE-Owner, Product-Owner, etc), each type can have
+	// a single value
+	//
+	Contacts map[SimpleName]string `json:"contacts,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// domain environment e.g. production, staging, etc
+	//
+	Environment string `json:"environment" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// ownership information for the domain (read-only attribute)
+	//
+	ResourceOwnership *ResourceDomainOwnership `json:"resourceOwnership,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// requested x509 cert signer key id (system attribute)
+	//
+	X509CertSignerKeyId string `json:"x509CertSignerKeyId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// requested ssh cert signer key id (system attribute)
+	//
+	SshCertSignerKeyId string `json:"sshCertSignerKeyId" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// slack channel for any notifications in this domain
+	//
+	SlackChannel string `json:"slackChannel" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// oncall team name/id for any incidents in this domain
+	//
+	OnCall string `json:"onCall" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Indicates whether to automatically delete assertions for a tenant's assume
+	// role
+	//
+	AutoDeleteTenantAssumeRoleAssertions *bool `json:"autoDeleteTenantAssumeRoleAssertions,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// Indicates whether client ID self-update is enabled for services in this
+	// domain
+	//
+	ClientIdSelfUpdate *bool `json:"clientIdSelfUpdate,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// class name responsible for validating external members
+	//
+	ExternalMemberValidator string `json:"externalMemberValidator" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// cost center for this domain for any chargebacks
+	//
+	CostCenter string `json:"costCenter" rdl:"optional" yaml:",omitempty"`
 
 	//
 	// name of the domain
@@ -6746,6 +8409,14 @@ func (self *DomainData) Init() *DomainData {
 		d := false
 		self.AuditEnabled = &d
 	}
+	if self.AutoDeleteTenantAssumeRoleAssertions == nil {
+		d := false
+		self.AutoDeleteTenantAssumeRoleAssertions = &d
+	}
+	if self.ClientIdSelfUpdate == nil {
+		d := false
+		self.ClientIdSelfUpdate = &d
+	}
 	if self.Roles == nil {
 		self.Roles = make([]*Role, 0)
 	}
@@ -6798,6 +8469,12 @@ func (self *DomainData) Validate() error {
 			return fmt.Errorf("DomainData.account does not contain a valid String (%v)", val.Error)
 		}
 	}
+	if self.AwsAccountName != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AwsAccountName)
+		if !val.Valid {
+			return fmt.Errorf("DomainData.awsAccountName does not contain a valid String (%v)", val.Error)
+		}
+	}
 	if self.ApplicationId != "" {
 		val := rdl.Validate(ZMSSchema(), "String", self.ApplicationId)
 		if !val.Valid {
@@ -6811,9 +8488,9 @@ func (self *DomainData) Validate() error {
 		}
 	}
 	if self.SignAlgorithm != "" {
-		val := rdl.Validate(ZMSSchema(), "SimpleName", self.SignAlgorithm)
+		val := rdl.Validate(ZMSSchema(), "String", self.SignAlgorithm)
 		if !val.Valid {
-			return fmt.Errorf("DomainData.signAlgorithm does not contain a valid SimpleName (%v)", val.Error)
+			return fmt.Errorf("DomainData.signAlgorithm does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.UserAuthorityFilter != "" {
@@ -6826,6 +8503,18 @@ func (self *DomainData) Validate() error {
 		val := rdl.Validate(ZMSSchema(), "String", self.AzureSubscription)
 		if !val.Valid {
 			return fmt.Errorf("DomainData.azureSubscription does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.AzureTenant != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AzureTenant)
+		if !val.Valid {
+			return fmt.Errorf("DomainData.azureTenant does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.AzureClient != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.AzureClient)
+		if !val.Valid {
+			return fmt.Errorf("DomainData.azureClient does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.GcpProject != "" {
@@ -6850,6 +8539,48 @@ func (self *DomainData) Validate() error {
 		val := rdl.Validate(ZMSSchema(), "String", self.ProductId)
 		if !val.Valid {
 			return fmt.Errorf("DomainData.productId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Environment != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.Environment)
+		if !val.Valid {
+			return fmt.Errorf("DomainData.environment does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.X509CertSignerKeyId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.X509CertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("DomainData.x509CertSignerKeyId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.SshCertSignerKeyId != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.SshCertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("DomainData.sshCertSignerKeyId does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.SlackChannel != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.SlackChannel)
+		if !val.Valid {
+			return fmt.Errorf("DomainData.slackChannel does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.OnCall != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.OnCall)
+		if !val.Valid {
+			return fmt.Errorf("DomainData.onCall does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.ExternalMemberValidator != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.ExternalMemberValidator)
+		if !val.Valid {
+			return fmt.Errorf("DomainData.externalMemberValidator does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.CostCenter != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.CostCenter)
+		if !val.Valid {
+			return fmt.Errorf("DomainData.costCenter does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.Name == "" {
@@ -7867,6 +9598,349 @@ func (self *DependentServiceResourceGroupList) Validate() error {
 	return nil
 }
 
+// ReviewObject - Details for the roles and/or groups that need to be reviewed
+type ReviewObject struct {
+
+	//
+	// name of the domain
+	//
+	DomainName DomainName `json:"domainName"`
+
+	//
+	// name of the role and/or group
+	//
+	Name EntityName `json:"name"`
+
+	//
+	// all user members in the object have specified max expiry days
+	//
+	MemberExpiryDays int32 `json:"memberExpiryDays"`
+
+	//
+	// all user members in the object have specified max review days
+	//
+	MemberReviewDays int32 `json:"memberReviewDays"`
+
+	//
+	// all services in the object have specified max expiry days
+	//
+	ServiceExpiryDays int32 `json:"serviceExpiryDays"`
+
+	//
+	// all services in the object have specified max review days
+	//
+	ServiceReviewDays int32 `json:"serviceReviewDays"`
+
+	//
+	// all groups in the object have specified max expiry days
+	//
+	GroupExpiryDays int32 `json:"groupExpiryDays"`
+
+	//
+	// all groups in the object have specified max review days
+	//
+	GroupReviewDays int32 `json:"groupReviewDays"`
+
+	//
+	// last review timestamp of the object
+	//
+	LastReviewedDate *rdl.Timestamp `json:"lastReviewedDate,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// creation time of the object
+	//
+	Created rdl.Timestamp `json:"created"`
+}
+
+// NewReviewObject - creates an initialized ReviewObject instance, returns a pointer to it
+func NewReviewObject(init ...*ReviewObject) *ReviewObject {
+	var o *ReviewObject
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(ReviewObject)
+	}
+	return o
+}
+
+type rawReviewObject ReviewObject
+
+// UnmarshalJSON is defined for proper JSON decoding of a ReviewObject
+func (self *ReviewObject) UnmarshalJSON(b []byte) error {
+	var m rawReviewObject
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := ReviewObject(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *ReviewObject) Validate() error {
+	if self.DomainName == "" {
+		return fmt.Errorf("ReviewObject.domainName is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZMSSchema(), "DomainName", self.DomainName)
+		if !val.Valid {
+			return fmt.Errorf("ReviewObject.domainName does not contain a valid DomainName (%v)", val.Error)
+		}
+	}
+	if self.Name == "" {
+		return fmt.Errorf("ReviewObject.name is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZMSSchema(), "EntityName", self.Name)
+		if !val.Valid {
+			return fmt.Errorf("ReviewObject.name does not contain a valid EntityName (%v)", val.Error)
+		}
+	}
+	if self.Created.IsZero() {
+		return fmt.Errorf("ReviewObject: Missing required field: created")
+	}
+	return nil
+}
+
+// ReviewObjects - The representation for a list of objects with full details
+type ReviewObjects struct {
+
+	//
+	// list of review objects
+	//
+	List []*ReviewObject `json:"list"`
+}
+
+// NewReviewObjects - creates an initialized ReviewObjects instance, returns a pointer to it
+func NewReviewObjects(init ...*ReviewObjects) *ReviewObjects {
+	var o *ReviewObjects
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(ReviewObjects)
+	}
+	return o.Init()
+}
+
+// Init - sets up the instance according to its default field values, if any
+func (self *ReviewObjects) Init() *ReviewObjects {
+	if self.List == nil {
+		self.List = make([]*ReviewObject, 0)
+	}
+	return self
+}
+
+type rawReviewObjects ReviewObjects
+
+// UnmarshalJSON is defined for proper JSON decoding of a ReviewObjects
+func (self *ReviewObjects) UnmarshalJSON(b []byte) error {
+	var m rawReviewObjects
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := ReviewObjects(m)
+		*self = *((&o).Init())
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *ReviewObjects) Validate() error {
+	if self.List == nil {
+		return fmt.Errorf("ReviewObjects: Missing required field: list")
+	}
+	return nil
+}
+
+// SelfServeObject - Details for a self-service role or group that a principal
+// may request access to.
+type SelfServeObject struct {
+
+	//
+	// name of the domain
+	//
+	DomainName DomainName `json:"domainName"`
+
+	//
+	// name of the role or group
+	//
+	Name EntityName `json:"name"`
+
+	//
+	// description of the role or group (roles only - groups do not carry a
+	// description)
+	//
+	Description string `json:"description" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// flag indicates whether expired members can renew their own membership
+	//
+	SelfRenew *bool `json:"selfRenew,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// number of minutes members can renew their membership if self renew is
+	// enabled
+	//
+	SelfRenewMins *int32 `json:"selfRenewMins,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// flag indicates whether membership changes require review and approval
+	//
+	ReviewEnabled *bool `json:"reviewEnabled,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// flag indicates whether membership changes require GRC approval
+	//
+	AuditEnabled *bool `json:"auditEnabled,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// flag indicates whether member removal requires confirmation
+	//
+	DeleteProtection *bool `json:"deleteProtection,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// membership state of the calling principal for this object: member, pending
+	// or none
+	//
+	MemberStatus string `json:"memberStatus" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// expiration timestamp of the calling principal's membership, if any
+	//
+	Expiration *rdl.Timestamp `json:"expiration,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// if the caller's membership is inherited through a group, the full name of
+	// that group (roles only)
+	//
+	InheritedFrom ResourceName `json:"inheritedFrom,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// maximum membership duration in days configured on this role or group (0
+	// means no limit); callers derive the effective cap
+	//
+	MemberExpiryDays *int32 `json:"memberExpiryDays,omitempty" rdl:"optional" yaml:",omitempty"`
+
+	//
+	// maximum membership duration in days configured on the owning domain (0
+	// means no limit); callers derive the effective cap
+	//
+	DomainMemberExpiryDays *int32 `json:"domainMemberExpiryDays,omitempty" rdl:"optional" yaml:",omitempty"`
+}
+
+// NewSelfServeObject - creates an initialized SelfServeObject instance, returns a pointer to it
+func NewSelfServeObject(init ...*SelfServeObject) *SelfServeObject {
+	var o *SelfServeObject
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(SelfServeObject)
+	}
+	return o
+}
+
+type rawSelfServeObject SelfServeObject
+
+// UnmarshalJSON is defined for proper JSON decoding of a SelfServeObject
+func (self *SelfServeObject) UnmarshalJSON(b []byte) error {
+	var m rawSelfServeObject
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := SelfServeObject(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *SelfServeObject) Validate() error {
+	if self.DomainName == "" {
+		return fmt.Errorf("SelfServeObject.domainName is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZMSSchema(), "DomainName", self.DomainName)
+		if !val.Valid {
+			return fmt.Errorf("SelfServeObject.domainName does not contain a valid DomainName (%v)", val.Error)
+		}
+	}
+	if self.Name == "" {
+		return fmt.Errorf("SelfServeObject.name is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZMSSchema(), "EntityName", self.Name)
+		if !val.Valid {
+			return fmt.Errorf("SelfServeObject.name does not contain a valid EntityName (%v)", val.Error)
+		}
+	}
+	if self.Description != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.Description)
+		if !val.Valid {
+			return fmt.Errorf("SelfServeObject.description does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.MemberStatus != "" {
+		val := rdl.Validate(ZMSSchema(), "String", self.MemberStatus)
+		if !val.Valid {
+			return fmt.Errorf("SelfServeObject.memberStatus does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.InheritedFrom != "" {
+		val := rdl.Validate(ZMSSchema(), "ResourceName", self.InheritedFrom)
+		if !val.Valid {
+			return fmt.Errorf("SelfServeObject.inheritedFrom does not contain a valid ResourceName (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
+// SelfServeObjects - The representation for a list of self-service objects.
+type SelfServeObjects struct {
+
+	//
+	// list of self-service objects
+	//
+	List []*SelfServeObject `json:"list"`
+}
+
+// NewSelfServeObjects - creates an initialized SelfServeObjects instance, returns a pointer to it
+func NewSelfServeObjects(init ...*SelfServeObjects) *SelfServeObjects {
+	var o *SelfServeObjects
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(SelfServeObjects)
+	}
+	return o.Init()
+}
+
+// Init - sets up the instance according to its default field values, if any
+func (self *SelfServeObjects) Init() *SelfServeObjects {
+	if self.List == nil {
+		self.List = make([]*SelfServeObject, 0)
+	}
+	return self
+}
+
+type rawSelfServeObjects SelfServeObjects
+
+// UnmarshalJSON is defined for proper JSON decoding of a SelfServeObjects
+func (self *SelfServeObjects) UnmarshalJSON(b []byte) error {
+	var m rawSelfServeObjects
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := SelfServeObjects(m)
+		*self = *((&o).Init())
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *SelfServeObjects) Validate() error {
+	if self.List == nil {
+		return fmt.Errorf("SelfServeObjects: Missing required field: list")
+	}
+	return nil
+}
+
 // Info - Copyright The Athenz Authors Licensed under the terms of the Apache
 // version 2.0 license. See LICENSE file for terms. The representation for an
 // info object
@@ -7944,5 +10018,96 @@ func (self *Info) Validate() error {
 			return fmt.Errorf("Info.implementationVendor does not contain a valid String (%v)", val.Error)
 		}
 	}
+	return nil
+}
+
+// PrincipalMember -
+type PrincipalMember struct {
+
+	//
+	// name of the principal
+	//
+	PrincipalName MemberName `json:"principalName"`
+
+	//
+	// current system suspended state of the principal
+	//
+	SuspendedState int32 `json:"suspendedState"`
+}
+
+// NewPrincipalMember - creates an initialized PrincipalMember instance, returns a pointer to it
+func NewPrincipalMember(init ...*PrincipalMember) *PrincipalMember {
+	var o *PrincipalMember
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(PrincipalMember)
+	}
+	return o
+}
+
+type rawPrincipalMember PrincipalMember
+
+// UnmarshalJSON is defined for proper JSON decoding of a PrincipalMember
+func (self *PrincipalMember) UnmarshalJSON(b []byte) error {
+	var m rawPrincipalMember
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := PrincipalMember(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *PrincipalMember) Validate() error {
+	if self.PrincipalName == "" {
+		return fmt.Errorf("PrincipalMember.principalName is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZMSSchema(), "MemberName", self.PrincipalName)
+		if !val.Valid {
+			return fmt.Errorf("PrincipalMember.principalName does not contain a valid MemberName (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
+// PrincipalState - A principal state entry
+type PrincipalState struct {
+
+	//
+	// athenz suspended state for the principal
+	//
+	Suspended bool `json:"suspended"`
+}
+
+// NewPrincipalState - creates an initialized PrincipalState instance, returns a pointer to it
+func NewPrincipalState(init ...*PrincipalState) *PrincipalState {
+	var o *PrincipalState
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(PrincipalState)
+	}
+	return o
+}
+
+type rawPrincipalState PrincipalState
+
+// UnmarshalJSON is defined for proper JSON decoding of a PrincipalState
+func (self *PrincipalState) UnmarshalJSON(b []byte) error {
+	var m rawPrincipalState
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := PrincipalState(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *PrincipalState) Validate() error {
 	return nil
 }

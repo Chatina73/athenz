@@ -16,17 +16,22 @@
 
 package com.yahoo.athenz.zms.notification;
 
+import com.yahoo.athenz.common.ServerCommonConsts;
 import com.yahoo.athenz.common.server.notification.*;
 import com.yahoo.athenz.zms.*;
 import com.yahoo.rdl.Timestamp;
+import org.eclipse.jetty.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 import static com.yahoo.athenz.common.server.notification.NotificationServiceConstants.*;
 import static com.yahoo.athenz.common.server.notification.NotificationServiceConstants.NOTIFICATION_DETAILS_MEMBERS_LIST;
 import static com.yahoo.athenz.common.server.notification.impl.MetricNotificationService.*;
+
 
 public class RoleMemberExpiryNotificationTask implements NotificationTask {
     private final DBService dbService;
@@ -37,57 +42,68 @@ public class RoleMemberExpiryNotificationTask implements NotificationTask {
     private final RoleExpiryPrincipalNotificationToEmailConverter roleExpiryPrincipalNotificationToEmailConverter;
     private final RoleExpiryDomainNotificationToMetricConverter roleExpiryDomainNotificationToMetricConverter;
     private final RoleExpiryPrincipalNotificationToMetricConverter roleExpiryPrincipalNotificationToMetricConverter;
+    private final RoleExpiryDomainNotificationToSlackConverter roleExpiryDomainNotificationToSlackConverter;
+    private final RoleExpiryPrincipalNotificationToSlackConverter roleExpiryPrincipalNotificationToSlackConverter;
 
-    public RoleMemberExpiryNotificationTask(DBService dbService, String userDomainPrefix, NotificationToEmailConverterCommon notificationToEmailConverterCommon) {
+
+    private final static String[] TEMPLATE_COLUMN_NAMES = { "DOMAIN", "ROLE", "MEMBER", "EXPIRATION", "NOTES" };
+
+    public RoleMemberExpiryNotificationTask(DBService dbService, String userDomainPrefix,
+                                            NotificationConverterCommon notificationConverterCommon) {
         this.dbService = dbService;
         this.roleMemberNotificationCommon = new RoleMemberNotificationCommon(dbService, userDomainPrefix);
-        this.roleExpiryPrincipalNotificationToEmailConverter = new RoleExpiryPrincipalNotificationToEmailConverter(notificationToEmailConverterCommon);
-        this.roleExpiryDomainNotificationToEmailConverter = new RoleExpiryDomainNotificationToEmailConverter(notificationToEmailConverterCommon);
+        this.roleExpiryPrincipalNotificationToEmailConverter
+                = new RoleExpiryPrincipalNotificationToEmailConverter(notificationConverterCommon);
+        this.roleExpiryDomainNotificationToEmailConverter
+                = new RoleExpiryDomainNotificationToEmailConverter(notificationConverterCommon);
         this.roleExpiryPrincipalNotificationToMetricConverter = new RoleExpiryPrincipalNotificationToMetricConverter();
         this.roleExpiryDomainNotificationToMetricConverter = new RoleExpiryDomainNotificationToMetricConverter();
+        this.roleExpiryDomainNotificationToSlackConverter = new RoleExpiryDomainNotificationToSlackConverter(notificationConverterCommon);
+        this.roleExpiryPrincipalNotificationToSlackConverter = new RoleExpiryPrincipalNotificationToSlackConverter(notificationConverterCommon);
     }
 
     @Override
     public List<Notification> getNotifications() {
-        Map<String, DomainRoleMember> expiryMembers = dbService.getRoleExpiryMembers(1, false);
+        return getNotifications(null);
+    }
+
+    @Override
+    public List<Notification> getNotifications(NotificationObjectStore notificationObjectStore) {
+        Map<String, DomainRoleMember> expiryMembers = dbService.getRoleExpiryMembers(1);
         if (expiryMembers == null || expiryMembers.isEmpty()) {
-            if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("No expiry members available to send email notifications");
-            }
-            return getMetricNotificationDetails();
+            LOGGER.info("No expiry members available to send email notifications");
+            return Collections.emptyList();
         }
 
-        List<Notification> metricNotificationDetails = getMetricNotificationDetails();
-        List<Notification> metricAndEmailNotificationDetails = roleMemberNotificationCommon.getNotificationDetails(
+        List<Notification> notificationList = roleMemberNotificationCommon.getNotificationDetails(
+                Notification.Type.ROLE_MEMBER_EXPIRY,
+                Notification.ConsolidatedBy.PRINCIPAL,
                 expiryMembers,
                 roleExpiryPrincipalNotificationToEmailConverter,
                 roleExpiryDomainNotificationToEmailConverter,
                 new ExpiryRoleMemberDetailStringer(),
                 roleExpiryPrincipalNotificationToMetricConverter,
                 roleExpiryDomainNotificationToMetricConverter,
-                new ReviewDisableRoleMemberNotificationFilter());
-        metricNotificationDetails.addAll(metricAndEmailNotificationDetails);
-        return metricNotificationDetails;
-    }
+                new ReviewDisableRoleMemberNotificationFilter(),
+                roleExpiryPrincipalNotificationToSlackConverter,
+                roleExpiryDomainNotificationToSlackConverter,
+                notificationObjectStore);
 
-    private List<Notification> getMetricNotificationDetails() {
-        Map<String, DomainRoleMember> expiryMembers = dbService.getRoleExpiryMembers(1, true);
-        if (expiryMembers == null || expiryMembers.isEmpty()) {
-            if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("No expiry members available to send metric notifications");
-            }
-
-            return new ArrayList<>();
-        }
-
-        return roleMemberNotificationCommon.getNotificationDetails(
+        notificationList.addAll(roleMemberNotificationCommon.getNotificationDetails(
+                Notification.Type.ROLE_MEMBER_EXPIRY,
+                Notification.ConsolidatedBy.DOMAIN,
                 expiryMembers,
-                null,
-                null,
+                roleExpiryPrincipalNotificationToEmailConverter,
+                roleExpiryDomainNotificationToEmailConverter,
                 new ExpiryRoleMemberDetailStringer(),
                 roleExpiryPrincipalNotificationToMetricConverter,
                 roleExpiryDomainNotificationToMetricConverter,
-                memberRole -> DisableNotificationEnum.getEnumSet(0));
+                new ReviewDisableRoleMemberNotificationFilter(),
+                roleExpiryPrincipalNotificationToSlackConverter,
+                roleExpiryDomainNotificationToSlackConverter,
+                notificationObjectStore));
+
+        return notificationList;
     }
 
     static class ExpiryRoleMemberDetailStringer implements RoleMemberNotificationCommon.RoleMemberDetailStringer {
@@ -95,9 +111,18 @@ public class RoleMemberExpiryNotificationTask implements NotificationTask {
         @Override
         public StringBuilder getDetailString(MemberRole memberRole) {
             StringBuilder detailsRow = new StringBuilder(256);
+            detailsRow.append(memberRole.getDomainName()).append(';');
             detailsRow.append(memberRole.getRoleName()).append(';');
-            detailsRow.append(memberRole.getExpiration());
+            detailsRow.append(memberRole.getMemberName()).append(';');
+            detailsRow.append(memberRole.getExpiration()).append(';');
+            detailsRow.append(memberRole.getNotifyDetails() == null ?
+                    "" : URLEncoder.encode(memberRole.getNotifyDetails(), StandardCharsets.UTF_8));
             return detailsRow;
+        }
+
+        @Override
+        public Timestamp getNotificationTimestamp(MemberRole memberRole) {
+            return memberRole.getExpiration();
         }
     }
 
@@ -105,10 +130,11 @@ public class RoleMemberExpiryNotificationTask implements NotificationTask {
 
         @Override
         public EnumSet<DisableNotificationEnum> getDisabledNotificationState(MemberRole memberRole) {
-            Role role = dbService.getRole(memberRole.getDomainName(), memberRole.getRoleName(), false, false, false);
 
+            Role role = dbService.getRole(memberRole.getDomainName(), memberRole.getRoleName(), false, false, false);
             try {
-                return DisableNotificationEnum.getDisabledNotificationState(role, r -> r.getTags(), ZMSConsts.DISABLE_EXPIRATION_NOTIFICATIONS_TAG);
+                return DisableNotificationEnum.getDisabledNotificationState(role, Role::getTags,
+                        ZMSConsts.DISABLE_EXPIRATION_NOTIFICATIONS_TAG);
             } catch (NumberFormatException ex) {
                 LOGGER.warn("Invalid mask value for {} in domain {}, role {}",
                         ZMSConsts.DISABLE_EXPIRATION_NOTIFICATIONS_TAG,
@@ -129,12 +155,13 @@ public class RoleMemberExpiryNotificationTask implements NotificationTask {
         private static final String EMAIL_TEMPLATE_PRINCIPAL_EXPIRY = "messages/role-member-expiry.html";
         private static final String PRINCIPAL_EXPIRY_SUBJECT = "athenz.notification.email.role_member.expiry.subject";
 
-        private final NotificationToEmailConverterCommon notificationToEmailConverterCommon;
-        private String emailPrincipalExpiryBody;
+        private final NotificationConverterCommon notificationConverterCommon;
+        private final String emailPrincipalExpiryBody;
 
-        public RoleExpiryPrincipalNotificationToEmailConverter(NotificationToEmailConverterCommon notificationToEmailConverterCommon) {
-            this.notificationToEmailConverterCommon = notificationToEmailConverterCommon;
-            emailPrincipalExpiryBody =  notificationToEmailConverterCommon.readContentFromFile(getClass().getClassLoader(), EMAIL_TEMPLATE_PRINCIPAL_EXPIRY);
+        public RoleExpiryPrincipalNotificationToEmailConverter(NotificationConverterCommon notificationConverterCommon) {
+            this.notificationConverterCommon = notificationConverterCommon;
+            emailPrincipalExpiryBody =  notificationConverterCommon.readContentFromFile(
+                    getClass().getClassLoader(), EMAIL_TEMPLATE_PRINCIPAL_EXPIRY);
         }
 
         private String getPrincipalExpiryBody(Map<String, String> metaDetails) {
@@ -142,19 +169,20 @@ public class RoleMemberExpiryNotificationTask implements NotificationTask {
                 return null;
             }
 
-            return notificationToEmailConverterCommon.generateBodyFromTemplate(
+            return notificationConverterCommon.generateBodyFromTemplate(
                     metaDetails,
                     emailPrincipalExpiryBody,
                     NOTIFICATION_DETAILS_MEMBER,
                     NOTIFICATION_DETAILS_ROLES_LIST,
-                    3);
+                    TEMPLATE_COLUMN_NAMES.length, TEMPLATE_COLUMN_NAMES);
         }
 
         @Override
         public NotificationEmail getNotificationAsEmail(Notification notification) {
-            String subject = notificationToEmailConverterCommon.getSubject(PRINCIPAL_EXPIRY_SUBJECT);
+            String subject = notificationConverterCommon.getSubject(PRINCIPAL_EXPIRY_SUBJECT);
             String body = getPrincipalExpiryBody(notification.getDetails());
-            Set<String> fullyQualifiedEmailAddresses = notificationToEmailConverterCommon.getFullyQualifiedEmailAddresses(notification.getRecipients());
+            Set<String> fullyQualifiedEmailAddresses =
+                    notificationConverterCommon.getFullyQualifiedEmailAddresses(notification.getRecipients());
             return new NotificationEmail(subject, body, fullyQualifiedEmailAddresses);
         }
     }
@@ -163,12 +191,13 @@ public class RoleMemberExpiryNotificationTask implements NotificationTask {
         private static final String EMAIL_TEMPLATE_DOMAIN_MEMBER_EXPIRY = "messages/domain-role-member-expiry.html";
         private static final String DOMAIN_MEMBER_EXPIRY_SUBJECT = "athenz.notification.email.domain.role_member.expiry.subject";
 
-        private final NotificationToEmailConverterCommon notificationToEmailConverterCommon;
-        private String emailDomainMemberExpiryBody;
+        private final NotificationConverterCommon notificationConverterCommon;
+        private final String emailDomainMemberExpiryBody;
 
-        public RoleExpiryDomainNotificationToEmailConverter(NotificationToEmailConverterCommon notificationToEmailConverterCommon) {
-            this.notificationToEmailConverterCommon = notificationToEmailConverterCommon;
-            emailDomainMemberExpiryBody = notificationToEmailConverterCommon.readContentFromFile(getClass().getClassLoader(), EMAIL_TEMPLATE_DOMAIN_MEMBER_EXPIRY);
+        public RoleExpiryDomainNotificationToEmailConverter(NotificationConverterCommon notificationConverterCommon) {
+            this.notificationConverterCommon = notificationConverterCommon;
+            emailDomainMemberExpiryBody = notificationConverterCommon.readContentFromFile(
+                    getClass().getClassLoader(), EMAIL_TEMPLATE_DOMAIN_MEMBER_EXPIRY);
         }
 
         private String getDomainMemberExpiryBody(Map<String, String> metaDetails) {
@@ -176,84 +205,100 @@ public class RoleMemberExpiryNotificationTask implements NotificationTask {
                 return null;
             }
 
-            return notificationToEmailConverterCommon.generateBodyFromTemplate(
+            return notificationConverterCommon.generateBodyFromTemplate(
                     metaDetails,
                     emailDomainMemberExpiryBody,
                     NOTIFICATION_DETAILS_DOMAIN,
                     NOTIFICATION_DETAILS_MEMBERS_LIST,
-                    3);
+                    TEMPLATE_COLUMN_NAMES.length, TEMPLATE_COLUMN_NAMES);
         }
 
         @Override
         public NotificationEmail getNotificationAsEmail(Notification notification) {
-            String subject = notificationToEmailConverterCommon.getSubject(DOMAIN_MEMBER_EXPIRY_SUBJECT);
+            String subject = notificationConverterCommon.getSubject(DOMAIN_MEMBER_EXPIRY_SUBJECT);
             String body = getDomainMemberExpiryBody(notification.getDetails());
-            Set<String> fullyQualifiedEmailAddresses = notificationToEmailConverterCommon.getFullyQualifiedEmailAddresses(notification.getRecipients());
+            Set<String> fullyQualifiedEmailAddresses =
+                    notificationConverterCommon.getFullyQualifiedEmailAddresses(notification.getRecipients());
             return new NotificationEmail(subject, body, fullyQualifiedEmailAddresses);
         }
     }
 
     public static class RoleExpiryPrincipalNotificationToMetricConverter implements NotificationToMetricConverter {
+
         private final static String NOTIFICATION_TYPE = "principal_role_membership_expiry";
-        private final NotificationToMetricConverterCommon notificationToMetricConverterCommon = new NotificationToMetricConverterCommon();
+        private final NotificationToMetricConverterCommon notificationToMetricConverterCommon =
+                new NotificationToMetricConverterCommon();
 
         @Override
         public NotificationMetric getNotificationAsMetrics(Notification notification, Timestamp currentTime) {
-            Map<String, String> details = notification.getDetails();
 
-            String memberName = details.get(NOTIFICATION_DETAILS_MEMBER);
-
-            List<String[]> attributes = new ArrayList<>();
-            String[] records = details.get(NOTIFICATION_DETAILS_ROLES_LIST).split("\\|");
-            for (String record: records) {
-                String[] recordAttributes = record.split(";");
-                if (recordAttributes.length != 3) {
-                    // Bad entry, skip
-                    continue;
-                }
-                String[] metricRecord = new String[] {
-                        METRIC_NOTIFICATION_TYPE_KEY, NOTIFICATION_TYPE,
-                        METRIC_NOTIFICATION_MEMBER_KEY, memberName,
-                        METRIC_NOTIFICATION_DOMAIN_KEY, recordAttributes[0],
-                        METRIC_NOTIFICATION_ROLE_KEY, recordAttributes[1],
-                        METRIC_NOTIFICATION_EXPIRY_DAYS_KEY, notificationToMetricConverterCommon.getNumberOfDaysBetweenTimestamps(currentTime.toString(), recordAttributes[2])
-                };
-
-                attributes.add(metricRecord);
-            }
-
-            return new NotificationMetric(attributes);
+            return NotificationUtils.getNotificationAsMetrics(notification, currentTime, NOTIFICATION_TYPE,
+                    NOTIFICATION_DETAILS_ROLES_LIST, METRIC_NOTIFICATION_ROLE_KEY, METRIC_NOTIFICATION_EXPIRY_DAYS_KEY,
+                    notificationToMetricConverterCommon);
         }
     }
 
     public static class RoleExpiryDomainNotificationToMetricConverter implements NotificationToMetricConverter {
+
         private final static String NOTIFICATION_TYPE = "domain_role_membership_expiry";
-        private final NotificationToMetricConverterCommon notificationToMetricConverterCommon = new NotificationToMetricConverterCommon();
+        private final NotificationToMetricConverterCommon notificationToMetricConverterCommon =
+                new NotificationToMetricConverterCommon();
 
         @Override
         public NotificationMetric getNotificationAsMetrics(Notification notification, Timestamp currentTime) {
-            Map<String, String> details = notification.getDetails();
-            String domain = details.get(NOTIFICATION_DETAILS_DOMAIN);
-            List<String[]> attributes = new ArrayList<>();
-            String[] records = details.get(NOTIFICATION_DETAILS_MEMBERS_LIST).split("\\|");
-            for (String record: records) {
-                String[] recordAttributes = record.split(";");
-                if (recordAttributes.length != 3) {
-                    // Bad entry, skip
-                    continue;
-                }
-                String[] metricRecord = new String[] {
-                        METRIC_NOTIFICATION_TYPE_KEY, NOTIFICATION_TYPE,
-                        METRIC_NOTIFICATION_DOMAIN_KEY, domain,
-                        METRIC_NOTIFICATION_MEMBER_KEY, recordAttributes[0],
-                        METRIC_NOTIFICATION_ROLE_KEY, recordAttributes[1],
-                        METRIC_NOTIFICATION_EXPIRY_DAYS_KEY, notificationToMetricConverterCommon.getNumberOfDaysBetweenTimestamps(currentTime.toString(), recordAttributes[2])
-                };
 
-                attributes.add(metricRecord);
+            return NotificationUtils.getNotificationAsMetrics(notification, currentTime, NOTIFICATION_TYPE,
+                    NOTIFICATION_DETAILS_MEMBERS_LIST, METRIC_NOTIFICATION_ROLE_KEY, METRIC_NOTIFICATION_EXPIRY_DAYS_KEY,
+                    notificationToMetricConverterCommon);
+        }
+    }
+
+    public static class RoleExpiryPrincipalNotificationToSlackConverter implements NotificationToSlackMessageConverter {
+        private static final String SLACK_TEMPLATE_PRINCIPAL_MEMBER_EXPIRY = "messages/slack-role-member-expiry.ftl";
+        private final NotificationConverterCommon notificationConverterCommon;
+        private final String slackPrincipalExpiryTemplate;
+
+        public RoleExpiryPrincipalNotificationToSlackConverter(NotificationConverterCommon notificationConverterCommon) {
+            this.notificationConverterCommon = notificationConverterCommon;
+            slackPrincipalExpiryTemplate = notificationConverterCommon.readContentFromFile(
+                    getClass().getClassLoader(), SLACK_TEMPLATE_PRINCIPAL_MEMBER_EXPIRY);
+        }
+
+        @Override
+        public NotificationSlackMessage getNotificationAsSlackMessage(Notification notification) {
+            String slackMessageContent = notificationConverterCommon.getSlackMessageFromTemplate(notification.getDetails(), slackPrincipalExpiryTemplate, NOTIFICATION_DETAILS_ROLES_LIST, TEMPLATE_COLUMN_NAMES.length, ServerCommonConsts.OBJECT_ROLE);
+            if (StringUtil.isEmpty(slackMessageContent)) {
+                return null;
             }
+            Set<String> slackRecipients = notificationConverterCommon.getSlackRecipients(notification.getRecipients(), notification.getNotificationDomainMeta());
+            return new NotificationSlackMessage(
+                    slackMessageContent,
+                    slackRecipients);
+        }
+    }
 
-            return new NotificationMetric(attributes);
+    public static class RoleExpiryDomainNotificationToSlackConverter implements NotificationToSlackMessageConverter {
+
+        private static final String SLACK_TEMPLATE_DOMAIN_MEMBER_EXPIRY = "messages/slack-domain-role-member-expiry.ftl";
+        private final NotificationConverterCommon notificationConverterCommon;
+        private final String slackDomainExpiryTemplate;
+
+        public RoleExpiryDomainNotificationToSlackConverter(NotificationConverterCommon notificationConverterCommon) {
+            this.notificationConverterCommon = notificationConverterCommon;
+            slackDomainExpiryTemplate = notificationConverterCommon.readContentFromFile(
+                    getClass().getClassLoader(), SLACK_TEMPLATE_DOMAIN_MEMBER_EXPIRY);
+        }
+
+        @Override
+        public NotificationSlackMessage getNotificationAsSlackMessage(Notification notification) {
+            String slackMessageContent = notificationConverterCommon.getSlackMessageFromTemplate(notification.getDetails(), slackDomainExpiryTemplate, NOTIFICATION_DETAILS_MEMBERS_LIST, TEMPLATE_COLUMN_NAMES.length, ServerCommonConsts.OBJECT_ROLE);
+            if (StringUtil.isEmpty(slackMessageContent)) {
+                return null;
+            }
+            Set<String> slackRecipients = notificationConverterCommon.getSlackRecipients(notification.getRecipients(), notification.getNotificationDomainMeta());
+            return new NotificationSlackMessage(
+                    slackMessageContent,
+                    slackRecipients);
         }
     }
 }

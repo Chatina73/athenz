@@ -16,7 +16,11 @@ public class InstanceRegisterInformation {
     public String provider;
     public String domain;
     public String service;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public String attestationData;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public String csr;
     @RdlOptional
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
@@ -48,6 +52,33 @@ public class InstanceRegisterInformation {
     @RdlOptional
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public String cloud;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public String x509CertSignerKeyId;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public String sshCertSignerKeyId;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public String x509CertInstanceId;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public String jwtSVIDInstanceId;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public String jwtSVIDAudience;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public String jwtSVIDNonce;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public String jwtSVIDSpiffe;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public Boolean jwtSVIDSpiffeSubject;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public String jwtSVIDKeyType;
 
     public InstanceRegisterInformation setProvider(String provider) {
         this.provider = provider;
@@ -154,6 +185,69 @@ public class InstanceRegisterInformation {
     public String getCloud() {
         return cloud;
     }
+    public InstanceRegisterInformation setX509CertSignerKeyId(String x509CertSignerKeyId) {
+        this.x509CertSignerKeyId = x509CertSignerKeyId;
+        return this;
+    }
+    public String getX509CertSignerKeyId() {
+        return x509CertSignerKeyId;
+    }
+    public InstanceRegisterInformation setSshCertSignerKeyId(String sshCertSignerKeyId) {
+        this.sshCertSignerKeyId = sshCertSignerKeyId;
+        return this;
+    }
+    public String getSshCertSignerKeyId() {
+        return sshCertSignerKeyId;
+    }
+    public InstanceRegisterInformation setX509CertInstanceId(String x509CertInstanceId) {
+        this.x509CertInstanceId = x509CertInstanceId;
+        return this;
+    }
+    public String getX509CertInstanceId() {
+        return x509CertInstanceId;
+    }
+    public InstanceRegisterInformation setJwtSVIDInstanceId(String jwtSVIDInstanceId) {
+        this.jwtSVIDInstanceId = jwtSVIDInstanceId;
+        return this;
+    }
+    public String getJwtSVIDInstanceId() {
+        return jwtSVIDInstanceId;
+    }
+    public InstanceRegisterInformation setJwtSVIDAudience(String jwtSVIDAudience) {
+        this.jwtSVIDAudience = jwtSVIDAudience;
+        return this;
+    }
+    public String getJwtSVIDAudience() {
+        return jwtSVIDAudience;
+    }
+    public InstanceRegisterInformation setJwtSVIDNonce(String jwtSVIDNonce) {
+        this.jwtSVIDNonce = jwtSVIDNonce;
+        return this;
+    }
+    public String getJwtSVIDNonce() {
+        return jwtSVIDNonce;
+    }
+    public InstanceRegisterInformation setJwtSVIDSpiffe(String jwtSVIDSpiffe) {
+        this.jwtSVIDSpiffe = jwtSVIDSpiffe;
+        return this;
+    }
+    public String getJwtSVIDSpiffe() {
+        return jwtSVIDSpiffe;
+    }
+    public InstanceRegisterInformation setJwtSVIDSpiffeSubject(Boolean jwtSVIDSpiffeSubject) {
+        this.jwtSVIDSpiffeSubject = jwtSVIDSpiffeSubject;
+        return this;
+    }
+    public Boolean getJwtSVIDSpiffeSubject() {
+        return jwtSVIDSpiffeSubject;
+    }
+    public InstanceRegisterInformation setJwtSVIDKeyType(String jwtSVIDKeyType) {
+        this.jwtSVIDKeyType = jwtSVIDKeyType;
+        return this;
+    }
+    public String getJwtSVIDKeyType() {
+        return jwtSVIDKeyType;
+    }
 
     @Override
     public boolean equals(Object another) {
@@ -205,6 +299,33 @@ public class InstanceRegisterInformation {
                 return false;
             }
             if (cloud == null ? a.cloud != null : !cloud.equals(a.cloud)) {
+                return false;
+            }
+            if (x509CertSignerKeyId == null ? a.x509CertSignerKeyId != null : !x509CertSignerKeyId.equals(a.x509CertSignerKeyId)) {
+                return false;
+            }
+            if (sshCertSignerKeyId == null ? a.sshCertSignerKeyId != null : !sshCertSignerKeyId.equals(a.sshCertSignerKeyId)) {
+                return false;
+            }
+            if (x509CertInstanceId == null ? a.x509CertInstanceId != null : !x509CertInstanceId.equals(a.x509CertInstanceId)) {
+                return false;
+            }
+            if (jwtSVIDInstanceId == null ? a.jwtSVIDInstanceId != null : !jwtSVIDInstanceId.equals(a.jwtSVIDInstanceId)) {
+                return false;
+            }
+            if (jwtSVIDAudience == null ? a.jwtSVIDAudience != null : !jwtSVIDAudience.equals(a.jwtSVIDAudience)) {
+                return false;
+            }
+            if (jwtSVIDNonce == null ? a.jwtSVIDNonce != null : !jwtSVIDNonce.equals(a.jwtSVIDNonce)) {
+                return false;
+            }
+            if (jwtSVIDSpiffe == null ? a.jwtSVIDSpiffe != null : !jwtSVIDSpiffe.equals(a.jwtSVIDSpiffe)) {
+                return false;
+            }
+            if (jwtSVIDSpiffeSubject == null ? a.jwtSVIDSpiffeSubject != null : !jwtSVIDSpiffeSubject.equals(a.jwtSVIDSpiffeSubject)) {
+                return false;
+            }
+            if (jwtSVIDKeyType == null ? a.jwtSVIDKeyType != null : !jwtSVIDKeyType.equals(a.jwtSVIDKeyType)) {
                 return false;
             }
         }

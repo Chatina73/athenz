@@ -22,7 +22,9 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.yahoo.athenz.common.server.cert.CertificateDataValidator;
 import com.yahoo.athenz.common.server.dns.HostnameResolver;
+import com.yahoo.athenz.common.server.spiffe.SpiffeUriManager;
 import com.yahoo.athenz.common.utils.X509CertUtils;
 import com.yahoo.athenz.zts.CertType;
 import com.yahoo.athenz.zts.ZTSConsts;
@@ -33,13 +35,12 @@ import org.slf4j.LoggerFactory;
 
 import com.yahoo.athenz.auth.util.Crypto;
 import com.yahoo.athenz.auth.util.CryptoException;
+import com.yahoo.athenz.auth.util.StringUtils;
 
 public class X509CertRequest {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(X509CertRequest.class);
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
-
-    protected static final String SPIFFE_TRUST_DOMAIN = System.getProperty(ZTSConsts.ZTS_PROP_SPIFFE_TRUST_DOMAIN, "athenz.io");
 
     protected PKCS10CertificationRequest certReq;
     protected String instanceId;
@@ -52,8 +53,16 @@ public class X509CertRequest {
     protected List<String> providerDnsNames;
     protected List<String> ipAddresses;
     protected List<String> uris;
-    
-    public X509CertRequest(String csr) throws CryptoException {
+    protected SpiffeUriManager spiffeUriManager;
+    protected CertificateDataValidator certificateDataValidator;
+
+    public X509CertRequest(String csr, SpiffeUriManager spiffeUriManager,
+            CertificateDataValidator certificateDataValidator) throws CryptoException {
+        this(csr, spiffeUriManager, certificateDataValidator, null);
+    }
+
+    public X509CertRequest(String csr, SpiffeUriManager spiffeUriManager,
+            CertificateDataValidator certificateDataValidator, final String x509CertInstanceId) throws CryptoException {
 
         certReq = Crypto.getPKCS10CertRequest(csr);
         if (certReq == null) {
@@ -92,19 +101,53 @@ public class X509CertRequest {
 
         uriHostname = X509CertUtils.extractItemFromURI(uris, ZTSConsts.ZTS_CERT_HOSTNAME_URI);
 
-        // extract instanceId
+        // extract instanceId: the CSR itself (athenz URI field, then the SAN
+        // dnsName list) always takes precedence; the caller-supplied value is
+        // only a last resort when the CSR carries none
 
-        // first check to see if we have the instance id is provided
-        // in the athenz uri field
+        instanceId = extractInstanceId(x509CertInstanceId);
 
-        instanceId = X509CertUtils.extractRequestInstanceIdFromURI(uris);
+        // save the spiffe uri manager and certificate data validator objects
 
-        // if we have no instance id from the URI, then we're going
-        // to fetch it from the dns list
+        this.spiffeUriManager = spiffeUriManager;
+        this.certificateDataValidator = certificateDataValidator;
+    }
 
-        if (instanceId == null) {
-            instanceId = X509CertUtils.extractRequestInstanceIdFromDnsNames(dnsNames);
+    private String extractInstanceId(final String x509CertInstanceId) {
+
+        String csrInstanceId = X509CertUtils.extractRequestInstanceIdFromURI(uris);
+        if (csrInstanceId == null) {
+            csrInstanceId = X509CertUtils.extractRequestInstanceIdFromDnsNames(dnsNames);
         }
+        if (csrInstanceId != null) {
+            return csrInstanceId;
+        }
+
+        return StringUtils.isEmpty(x509CertInstanceId) ? null : x509CertInstanceId;
+    }
+
+    boolean knownAthenzUri(final String uri) {
+        return uri.startsWith(ZTSConsts.ZTS_CERT_SPIFFE_URI) || uri.startsWith(ZTSConsts.ZTS_CERT_HOSTNAME_URI) ||
+            uri.startsWith(ZTSConsts.ZTS_CERT_PRINCIPAL_URI) || uri.startsWith(ZTSConsts.ZTS_CERT_PROXY_USER_URI) ||
+            uri.startsWith(ZTSConsts.ZTS_CERT_INSTANCE_ID_URI);
+    }
+
+    boolean validateSanUriSchemes(boolean validateSchemes) {
+        if (uris == null || uris.isEmpty()) {
+            return true;
+        }
+
+        // iterate through and report all unknown uri values
+
+        boolean allUrisValid = true;
+        for (String uri : uris) {
+            if (!knownAthenzUri(uri.toLowerCase())) {
+                allUrisValid = false;
+                LOGGER.error("Certificate Request unknown uri: {}, cn: {}", uri, cn);
+            }
+        }
+
+        return validateSchemes ? allUrisValid : true;
     }
 
     public PKCS10CertificationRequest getCertReq() {
@@ -174,7 +217,7 @@ public class X509CertRequest {
 
         for (String dnsName : dnsNames) {
             if (!dnsSuffixCheck(dnsName, providerDnsSuffixList, serviceDnsSuffixCheck, wildCardPrefix,
-                    instanceHostname, instanceHostCnames)) {
+                    instanceHostname, instanceHostCnames, domainName, serviceName)) {
                 errorMsg.append(dnsName).append(" does not end with provider/service configured suffix or hostname");
                 return false;
             }
@@ -306,7 +349,7 @@ public class X509CertRequest {
 
     boolean dnsSuffixCheck(final String dnsName, final List<String> providerDnsSuffixList,
             final String serviceDnsSuffixCheck, final String wildCardPrefix, final String instanceHostname,
-            final List<String> instanceHostCnames) {
+            final List<String> instanceHostCnames, final String domainName, final String serviceName) {
 
         if (providerDnsSuffixList != null) {
             for (String dnsSuffixCheck : providerDnsSuffixList) {
@@ -331,6 +374,13 @@ public class X509CertRequest {
                         return true;
                     }
 
+                    // if we have a certificate data validator, then we'll use it to validate the dns name
+
+                    if (certificateDataValidator != null && certificateDataValidator.validateServiceIdentityCertSanDnsName(
+                            domainName, serviceName, dnsName, serviceDnsSuffixCheck, providerDnsSuffixList)) {
+                        return true;
+                    }
+
                     // add the name to the list to be verified
 
                     providerDnsNames.add(dnsName);
@@ -343,6 +393,13 @@ public class X509CertRequest {
         // to check with the provider
 
         if (serviceDnsSuffixCheck != null && dnsName.endsWith(serviceDnsSuffixCheck)) {
+            return true;
+        }
+
+        // if we have a certificate data validator, then we'll use it to validate the dns name
+
+        if (certificateDataValidator != null && certificateDataValidator.validateServiceIdentityCertSanDnsName(
+                domainName, serviceName, dnsName, serviceDnsSuffixCheck, providerDnsSuffixList)) {
             return true;
         }
 
@@ -438,7 +495,7 @@ public class X509CertRequest {
 
         try {
             final String value = Crypto.extractX509CSRSubjectOField(certReq);
-            if (value == null) {
+            if (StringUtils.isEmpty(value)) {
                 return true;
             }
             boolean res = validValues.contains(value);
@@ -628,6 +685,10 @@ public class X509CertRequest {
     
     public String getInstanceId() {
         return instanceId;
+    }
+
+    public void setInstanceId(final String instanceId) {
+        this.instanceId = instanceId;
     }
 
     public String getUriHostname() {

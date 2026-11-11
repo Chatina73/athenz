@@ -25,6 +25,7 @@ import { getUserDomainsList } from '../../redux/thunks/domains';
 import { selectIsLoading } from '../../redux/selectors/loading';
 import { selectUserDomains } from '../../redux/selectors/domains';
 import RequestUtils from '../utils/RequestUtils';
+import SearchInput from '../denali/SearchInput';
 
 const DomainListDiv = styled.div`
     padding: 0 30px 0 15px;
@@ -94,15 +95,21 @@ const DividerSpan = styled.span`
     color: ${colors.grey500};
 `;
 
+const SearchInputDiv = styled.div`
+    padding: 0 30px 15px 15px;
+`;
+
 class UserDomains extends React.Component {
     constructor(props) {
         super(props);
         this.toggleDomains = this.toggleDomains.bind(this);
         this.showError = this.showError.bind(this);
+        this.handleSearchChange = this.handleSearchChange.bind(this);
         this.state = {
             errorMessage: '',
             showError: false,
             showDomains: !(props.hideDomains ? props.hideDomains : false),
+            searchText: '',
         };
     }
 
@@ -112,11 +119,55 @@ class UserDomains extends React.Component {
         });
     }
 
+    handleSearchChange(event) {
+        this.setState({
+            searchText: event.target.value,
+        });
+    }
+
     componentDidMount() {
         const { getDomainList } = this.props;
         Promise.all([getDomainList()]).catch((err) => {
             this.showError(RequestUtils.fetcherErrorCheckHelper(err));
         });
+    }
+
+    filterDomains(searchText, domains) {
+        if (!domains || domains.length === 0) {
+            return [];
+        }
+
+        if (!searchText || searchText.trim() === '') {
+            return domains;
+        }
+
+        const searchTerm = searchText.trim().toLowerCase();
+
+        // Score-based search algorithm similar to MemberUtils
+        return domains
+            .map((domain) => {
+                const domainName = domain.name.toLowerCase();
+
+                // Highest score for exact match
+                if (domainName === searchTerm) {
+                    return { ...domain, score: 3 };
+                }
+
+                // High score for domains starting with search term
+                if (domainName.startsWith(searchTerm)) {
+                    return { ...domain, score: 2 };
+                }
+
+                // Medium score for domains containing search term
+                if (domainName.includes(searchTerm)) {
+                    return { ...domain, score: 1 };
+                }
+
+                // No match
+                return null;
+            })
+            .filter((domain) => domain !== null)
+            .sort((a, b) => b.score - a.score);
     }
 
     showError(errorMessage) {
@@ -129,8 +180,14 @@ class UserDomains extends React.Component {
     render() {
         let userIcons = [];
         let currentDomain = this.props.domain ? this.props.domain : null;
-        if (this.props.domains && this.props.domains.length > 0) {
-            this.props.domains.forEach((domain) => {
+
+        const domainsToShow = this.filterDomains(
+            this.state.searchText,
+            this.props.domains || []
+        );
+
+        if (domainsToShow && domainsToShow.length > 0) {
+            domainsToShow.forEach((domain) => {
                 const domainName = domain.name;
                 let iconType = domain.adminDomain
                     ? 'user-secure'
@@ -145,7 +202,11 @@ class UserDomains extends React.Component {
                                 verticalAlign={'baseline'}
                             />
                         </UserAdminLogoDiv>
-                        <Link href={PageUtils.rolePage(domainName)}>
+                        <Link
+                            href={PageUtils.rolePage(domainName)}
+                            passHref
+                            legacyBehavior
+                        >
                             <StyledAnchor active={currentDomain === domainName}>
                                 {domainName}
                             </StyledAnchor>
@@ -177,16 +238,35 @@ class UserDomains extends React.Component {
                                 My Domains
                             </ManageDomainsTitleDiv>
                             <div>
-                                <Link href={PageUtils.createDomainPage()}>
+                                <Link
+                                    href={PageUtils.createDomainPage()}
+                                    passHref
+                                    legacyBehavior
+                                >
                                     <StyledAnchor>Create</StyledAnchor>
                                 </Link>
                                 <DividerSpan> | </DividerSpan>
-                                <Link href={PageUtils.manageDomainPage()}>
+                                <Link
+                                    href={PageUtils.manageDomainPage()}
+                                    passHref
+                                    legacyBehavior
+                                >
                                     <StyledAnchor>Manage</StyledAnchor>
                                 </Link>
                             </div>
                         </ManageDomainsHeaderDiv>
-                        <DomainListDiv>
+                        <SearchInputDiv>
+                            <SearchInput
+                                dark={false}
+                                name='domain-search'
+                                fluid={true}
+                                value={this.state.searchText}
+                                placeholder='Search domains'
+                                size='small'
+                                onChange={this.handleSearchChange}
+                            />
+                        </SearchInputDiv>
+                        <DomainListDiv data-testid='domain-list'>
                             {this.state.showError
                                 ? this.state.errorMessage
                                 : userIcons}

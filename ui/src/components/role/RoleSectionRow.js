@@ -26,6 +26,16 @@ import { withRouter } from 'next/router';
 import { css, keyframes } from '@emotion/react';
 import { deleteRole } from '../../redux/thunks/roles';
 import { connect } from 'react-redux';
+import { selectDomainAuditEnabled } from '../../redux/selectors/domainData';
+import { selectResourceOwnershipUi } from '../../redux/selectors/domains';
+import { onClickNewTabFunction } from '../utils/PageUtils';
+import ManagedResourceIcon from '../resource-ownership/ManagedResourceIcon';
+import {
+    isRoleResourceListManaged,
+    resolveRoleDeleteResourceOwnershipCli,
+} from '../utils/resourceOwnership';
+import { getRoleListManagedIconTooltip } from '../utils/resourceOwnershipUi';
+import { roleIconStripMinWidthStyle } from '../utils/roleIconStrip';
 
 const TDName = styled.div`
     background-color: ${(props) => props.color};
@@ -70,8 +80,10 @@ const TDIcon = styled.div`
 `;
 
 const TrStyled = styled.div`
+    box-sizing: border-box;
     background-color: ${(props) => props.color};
     display: flex;
+    padding-left: 15px;
     ${(props) =>
         props.isSuccess === true &&
         css`
@@ -95,8 +107,21 @@ const MenuDiv = styled.div`
     font-size: 12px;
 `;
 
-const LeftSpan = styled.span`
-    padding-left: 20px;
+const IconStrip = styled.span`
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+    vertical-align: middle;
+    box-sizing: border-box;
+`;
+
+const IconSlot = styled.span`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.35em;
+    vertical-align: middle;
 `;
 
 class RoleSectionRow extends React.Component {
@@ -110,6 +135,7 @@ class RoleSectionRow extends React.Component {
                 this.props.details.roleName ||
                 NameUtils.getShortName(':role.', this.props.details.name),
             showDelete: false,
+            resourceOwnershipCliCommand: null,
         };
         this.localDate = new DateUtils();
     }
@@ -156,14 +182,29 @@ class RoleSectionRow extends React.Component {
                     deleteName: null,
                     deleteJustification: null,
                     errorMessage: null,
+                    resourceOwnershipCliCommand: null,
                 });
                 this.props.onUpdateSuccess(
                     `Successfully deleted role ${roleName}`
                 );
             })
             .catch((err) => {
+                const role = this.props.details;
+                const aud =
+                    this.props.justificationRequired &&
+                    this.state.deleteJustification
+                        ? this.state.deleteJustification
+                        : null;
                 this.setState({
                     errorMessage: RequestUtils.xhrErrorCheckHelper(err),
+                    resourceOwnershipCliCommand:
+                        resolveRoleDeleteResourceOwnershipCli(
+                            role.resourceOwnership,
+                            err,
+                            this.props.domain,
+                            roleName,
+                            aud
+                        ),
                 });
             });
     }
@@ -173,6 +214,7 @@ class RoleSectionRow extends React.Component {
             showDelete: false,
             deleteName: '',
             errorMessage: null,
+            resourceOwnershipCliCommand: null,
         });
     }
 
@@ -183,29 +225,35 @@ class RoleSectionRow extends React.Component {
         let role = this.props.details;
         let color = this.props.color;
 
-        let clickMembers = this.onClickFunction.bind(
+        let clickMembers = onClickNewTabFunction.bind(
             this,
-            `/domain/${this.props.domain}/role/${this.state.name}/members`
+            `/domain/${this.props.domain}/role/${this.state.name}/members`,
+            this.props.router
         );
-        let clickReview = this.onClickFunction.bind(
+        let clickReview = onClickNewTabFunction.bind(
             this,
-            `/domain/${this.props.domain}/role/${this.state.name}/review`
+            `/domain/${this.props.domain}/role/${this.state.name}/review`,
+            this.props.router
         );
-        let clickSettings = this.onClickFunction.bind(
+        let clickSettings = onClickNewTabFunction.bind(
             this,
-            `/domain/${this.props.domain}/role/${this.state.name}/settings`
+            `/domain/${this.props.domain}/role/${this.state.name}/settings`,
+            this.props.router
         );
-        let clickPolicy = this.onClickFunction.bind(
+        let clickPolicy = onClickNewTabFunction.bind(
             this,
-            `/domain/${this.props.domain}/role/${this.state.name}/policy`
+            `/domain/${this.props.domain}/role/${this.state.name}/policy`,
+            this.props.router
         );
-        let clickHistory = this.onClickFunction.bind(
+        let clickHistory = onClickNewTabFunction.bind(
             this,
-            `/domain/${this.props.domain}/role/${this.state.name}/history`
+            `/domain/${this.props.domain}/role/${this.state.name}/history`,
+            this.props.router
         );
-        let clickTag = this.onClickFunction.bind(
+        let clickTag = onClickNewTabFunction.bind(
             this,
-            `/domain/${this.props.domain}/role/${this.state.name}/tags`
+            `/domain/${this.props.domain}/role/${this.state.name}/tags`,
+            this.props.router
         );
 
         let clickDelete = this.onClickDelete.bind(this, this.state.name);
@@ -231,6 +279,42 @@ class RoleSectionRow extends React.Component {
             </Menu>
         );
 
+        let iconDescription = (
+            <Menu
+                placement='bottom-start'
+                trigger={
+                    <span data-testid='description-icon'>
+                        <Icon
+                            icon={'information-circle'}
+                            color={colors.icons}
+                            size={'1.15em'}
+                            verticalAlign={'text-bottom'}
+                            enableTitle={false}
+                            onClick={() => {
+                                this.setState({
+                                    recentlyCopiedToClipboard: true,
+                                });
+                                setTimeout(
+                                    () =>
+                                        this.setState({
+                                            recentlyCopiedToClipboard: false,
+                                        }),
+                                    1000
+                                );
+                                navigator.clipboard.writeText(role.description);
+                            }}
+                        />
+                    </span>
+                }
+            >
+                <MenuDiv>
+                    {this.state.recentlyCopiedToClipboard
+                        ? 'Copied to clipboard'
+                        : role.description}
+                </MenuDiv>
+            </Menu>
+        );
+
         let auditEnabled = !!role.auditEnabled;
         let iconAudit = (
             <Menu
@@ -252,23 +336,44 @@ class RoleSectionRow extends React.Component {
             </Menu>
         );
 
-        let roleTypeIcon = role.trust ? iconDelegated : '';
-        let roleAuditIcon = auditEnabled ? iconAudit : '';
+        let roleDescriptionIcon = role.description ? iconDescription : '';
 
-        let roleNameSpan =
-            roleTypeIcon === '' && roleAuditIcon === '' ? (
-                <LeftSpan>{' ' + this.state.name}</LeftSpan>
-            ) : (
-                <span>{' ' + this.state.name}</span>
-            );
+        let roleTypeIcon = role.trust ? iconDelegated : null;
+        let roleAuditIcon = auditEnabled ? iconAudit : null;
+        let roleManagedResourceIcon = isRoleResourceListManaged(
+            role.resourceOwnership
+        ) ? (
+            <ManagedResourceIcon
+                show={true}
+                tooltip={getRoleListManagedIconTooltip(
+                    role.resourceOwnership,
+                    this.props.resourceOwnershipUi
+                )}
+            />
+        ) : null;
+        const iconStripStyle = {
+            minWidth: roleIconStripMinWidthStyle(
+                this.props.iconStripMaxIcons ?? 3
+            ),
+        };
         if (this.props.category === 'group-roles') {
             let category = 'group';
             rows.push(
                 <TrStyled key={this.state.name} data-testid='role-section-row'>
                     <TDName color={color} align={left} category={category}>
-                        {roleTypeIcon}
-                        {roleAuditIcon}
-                        {roleNameSpan}
+                        <IconStrip style={iconStripStyle}>
+                            {roleTypeIcon ? (
+                                <IconSlot>{roleTypeIcon}</IconSlot>
+                            ) : null}
+                            {roleAuditIcon ? (
+                                <IconSlot>{roleAuditIcon}</IconSlot>
+                            ) : null}
+                            {roleManagedResourceIcon ? (
+                                <IconSlot>{roleManagedResourceIcon}</IconSlot>
+                            ) : null}
+                        </IconStrip>
+                        <span>{' ' + this.state.name}</span>{' '}
+                        {roleDescriptionIcon}
                     </TDName>
                     <TDTime color={color} align={left} category={category}>
                         {role.expiration
@@ -291,6 +396,7 @@ class RoleSectionRow extends React.Component {
                                         isLink
                                         size={'1.25em'}
                                         verticalAlign={'text-bottom'}
+                                        dataWdio={`${this.state.name}-members`}
                                     />
                                 </span>
                             }
@@ -311,9 +417,19 @@ class RoleSectionRow extends React.Component {
                     isSuccess={newRole}
                 >
                     <TDName color={color} align={left}>
-                        {roleTypeIcon}
-                        {roleAuditIcon}
-                        {roleNameSpan}
+                        <IconStrip style={iconStripStyle}>
+                            {roleTypeIcon ? (
+                                <IconSlot>{roleTypeIcon}</IconSlot>
+                            ) : null}
+                            {roleAuditIcon ? (
+                                <IconSlot>{roleAuditIcon}</IconSlot>
+                            ) : null}
+                            {roleManagedResourceIcon ? (
+                                <IconSlot>{roleManagedResourceIcon}</IconSlot>
+                            ) : null}
+                        </IconStrip>
+                        <span>{' ' + this.state.name}</span>{' '}
+                        {roleDescriptionIcon}
                     </TDName>
                     <TDTime color={color} align={left}>
                         {this.localDate.getLocalDate(
@@ -343,6 +459,7 @@ class RoleSectionRow extends React.Component {
                                         isLink
                                         size={'1.25em'}
                                         verticalAlign={'text-bottom'}
+                                        dataWdio={`${this.state.name}-members`}
                                     />
                                 </span>
                             }
@@ -482,6 +599,9 @@ class RoleSectionRow extends React.Component {
                     }
                     onJustification={this.saveJustification}
                     errorMessage={this.state.errorMessage}
+                    resourceOwnershipCliCommand={
+                        this.state.resourceOwnershipCliCommand
+                    }
                 />
             );
         }
@@ -489,9 +609,18 @@ class RoleSectionRow extends React.Component {
     }
 }
 
+const mapStateToProps = (state, props) => ({
+    ...props,
+    justificationRequired: selectDomainAuditEnabled(state),
+    resourceOwnershipUi: selectResourceOwnershipUi(state),
+});
+
 const mapDispatchToProps = (dispatch) => ({
     deleteRole: (roleName, auditRef, _csrf) =>
         dispatch(deleteRole(roleName, auditRef, _csrf)),
 });
 
-export default connect(null, mapDispatchToProps)(withRouter(RoleSectionRow));
+export default connect(
+    mapStateToProps,
+    mapDispatchToProps
+)(withRouter(RoleSectionRow));

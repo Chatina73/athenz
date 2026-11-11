@@ -6,16 +6,20 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"fmt"
-	"github.com/AthenZ/athenz/libs/go/sia/gcp/attestation"
-	"github.com/AthenZ/athenz/libs/go/sia/host/ip"
-	"github.com/AthenZ/athenz/libs/go/sia/host/signature"
 	"net"
 	"net/url"
+
+	"github.com/AthenZ/athenz/libs/go/sia/gcp/attestation"
+	"github.com/AthenZ/athenz/libs/go/sia/host/ip"
+	"github.com/AthenZ/athenz/libs/go/sia/host/provider"
+	"github.com/AthenZ/athenz/libs/go/sia/host/signature"
 )
 
 type MockGCPProvider struct {
-	Name     string
-	Hostname string
+	Name           string
+	Hostname       string
+	MetaFailure    bool
+	ProfileFailure bool
 }
 
 // GetName returns the name of the current provider
@@ -24,7 +28,7 @@ func (tp MockGCPProvider) GetName() string {
 }
 
 // GetHostname returns the hostname as per the provider
-func (tp MockGCPProvider) GetHostname() string {
+func (tp MockGCPProvider) GetHostname(bool) string {
 	return tp.Hostname
 }
 
@@ -60,11 +64,11 @@ func (tp MockGCPProvider) GetSanIp(docIp map[string]bool, ips []net.IP, opts ip.
 	return nil
 }
 
-func (tp MockGCPProvider) GetSuffix() string {
-	return ""
+func (tp MockGCPProvider) GetSuffixes() []string {
+	return []string{}
 }
 
-func (tp MockGCPProvider) CloudAttestationData(base, svc, ztsServerName string) (string, error) {
+func (tp MockGCPProvider) CloudAttestationData(*provider.AttestationRequest) (string, error) {
 	a, _ := json.Marshal(&attestation.GoogleAttestationData{
 		IdentityToken: "abc",
 	})
@@ -73,13 +77,23 @@ func (tp MockGCPProvider) CloudAttestationData(base, svc, ztsServerName string) 
 }
 
 func (tp MockGCPProvider) GetAccountDomainServiceFromMeta(base string) (string, string, string, error) {
+	if tp.MetaFailure {
+		return "", "", "", fmt.Errorf("unable to retrieve account, domain and service from meta")
+	}
 	return "mockGCPProject", "mockAthenzDomain", "mockAthenzService", nil
 }
 
 func (tp MockGCPProvider) GetAccessManagementProfileFromMeta(base string) (string, error) {
+	if tp.ProfileFailure {
+		return "", fmt.Errorf("unable to retrieve access management profile from meta")
+	}
 	return "testProf", nil
 }
 
 func (tp MockGCPProvider) GetAdditionalSshHostPrincipals(base string) (string, error) {
 	return "my-vm,compute.1234567890000,my-vm.c.my-gcp-project.internal", nil
+}
+
+func (tp MockGCPProvider) GetInstanceAttributeValueFromMeta(string, string) (string, error) {
+	return "", nil
 }

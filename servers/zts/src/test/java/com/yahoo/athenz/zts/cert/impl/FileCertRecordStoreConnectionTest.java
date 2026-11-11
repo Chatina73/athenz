@@ -174,15 +174,64 @@ public class FileCertRecordStoreConnectionTest {
         assertNotNull(certRecordCheck);
 
         // Verify that certificates are not expired immediately
-        con.deleteExpiredX509CertRecords(43200); //30 days
+        con.deleteExpiredX509CertRecords(43200, 0); //30 days
         certRecordCheck = con.getX509CertRecord("ostk", "instance-id", "cn");
         assertNotNull(certRecordCheck);
 
         Thread.sleep(1000);
-        con.deleteExpiredX509CertRecords(0);
+        con.deleteExpiredX509CertRecords(0, 0);
 
         certRecordCheck = con.getX509CertRecord("ostk", "instance-id", "cn");
         assertNull(certRecordCheck);
+        con.close();
+    }
+
+    @Test
+    public void testdeleteExpiredX509CertRecordsWithLimit() throws Exception {
+        
+        // make sure the directory does not exist
+
+        ZTSTestUtils.deleteDirectory(new File("/tmp/zts-cert-tests"));
+
+        FileCertRecordStore store = new FileCertRecordStore(new File("/tmp/zts-cert-tests"));
+        FileCertRecordStoreConnection con = (FileCertRecordStoreConnection) store.getConnection();
+        assertNotNull(con);
+        
+        Date now = new Date();
+        X509CertRecord certRecord = new X509CertRecord();
+
+        certRecord.setService("cn");
+        certRecord.setProvider("ostk");
+        certRecord.setInstanceId("instance-id-001");
+        certRecord.setCurrentIP("current-ip");
+        certRecord.setCurrentSerial("current-serial");
+        certRecord.setCurrentTime(now);
+        certRecord.setPrevIP("prev-ip");
+        certRecord.setPrevSerial("prev-serial");
+        certRecord.setPrevTime(now);
+
+        assertTrue(con.insertX509CertRecord(certRecord));
+
+        certRecord = new X509CertRecord();
+        certRecord.setService("cn");
+        certRecord.setProvider("ostk");
+        certRecord.setInstanceId("instance-id-002");
+        certRecord.setCurrentIP("current-ip");
+        certRecord.setCurrentSerial("current-serial");
+        certRecord.setCurrentTime(now);
+        certRecord.setPrevIP("prev-ip");
+        certRecord.setPrevSerial("prev-serial");
+        certRecord.setPrevTime(now);
+
+        assertTrue(con.insertX509CertRecord(certRecord));
+
+        Thread.sleep(1000);
+        int deleted = con.deleteExpiredX509CertRecords(0, 1);
+        assertEquals(deleted, 1);
+        if (con.getX509CertRecord("ostk", "instance-id-001", "cn") == null && con.getX509CertRecord("ostk", "instance-id-002", "cn") == null) {
+          fail();
+        }
+
         con.close();
     }
 
@@ -201,7 +250,7 @@ public class FileCertRecordStoreConnectionTest {
         Mockito.when(dir.list()).thenReturn(null);
         con.rootDir = dir;
 
-        assertEquals(con.deleteExpiredX509CertRecords(0), 0);
+        assertEquals(con.deleteExpiredX509CertRecords(0, 0), 0);
     }
 
     @Test
@@ -235,7 +284,7 @@ public class FileCertRecordStoreConnectionTest {
         assertNotNull(certRecordCheck);
 
         Thread.sleep(1000);
-        store.deleteExpiredX509CertRecords(0);
+        store.deleteExpiredX509CertRecords(0, 0);
 
         certRecordCheck = store.getX509CertRecord("ostk", "instance-id", "cn");
         assertNotNull(certRecordCheck);
@@ -256,5 +305,85 @@ public class FileCertRecordStoreConnectionTest {
 
         // For File store, unrefreshed certs unimplemented. Assert empty collection
         assertEquals(records, new ArrayList<>());
+    }
+
+    @Test
+    public void testX509CertOperationsPathTraversal() {
+
+        // make sure the directory does not exist
+
+        ZTSTestUtils.deleteDirectory(new File("/tmp/zts-cert-tests"));
+        File escapeFile = new File("/tmp/escape-instance-cn");
+        //noinspection ResultOfMethodCallIgnored
+        escapeFile.delete();
+
+        FileCertRecordStore store = new FileCertRecordStore(new File("/tmp/zts-cert-tests"));
+        FileCertRecordStoreConnection con = (FileCertRecordStoreConnection) store.getConnection();
+        assertNotNull(con);
+
+        // instance id with path traversal components must be rejected
+
+        X509CertRecord certRecord = new X509CertRecord();
+        certRecord.setProvider("ostk");
+        certRecord.setInstanceId("../../../escape-instance");
+        certRecord.setService("cn");
+        certRecord.setCurrentSerial("current-serial");
+
+        assertFalse(con.insertX509CertRecord(certRecord));
+        assertFalse(escapeFile.exists());
+        assertFalse(con.updateX509CertRecord(certRecord));
+        assertFalse(escapeFile.exists());
+        assertNull(con.getX509CertRecord("ostk", "../../../escape-instance", "cn"));
+        assertFalse(con.deleteX509CertRecord("ostk", "../../../escape-instance", "cn"));
+
+        // provider with path separator must be rejected as well
+
+        certRecord.setProvider("../ostk");
+        certRecord.setInstanceId("instance-id");
+        assertFalse(con.insertX509CertRecord(certRecord));
+
+        // traversal components that resolve back into the root directory
+        // and backslash separators must be rejected as well
+
+        certRecord.setProvider("sub/../ostk");
+        assertFalse(con.insertX509CertRecord(certRecord));
+        certRecord.setProvider("sub\\ostk");
+        assertFalse(con.insertX509CertRecord(certRecord));
+
+        // invalid file names with nul characters must be rejected
+
+        certRecord.setProvider("ostk");
+        certRecord.setService("cn\u0000");
+        assertFalse(con.insertX509CertRecord(certRecord));
+        assertNull(con.getX509CertRecord("ostk", "instance-id", "cn\u0000"));
+        assertFalse(con.deleteX509CertRecord("ostk", "instance-id", "cn\u0000"));
+
+        // valid values are still accepted
+
+        certRecord.setService("cn");
+        assertTrue(con.insertX509CertRecord(certRecord));
+        assertNotNull(con.getX509CertRecord("ostk", "instance-id", "cn"));
+        assertTrue(con.deleteX509CertRecord("ostk", "instance-id", "cn"));
+        assertNull(con.getX509CertRecord("ostk", "instance-id", "cn"));
+
+        // consecutive periods are valid in instance ids
+
+        certRecord.setInstanceId("node..1");
+        assertTrue(con.insertX509CertRecord(certRecord));
+        assertNotNull(con.getX509CertRecord("ostk", "node..1", "cn"));
+        assertTrue(con.deleteX509CertRecord("ostk", "node..1", "cn"));
+        assertNull(con.getX509CertRecord("ostk", "node..1", "cn"));
+
+        // deleting a non-existent record reports failure
+
+        assertFalse(con.deleteX509CertRecord("ostk", "node..1", "cn"));
+
+        // failure to write the record file reports failure
+
+        assertTrue(new File("/tmp/zts-cert-tests/ostk-write-failure-cn").mkdirs());
+        certRecord.setInstanceId("write-failure");
+        assertFalse(con.insertX509CertRecord(certRecord));
+        assertFalse(con.updateX509CertRecord(certRecord));
+        con.close();
     }
 }

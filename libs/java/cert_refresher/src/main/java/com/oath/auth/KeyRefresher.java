@@ -20,7 +20,6 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
@@ -30,6 +29,8 @@ import org.slf4j.LoggerFactory;
 public class KeyRefresher {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KeyRefresher.class);
+
+    private static final String PROP_OTEL_ENABLED = "athenz.cert_refresher.otel_enabled";
 
     private Thread scanForFileChangesThread;
     private boolean shutdown = false; //only for testing
@@ -50,6 +51,9 @@ public class KeyRefresher {
     private int retryFrequency = DEFAULT_RETRY_CHECK_FREQUENCY;
     
     private final KeyRefresherListener keyRefresherListener;
+    
+    // OpenTelemetry metrics - null if OTel is disabled or not available
+    private final OpenTelemetryCertReloadEventEmitter otelMetric;
 
     /**
      * this method should be used in the following way
@@ -58,17 +62,17 @@ public class KeyRefresher {
      * 3) pass those proxies into the Utils.BuildSSLContext method
      * 4) use that SSLContext when starting a server
      * 5) once server is started, call startup() (in this class)
-     *
+     * <p>
      *  at this point, when the private/public keys / trustStore files change, it will automatically
      *  update the SSL context so any new connections will use the new values, and no old connections
      *  will fail.  So presumably when those connections die (from expiring TTL values) they will create
      *  new connections and leverage the new values.  No interruption to the service will be experienced.
-     *
+     * <p>
      * Once created, it needs to be turned on using the startup() method.  It will then
      * wake up once an hour and check the various public/private keys and trust store files
      * to see if they have been updated.  If so, it will automatically update the SSL context
      * correlating to the client/server that the *ManagerProxy objects are tied to.
-     *
+     * <p>
      * If you want to stop this thread, you need to call the shutdown() method
      *
      * @param athenzPublicCert the file path to public certificate file
@@ -103,6 +107,36 @@ public class KeyRefresher {
         this.keyManagerProxy = keyManagerProxy;
         this.trustManagerProxy = trustManagerProxy;
         this.keyRefresherListener = keyRefresherListener;
+        
+        // Initialize OpenTelemetry metrics if enabled and available
+        this.otelMetric = initOtelMetrics();
+    }
+
+    /**
+     * Initialize OpenTelemetry metrics if explicitly enabled.
+     * 
+     * Behavior:
+     * - If athenz.cert_refresher.otel_enabled=true: Initialize OTel metrics
+     * - If athenz.cert_refresher.otel_enabled=false or not set: OTel disabled, return null
+     * - If OTel JARs are not available on classpath: Log warning and return null
+     * 
+     * @return OpenTelemetryCertReloadEventEmitter instance or null if disabled or unavailable
+     */
+    private OpenTelemetryCertReloadEventEmitter initOtelMetrics() {
+        boolean otelEnabled = Boolean.parseBoolean(System.getProperty(PROP_OTEL_ENABLED, "false"));
+        
+        if (!otelEnabled) {
+            LOGGER.info("OpenTelemetry cert refresh metrics disabled ({}=false)", PROP_OTEL_ENABLED);
+            return null;
+        }
+
+        try {
+            return new OpenTelemetryCertReloadEventEmitter();
+        } catch (NoClassDefFoundError e) {
+            LOGGER.warn("OpenTelemetry metrics enabled but OTel JARs not available on classpath. " +
+                    "Metrics will be disabled. Error: {}", e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -126,7 +160,8 @@ public class KeyRefresher {
             // run loop contents here
             while (!shutdown) {
                 try {
-                    if (haveFilesBeenChanged(trustStore.getFilePath(), lastTrustManagerChecksum)) {
+                    if (trustStore != null && trustManagerProxy != null
+                            && haveFilesBeenChanged(trustStore.getFilePath(), lastTrustManagerChecksum)) {
                         trustManagerProxy.setTrustManager(trustStore.getTrustManagers());
                         if (LOGGER.isDebugEnabled()) {
                             LOGGER.debug("KeyRefresher detected changes. Reloaded Trust Managers");
@@ -136,20 +171,24 @@ public class KeyRefresher {
                     boolean keyFilesChanged = haveFilesBeenChanged(athenzPrivateKey, lastPrivateKeyManagerChecksum);
                     keyFilesChanged = haveFilesBeenChanged(athenzPublicCert, lastPublicCertManagerChecksum) || keyFilesChanged;
                     if (keyFilesChanged) {
-                        
                         keyManagerProxy.setKeyManager(Utils.getKeyManagers(athenzPublicCert, athenzPrivateKey));
                         if (LOGGER.isDebugEnabled()) {
                             LOGGER.debug("KeyRefresher detected changes. Reloaded Key managers");
                         }
-                        //Signal key change event
                         if (keyRefresherListener != null) {
                             keyRefresherListener.onKeyChangeEvent();
+                        }
+                        if (otelMetric != null) {
+                            otelMetric.recordCertRefresh(athenzPublicCert);
                         }
                     }
                 } catch (Exception ex) {
                     // if we could not reload the SSL context (but we tried) we will
                     // ignore it and hope it works on the next loop
                     LOGGER.error("Error loading ssl context", ex);
+                    if (otelMetric != null) {
+                        otelMetric.recordCertRefreshFailure(ex.getMessage());
+                    }
                 }
                 try {
                     if (LOGGER.isDebugEnabled()) {
@@ -165,7 +204,7 @@ public class KeyRefresher {
         scanForFileChangesThread.setDaemon(true);
         scanForFileChangesThread.setName("scanForFileChanges" + " started at:" + System.currentTimeMillis());
         scanForFileChangesThread.start();
-        LOGGER.info("Started KeyRefresher thread.");
+        LOGGER.info("Started KeyRefresher thread. OTel metrics enabled: {}", otelMetric != null);
     }
 
     /**
@@ -216,11 +255,11 @@ public class KeyRefresher {
             return false;
         }
 
-        try (InputStream is = Files.newInputStream(path);
-             DigestInputStream digestInputStream = new DigestInputStream(is, md)) {
-            //noinspection StatementWithEmptyBody
-            while (digestInputStream.read() != -1) {
-                // do nothing, just read until the EoF
+        try (InputStream is = Files.newInputStream(path)) {
+            byte[] buffer = new byte[1024];
+            int read;
+            while ((read = is.read(buffer)) > 0) {
+                md.update(buffer, 0, read);
             }
         } catch (IOException ex) {
             //this is best effort, if we couldn't read the file, assume it's the same

@@ -5,7 +5,8 @@
 include "Names.tdl";
 include "Role.tdl";
 include "Policy.tdl";
-include "ServiceIdentity.tdl"
+include "ServiceIdentity.tdl";
+include "Group.tdl";
 
 //MetaData for template.
 type TemplateMetaData Struct {
@@ -16,12 +17,14 @@ type TemplateMetaData Struct {
     String keywordsToReplace (optional); //placeholders in the template roles/policies to replace (ex:_service_)
     Timestamp timestamp (optional); //the updated timestamp of the template(solution_templates.json)
     Bool autoUpdate (optional); //flag to automatically update the roles/policies that belongs to the template
+    Bool preserveAdminAccess (optional); //require existing direct admins to retain delegated access; omitted inherits the ZMS default
 }
 
 //Solution Template object defined on the server
 type Template Struct {
     Array<Role> roles; //list of roles in the template
     Array<Policy> policies; //list of policies defined in this template
+    Array<Group> groups (optional); //list of groups defined in this template
     Array<ServiceIdentity> services (optional); //list of services defined in this template
     TemplateMetaData metadata (optional); //list of services defined in this template
 }
@@ -34,7 +37,7 @@ type TemplateList Struct {
 
 type TemplateParam Struct {
     SimpleName name; //name of the parameter
-    CompoundName value; //value of the parameter
+    String value; //value of the parameter
 }
 
 //solution template(s) to be applied to a domain

@@ -19,15 +19,16 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/AthenZ/athenz/libs/go/sia/ssh/hostkey"
-	"github.com/AthenZ/athenz/libs/go/sia/util"
 	"log"
 	"os"
 	"strings"
 
 	"github.com/AthenZ/athenz/libs/go/sia/agent"
+	sc "github.com/AthenZ/athenz/libs/go/sia/config"
 	"github.com/AthenZ/athenz/libs/go/sia/gcp/meta"
 	"github.com/AthenZ/athenz/libs/go/sia/options"
+	"github.com/AthenZ/athenz/libs/go/sia/ssh/hostkey"
+	"github.com/AthenZ/athenz/libs/go/sia/util"
 	"github.com/AthenZ/athenz/provider/gcp/sia-gce"
 )
 
@@ -52,6 +53,7 @@ func main() {
 	noSysLog := flag.Bool("nosyslog", false, "turn off syslog, log to stdout")
 	displayVersion := flag.Bool("version", false, "Display version information")
 	accessProfileConf := flag.String("profileconfig", "/etc/sia/profile_config", "The user access management profile config file")
+	accessProfileTagKey := flag.String("profiletagkey", "profile:Tag", "The tag associated with access profile roles")
 
 	flag.Parse()
 
@@ -87,19 +89,22 @@ func main() {
 	}
 
 	log.Printf("SIA-GCE version: %s \n", Version)
-	region := meta.GetRegion(*gceMetaEndPoint)
+	region, err := meta.GetRegion(*gceMetaEndPoint)
+	if err != nil {
+		log.Fatalf("Unable to get region, error: %v\n", err)
+	}
 
 	provider := sia.GCEProvider{
 		Name: fmt.Sprintf("%s.%s", *providerPrefix, region),
 	}
 
-	config, accessProfileConfig, err := sia.GetGCEConfig(*pConf, *accessProfileConf, *gceMetaEndPoint, region, provider)
+	config, accessProfileConfig, err := sia.GetGCEConfig(*pConf, *accessProfileConf, *accessProfileTagKey, *gceMetaEndPoint, region, provider)
 	if err != nil {
 		log.Fatalf("Unable to formulate configuration objects, error: %v\n", err)
 	}
 
 	// backward compatibility sake, keeping the ConfigAccount struct
-	configAccount := &options.ConfigAccount{
+	configAccount := &sc.ConfigAccount{
 		Name:         fmt.Sprintf("%s.%s", config.Domain, config.Service),
 		User:         config.User,
 		Group:        config.Group,
@@ -138,6 +143,7 @@ func main() {
 		opts.SDSUdsPath = *udsPath
 	}
 
+	opts.MetaEndPoint = *gceMetaEndPoint
 	opts.Ssh = true
 	opts.ZTSCACertFile = *ztsCACert
 	opts.ZTSServerName = *ztsServerName
@@ -151,10 +157,19 @@ func main() {
 	// Better defaults
 	opts.RotateKey = true
 	opts.GenerateRoleKey = true
-	opts.SshHostKeyType = hostkey.Ecdsa
+
+	if config.Ssh != nil {
+		opts.Ssh = *config.Ssh
+	}
+
+	hostKeyType := hostkey.Ecdsa
+	if config.SshHostKeyType != 0 {
+		hostKeyType = config.SshHostKeyType
+	}
+	opts.SshHostKeyType = hostKeyType
 	opts.SshCertFile = hostkey.CertFile(sshDir, opts.SshHostKeyType)
 	opts.SshPubKeyFile = hostkey.PubKeyFile(sshDir, opts.SshHostKeyType)
 
 	agent.SetupAgent(opts, siaMainDir, "")
-	agent.RunAgent(*cmd, ztsUrl, *gceMetaEndPoint, opts)
+	agent.RunAgent(*cmd, ztsUrl, opts)
 }

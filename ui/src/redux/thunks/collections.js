@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import { thunkSelectGroup, thunkSelectGroupMember } from '../selectors/group';
+import { thunkSelectGroup, thunkSelectGroupMember } from '../selectors/groups';
 import { getGroup } from './groups';
 import { getRole, marksRoleAsNeedRefresh } from './roles';
 import { thunkSelectRole, thunkSelectRoleMember } from '../selectors/roles';
@@ -328,7 +328,7 @@ export const updateTags =
             dispatch(
                 updateTagsToStore(
                     getFullCollectionName(domain, collectionName, category),
-                    detail.tags,
+                    detail,
                     category
                 )
             );

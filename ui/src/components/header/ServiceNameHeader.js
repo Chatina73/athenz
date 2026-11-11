@@ -20,8 +20,10 @@ import PageUtils from '../utils/PageUtils';
 import Menu from '../denali/Menu/Menu';
 import Icon from '../denali/icons/Icon';
 import { colors } from '../denali/styles';
-import { selectDynamicServiceHeaderDetails } from '../../redux/selectors/services';
 import { connect } from 'react-redux';
+import { selectService } from '../../redux/selectors/services';
+import ManagedResourceIcon from '../resource-ownership/ManagedResourceIcon';
+import { isServiceResourceObjectManaged } from '../utils/resourceOwnership';
 
 const StyledAnchor = styled.a`
     color: #3570f4;
@@ -47,11 +49,14 @@ const SectionHeader = styled.span`
     vertical-align: 3px;
 `;
 
-export default function ServiceNameHeader(props) {
+function ServiceNameHeader(props) {
     const { domain, service, serviceHeaderDetails } = props;
+    const showManagedResourceIcon = isServiceResourceObjectManaged(
+        props.resourceOwnership
+    );
 
     let link = (
-        <Link href={PageUtils.servicePage(domain)}>
+        <Link href={PageUtils.servicePage(domain)} passHref legacyBehavior>
             <StyledAnchor>{domain}</StyledAnchor>
         </Link>
     );
@@ -62,6 +67,7 @@ export default function ServiceNameHeader(props) {
         message.push(' For more information click ');
         var urlLink = (
             <StyledAnchor
+                id={'athenz-guide-anchor'}
                 key={Date.now()}
                 onClick={() =>
                     window.open(
@@ -79,12 +85,16 @@ export default function ServiceNameHeader(props) {
     return (
         <TitleDiv data-testid='service-name-header'>
             {link}:service.{service}
+            {showManagedResourceIcon ? (
+                <ManagedResourceIcon show={true} />
+            ) : null}
             <SectionHeader>
                 <Menu
                     placement='bottom-end'
                     padding-bottom='10px'
                     trigger={({ getTriggerProps, triggerRef }) => (
                         <Icon
+                            id={'instances-help-tooltip'}
                             icon={'help-circle'}
                             {...getTriggerProps({ innerRef: triggerRef })}
                             isLink
@@ -101,3 +111,10 @@ export default function ServiceNameHeader(props) {
         </TitleDiv>
     );
 }
+
+const mapStateToProps = (state, ownProps) => ({
+    resourceOwnership: selectService(state, ownProps.domain, ownProps.service)
+        .resourceOwnership,
+});
+
+export default connect(mapStateToProps)(ServiceNameHeader);

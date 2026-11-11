@@ -1,5 +1,6 @@
 *~
 **/.idea
+**/.venv
 **/.classpath
 **/.project
 **/.settings
@@ -14,6 +15,7 @@ servers/zms/zms_logs/
 servers/zms/zms_root/
 servers/zms/bin/
 servers/zms/schema/zms_server.mwb.bak
+servers/zms/src/test/resources/mysql/zms_server.sql
 servers/zts/zts_logs/
 servers/zts/zts_store/
 servers/zts/bin/
@@ -28,8 +30,6 @@ clients/go/zms/examples/get-access/get-access
 clients/go/zts/pkg/
 clients/go/zts/src/
 clients/go/zts/bin/
-clients/go/msd/pkg/
-clients/go/msd/bin/
 clients/go/zts/examples/get-role-token/get-role-token
 clients/java/zpe/src/test/resources/upd_pol_dir/
 clients/java/zpe/src/test/resources/pol_dir/angler.pol
@@ -59,6 +59,9 @@ libs/go/zmssvctoken/src/
 libs/go/athenzconf/src/
 libs/go/athenzconf/bin/
 libs/go/athenzconf/pkg/
+libs/go/usercert/src/
+libs/go/usercert/bin/
+libs/go/usercert/pkg/
 libs/java/client_common/bin/
 libs/java/server_common/bin/
 libs/java/auth_core/bin/
@@ -96,6 +99,9 @@ utils/hostdoc/target/
 utils/zms-svctoken/bin/
 utils/zms-svctoken/pkg/
 utils/zms-svctoken/src/
+utils/zms-authhistory/bin/
+utils/zms-authhistory/pkg/
+utils/zms-authhistory/src/
 utils/zpe-updater/pkg/
 utils/zpe-updater/src/
 utils/zpe-updater/bin/
@@ -108,13 +114,26 @@ utils/zts-svccert/src/
 utils/zts-accesstoken/bin/
 utils/zts-accesstoken/pkg/
 utils/zts-accesstoken/src/
+utils/zms-domainattrs/bin/
+utils/zms-domainattrs/pkg/
+utils/zms-domainattrs/src/
 utils/zts-idtoken/bin/
 utils/zts-idtoken/pkg/
 utils/zts-idtoken/src/
 utils/zts-rolecert/bin/
 utils/zts-rolecert/pkg/
 utils/zts-rolecert/src/
-utils/msd-agent/pkg/
+utils/zts-svctoken/bin/
+utils/zts-svctoken/pkg/
+utils/zts-svctoken/src/
+utils/zts-usercert/src/
+utils/zts-usercert/bin/
+utils/zts-usercert/pkg/
+utils/zts-accesstoken/zts-accesstoken
+utils/zts-rolecert/zts-rolecert
+utils/zts-roletoken/zts-roletoken
+utils/zts-svccert/zts-svccert
+utils/zts-usercert/zts-usercert
 libs/go/ztsclientutil/bin/
 libs/go/ztsclientutil/pkg/
 libs/go/ztsclientutil/src/
@@ -131,6 +150,8 @@ libs/nodejs/auth_core/package-lock.json
 .envrc
 .clover/
 athenz-docker-build.log
+syncers/auth_history_syncer/dynamodb-local-metadata.json
+libs/java/syncer_common/src/test/resources/run_state.json
 
 # Logs
 logs
@@ -145,3 +166,7 @@ pids
 
 # Optional REPL history
 .node_repl_history
+
+.vscode/
+.cursor/
+provider/spacelift/sia-spacelift/__pycache__/

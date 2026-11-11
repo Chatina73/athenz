@@ -19,16 +19,18 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.PublicKey;
 
 import com.yahoo.athenz.auth.KeyStore;
+import com.yahoo.athenz.auth.util.Crypto;
 
 public class KeyStoreMock implements KeyStore {
 
-    private String servicePublicKeyStringK0;
-    private String servicePublicKeyStringK1;
-    private String ztsPublicKeyStringK0;
-    private String ztsPublicKeyStringK1;
-    private String hostPublic;
+    private final String servicePublicKeyStringK0;
+    private final String servicePublicKeyStringK1;
+    private final String ztsPublicKeyStringK0;
+    private final String ztsPublicKeyStringK1;
+    private final String hostPublic;
 
     public KeyStoreMock() throws IOException {
         Path path = Paths.get("./src/test/resources/fantasy_public_k0.key");
@@ -82,5 +84,11 @@ public class KeyStoreMock implements KeyStore {
         }
 
         return null;
+    }
+
+    @Override
+    public PublicKey getServicePublicKey(String domain, String service, String keyId) {
+        String publicKey = getPublicKey(domain, service, keyId);
+        return (publicKey == null) ? null : Crypto.loadPublicKey(publicKey);
     }
 }

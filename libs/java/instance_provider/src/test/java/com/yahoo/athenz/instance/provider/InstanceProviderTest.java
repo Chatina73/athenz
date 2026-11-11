@@ -47,14 +47,20 @@ public class InstanceProviderTest {
 
         provider.setPrivateKey(null, null, null);
         provider.setHostnameResolver(null);
+        provider.setRolesProvider(null);
+        provider.setExternalCredentialsProvider(null);
+        provider.setPubKeysProvider(null);
+        provider.setPrivateKeyStore(null);
+        provider.setAuthorizer(null);
 
         assertEquals(provider.getProviderScheme(), InstanceProvider.Scheme.UNKNOWN);
+        assertEquals(provider.getSVIDType(), InstanceProvider.SVIDType.X509);
 
         try {
             provider.getInstanceRegisterToken(null);
             fail();
-        } catch (ResourceException ex) {
-            assertEquals(ex.getCode(), ResourceException.NOT_IMPLEMENTED);
+        } catch (ProviderResourceException ex) {
+            assertEquals(ex.getCode(), ProviderResourceException.NOT_IMPLEMENTED);
         }
     }
 }

@@ -34,6 +34,7 @@ import {
     selectInstancesWorkLoadMeta,
     selectStaticServiceHeaderDetails,
 } from '../../../../../../redux/selectors/services';
+import { selectFeatureFlag } from '../../../../../../redux/selectors/domains';
 import { getServiceHeaderAndInstances } from '../../../../../../redux/thunks/services';
 import InstanceList from '../../../../../../components/service/InstanceList';
 import { selectIsLoading } from '../../../../../../redux/selectors/loading';
@@ -115,12 +116,13 @@ class StaticInstancePage extends React.Component {
     }
 
     componentDidMount() {
-        const { domainName, serviceName } = this.props;
+        const { domainName, serviceName, _csrf } = this.props;
         Promise.all([
             this.props.getServiceHeaderAndInstances(
                 domainName,
                 serviceName,
-                SERVICE_TYPE_STATIC
+                SERVICE_TYPE_STATIC,
+                _csrf
             ),
         ]).catch((err) => {
             let response = RequestUtils.errorCheckHelper(err);
@@ -197,6 +199,7 @@ class StaticInstancePage extends React.Component {
                                             categoryType={SERVICE_TYPE_STATIC}
                                         />
                                         <ServiceTabs
+                                            featureFlag={this.props.featureFlag}
                                             domain={domainName}
                                             service={serviceName}
                                             selectedName={SERVICE_TYPE_STATIC}
@@ -245,17 +248,23 @@ const mapStateToProps = (state, props) => {
         ),
         serviceHeaderDetails: selectStaticServiceHeaderDetails(
             state,
-            props.domain,
-            props.service
+            props.domainName,
+            props.serviceName
         ),
         isLoading: selectIsLoading(state),
+        featureFlag: selectFeatureFlag(state),
     };
 };
 
 const mapDispatchToProps = (dispatch) => ({
-    getServiceHeaderAndInstances: (domainName, serviceName, category) =>
+    getServiceHeaderAndInstances: (domainName, serviceName, category, _csrf) =>
         dispatch(
-            getServiceHeaderAndInstances(domainName, serviceName, category)
+            getServiceHeaderAndInstances(
+                domainName,
+                serviceName,
+                category,
+                _csrf
+            )
         ),
 });
 

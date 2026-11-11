@@ -17,7 +17,6 @@ import React from 'react';
 import styled from '@emotion/styled';
 import InputLabel from '../denali/InputLabel';
 import Input from '../denali/Input';
-import InputDropdown from '../denali/InputDropdown';
 import RadioButtonGroup from '../denali/RadioButtonGroup';
 import { colors } from '../denali/styles';
 import Color from '../denali/Color';
@@ -52,10 +51,6 @@ const StyledInput = styled(Input)`
 
 const StyledRadioButtonGroup = styled(RadioButtonGroup)`
     margin-top: 8px;
-`;
-
-const StyledInputDropDown = styled(InputDropdown)`
-    width: 500px;
 `;
 
 const ErrorDiv = styled.div`
@@ -143,7 +138,7 @@ export default class AddRuleFormForRole extends React.Component {
                     </StyledInputLabel>
                     <ContentDiv>
                         <StyledRadioButtonGroup
-                            name={'rule-effect-radio-group' + id}
+                            name={'rule-effect-radio-group-' + id}
                             inputs={this.state.effects}
                             selectedValue={this.state.selectedEffect}
                             onChange={this.ruleEffectChanged}
@@ -156,8 +151,8 @@ export default class AddRuleFormForRole extends React.Component {
                     </StyledInputLabel>
                     <ContentDiv>
                         <StyledInput
-                            id={'rule-action' + id}
-                            name={'rule-action' + id}
+                            id={'rule-action-' + id}
+                            name={'rule-action-' + id}
                             value={this.state.action}
                             onChange={actionChanged}
                             placeholder={'Rule Action'}
@@ -170,8 +165,8 @@ export default class AddRuleFormForRole extends React.Component {
                     </StyledInputLabel>
                     <ContentDiv>
                         <StyledInput
-                            id={'rule-resource' + id}
-                            name={'rule-resource' + id}
+                            id={'rule-resource-' + id}
+                            name={'rule-resource-' + id}
                             value={this.state.resource}
                             onChange={resourceChanged}
                             placeholder={'Rule Resource'}
@@ -182,9 +177,9 @@ export default class AddRuleFormForRole extends React.Component {
                     <ContentDiv>
                         <CheckBox
                             checked={this.state.case}
-                            name={'checkbox-case-sensitive' + id}
-                            id={'checkbox-case-sensitive' + id}
-                            key={'checkbox-case-sensitive' + id}
+                            name={'checkbox-case-sensitive-' + id}
+                            id={'checkbox-case-sensitive-' + id}
+                            key={'checkbox-case-sensitive-' + id}
                             label='Case Sensitive Action and Resource'
                             onChange={caseChanged}
                         />

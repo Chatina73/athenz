@@ -21,6 +21,12 @@ import { colors } from '../denali/styles';
 import Link from 'next/link';
 import { withRouter } from 'next/router';
 import PageUtils from '../utils/PageUtils';
+import ManagedResourceIcon from '../resource-ownership/ManagedResourceIcon';
+import {
+    isPolicyResourceManaged,
+    isRoleResourceMetaManaged,
+    isServiceResourceObjectManaged,
+} from '../utils/resourceOwnership';
 
 const StyledAnchor = styled.a`
     color: #3570f4;
@@ -89,6 +95,23 @@ class NameHeader extends React.Component {
 
         let roleTypeIcon = collectionDetails.trust ? iconDelegated : '';
         let roleAuditIcon = collectionDetails.auditEnabled ? iconAudit : '';
+        let collectionManagedResourceIcon = '';
+        if (
+            this.props.category === 'role' &&
+            isRoleResourceMetaManaged(collectionDetails.resourceOwnership)
+        ) {
+            collectionManagedResourceIcon = <ManagedResourceIcon show={true} />;
+        } else if (
+            this.props.category === 'policy' &&
+            isPolicyResourceManaged(collectionDetails.resourceOwnership)
+        ) {
+            collectionManagedResourceIcon = <ManagedResourceIcon show={true} />;
+        } else if (
+            this.props.category === 'service' &&
+            isServiceResourceObjectManaged(collectionDetails.resourceOwnership)
+        ) {
+            collectionManagedResourceIcon = <ManagedResourceIcon show={true} />;
+        }
 
         if (collectionDetails.trust) {
             let deDomain = collectionDetails.trust;
@@ -96,12 +119,21 @@ class NameHeader extends React.Component {
                 <TitleDiv data-testid='collection-name-header'>
                     {roleTypeIcon}
                     {roleAuditIcon}
-                    <Link href={PageUtils.rolePage(domain)}>
+                    {collectionManagedResourceIcon}
+                    <Link
+                        href={PageUtils.rolePage(domain)}
+                        passHref
+                        legacyBehavior
+                    >
                         <StyledAnchor>{domain}</StyledAnchor>
                     </Link>
                     :role.{collection}
                     {' (Delegated to '}
-                    <Link href={PageUtils.rolePage(deDomain)}>
+                    <Link
+                        href={PageUtils.rolePage(deDomain)}
+                        passHref
+                        legacyBehavior
+                    >
                         <StyledAnchor>{deDomain}</StyledAnchor>
                     </Link>
                     {')'}
@@ -111,13 +143,37 @@ class NameHeader extends React.Component {
         let link;
         if (this.props.category === 'group') {
             link = (
-                <Link href={PageUtils.groupPage(domain)}>
+                <Link
+                    href={PageUtils.groupPage(domain)}
+                    passHref
+                    legacyBehavior
+                >
                     <StyledAnchor>{domain}</StyledAnchor>
                 </Link>
             );
         } else if (this.props.category === 'role') {
             link = (
-                <Link href={PageUtils.rolePage(domain)}>
+                <Link href={PageUtils.rolePage(domain)} passHref legacyBehavior>
+                    <StyledAnchor>{domain}</StyledAnchor>
+                </Link>
+            );
+        } else if (this.props.category === 'policy') {
+            link = (
+                <Link
+                    href={PageUtils.servicePage(domain)}
+                    passHref
+                    legacyBehavior
+                >
+                    <StyledAnchor>{domain}</StyledAnchor>
+                </Link>
+            );
+        } else if (this.props.category === 'service') {
+            link = (
+                <Link
+                    href={PageUtils.servicePage(domain)}
+                    passHref
+                    legacyBehavior
+                >
                     <StyledAnchor>{domain}</StyledAnchor>
                 </Link>
             );
@@ -127,6 +183,7 @@ class NameHeader extends React.Component {
             <TitleDiv data-testid='collection-name-header'>
                 {roleTypeIcon}
                 {roleAuditIcon}
+                {collectionManagedResourceIcon}
                 {link}:{this.props.category}.{collection}
             </TitleDiv>
         );

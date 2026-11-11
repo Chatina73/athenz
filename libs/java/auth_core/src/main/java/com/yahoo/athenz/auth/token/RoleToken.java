@@ -35,9 +35,9 @@ public class RoleToken extends Token {
     public static class Builder {
 
         // required attributes
-        private String domain;
-        private List<String> roles;
-        private String version;
+        private final String domain;
+        private final List<String> roles;
+        private final String version;
         private String principal = null;
         private String proxyUser = null;
         private boolean domainCompleteRoleSet = false;
@@ -187,10 +187,6 @@ public class RoleToken extends Token {
     }
 
     public RoleToken(String signedToken) {
-
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Constructing RoleToken with input string: {}", signedToken);
-        }
         
         if (signedToken == null || signedToken.isEmpty()) {
             throw new IllegalArgumentException("Input String signedToken must not be empty");
@@ -225,6 +221,10 @@ public class RoleToken extends Token {
         }
 
         final String parseToken = unsignedToken != null ? unsignedToken : signedToken;
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Constructing RoleToken with input string: {}", parseToken);
+        }
+
         String roleNames = null;
         for (String item : parseToken.split(";")) {
             String [] kv = item.split("=");

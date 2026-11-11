@@ -23,14 +23,13 @@ import com.yahoo.athenz.zpe.AuthZpeClient.AccessCheckStatus;
 import com.yahoo.athenz.zts.DomainSignedPolicyData;
 import com.yahoo.athenz.zts.SignedPolicyData;
 import com.yahoo.rdl.JSON;
-import io.jsonwebtoken.SignatureAlgorithm;
 import org.mockito.Mockito;
 import org.mockserver.integration.ClientAndServer;
-import org.mockserver.model.HttpResponse;
 import org.testng.Assert;
 import org.testng.annotations.*;
 
 import javax.security.auth.x500.X500Principal;
+import java.lang.reflect.Field;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -39,14 +38,10 @@ import java.nio.file.Paths;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.X509Certificate;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
-import static com.yahoo.athenz.zpe.ZpeConsts.ZPE_PROP_JWK_ATHENZ_CONF;
 import static org.mockito.Mockito.mock;
-import static org.mockserver.integration.ClientAndServer.startClientAndServer;
+import org.mockserver.model.HttpResponse;
 import static org.mockserver.model.HttpRequest.request;
 import static org.testng.Assert.*;
 
@@ -79,7 +74,8 @@ public class TestAuthZpe {
     @SuppressWarnings("ResultOfMethodCallIgnored")
     @BeforeClass
     public void beforeClass() throws IOException {
-        System.setProperty(ZPE_PROP_JWK_ATHENZ_CONF, TestAuthZpe.class.getClassLoader().getResource("jwk/athenz.conf").getPath());
+        System.setProperty(ZpeConsts.ZPE_PROP_JWK_ATHENZ_CONF,
+                TestAuthZpe.class.getClassLoader().getResource("jwk/athenz_jwks.json").getPath());
         System.setProperty(ZpeConsts.ZPE_PROP_CHECK_POLICY_ZMS_SIGNATURE, "true");
 
         Path path = Paths.get("./src/test/resources/unit_test_zts_private_k0.pem");
@@ -175,7 +171,7 @@ public class TestAuthZpe {
     
     @AfterClass
     public void afterClass() {
-        System.clearProperty(ZPE_PROP_JWK_ATHENZ_CONF);
+        System.clearProperty(ZpeConsts.ZPE_PROP_JWK_ATHENZ_CONF);
     }
     
     @BeforeMethod
@@ -184,6 +180,11 @@ public class TestAuthZpe {
         if (sleepCompleted) {
             return;
         }
+
+        ClassLoader classLoader = this.getClass().getClassLoader();
+        final String jwksUri = Objects.requireNonNull(classLoader.getResource("jwk/athenz_jwks.json")).toString();
+        System.setProperty(ZpeConsts.ZPE_PROP_JWK_URI, jwksUri);
+
         // sleep for a short period of time so the library has a chance
         // to load all the policy files since that's done by a background
         // thread
@@ -200,13 +201,6 @@ public class TestAuthZpe {
         // to 300 seconds
 
         AuthZpeClient.setTokenAllowedOffset(-100);
-
-        // set up our public keys for access tokens
-
-        AuthZpeClient.addAccessTokenSignKeyResolverKey("0", Crypto.extractPublicKey(ztsPrivateKeyK0));
-        AuthZpeClient.addAccessTokenSignKeyResolverKey("1", Crypto.extractPublicKey(ztsPrivateKeyK1));
-        AuthZpeClient.addAccessTokenSignKeyResolverKey("17", Crypto.extractPublicKey(ztsPrivateKeyK17));
-        AuthZpeClient.addAccessTokenSignKeyResolverKey("99", Crypto.extractPublicKey(ztsPrivateKeyK99));
     }
     
     private RoleToken createRoleToken(String svcDomain, List<String> roles, String keyId, long expiry) {
@@ -268,7 +262,7 @@ public class TestAuthZpe {
             key = ztsPrivateKeyK99;
         }
         assertNotNull(key);
-        return token.getSignedToken(key, keyId, SignatureAlgorithm.RS256);
+        return token.getSignedToken(key, keyId, "RS256");
     }
 
     private String createInvalidAccessToken(String svcDomain, List<String> roles) {
@@ -285,7 +279,7 @@ public class TestAuthZpe {
 
         // using key with id 0 but including id of 1
 
-        return token.getSignedToken(ztsPrivateKeyK0, "1", SignatureAlgorithm.RS256);
+        return token.getSignedToken(ztsPrivateKeyK0, "1", "RS256");
     }
 
     private String createAccessToken(String svcDomain, List<String> roles, String keyId) {
@@ -1255,6 +1249,11 @@ public class TestAuthZpe {
     }
 
     @Test
+    public void testClose() {
+        AuthZpeClient.close();
+    }
+
+    @Test
     public void testgetZtsPublicKeyNull() {
         PublicKey key = AuthZpeClient.getZtsPublicKey("notexist");
         assertNull(key);
@@ -1433,6 +1432,122 @@ public class TestAuthZpe {
     }
 
     @Test
+    public void testValidateAccessTokenNotCachedWithoutMtlsBound() {
+
+        // create a new token so we're guaranteed that it's not
+        // in the cache and it must be parsed and validated without
+        // any mtls binding since no certificate is provided
+
+        List<String> roles = Collections.singletonList("matchall");
+        final String newToken = createAccessToken("angler", roles, "0", 250);
+
+        AccessToken accessToken = AuthZpeClient.validateAccessToken(newToken, null, null);
+        assertNotNull(accessToken);
+        assertEquals(accessToken.getAudience(), "angler");
+
+        // second time we should get the same token from the cache
+
+        accessToken = AuthZpeClient.validateAccessToken(newToken, null, null);
+        assertNotNull(accessToken);
+        assertEquals(accessToken.getAudience(), "angler");
+    }
+
+    @Test
+    public void testValidateAccessTokenCachedCertHashMismatch() throws IOException {
+
+        // create a new token so we're guaranteed that it's not
+        // in the cache and validate it with the matching certificate
+
+        List<String> roles = Collections.singletonList("matchall");
+        final String newToken = createAccessToken("angler", roles, "0", 350);
+
+        Path path = Paths.get("src/test/resources/mtls_token_spec.cert");
+        String certStr = new String(Files.readAllBytes(path));
+        X509Certificate cert = Crypto.loadX509Certificate(certStr);
+
+        AccessToken accessToken = AuthZpeClient.validateAccessToken(newToken, cert, null);
+        assertNotNull(accessToken);
+
+        // now the token is in the cache, so the confirmation check
+        // with a different certificate must fail
+
+        path = Paths.get("src/test/resources/mtls_token_mismatch.cert");
+        certStr = new String(Files.readAllBytes(path));
+        X509Certificate mismatchCert = Crypto.loadX509Certificate(certStr);
+
+        accessToken = AuthZpeClient.validateAccessToken(newToken, mismatchCert, null);
+        assertNull(accessToken);
+    }
+
+    @Test
+    public void testAllowAccessTokenNotCachedWithoutMtlsBound() {
+
+        String action = "all";
+        String resource = "angler:stuff";
+        StringBuilder roleName = new StringBuilder();
+
+        // create a new token so we're guaranteed that it's not
+        // in the cache and it must be parsed and validated without
+        // any mtls binding since no certificate is provided
+
+        List<String> roles = Collections.singletonList("matchall");
+        final String newToken = createAccessToken("angler", roles, "0", 450);
+
+        AccessCheckStatus status = AuthZpeClient.allowAccess(newToken, resource, action, roleName);
+        Assert.assertEquals(status, AccessCheckStatus.ALLOW);
+        Assert.assertEquals(roleName.toString(), "matchall");
+    }
+
+    @Test
+    public void testAllowAccessCachedTokenCertHashMismatch() throws IOException {
+
+        String action = "all";
+        String resource = "angler:stuff";
+        StringBuilder roleName = new StringBuilder();
+
+        // create a new token so we're guaranteed that it's not
+        // in the cache and validate it with the matching certificate
+
+        List<String> roles = Collections.singletonList("matchall");
+        final String newToken = createAccessToken("angler", roles, "0", 550);
+
+        Path path = Paths.get("src/test/resources/mtls_token_spec.cert");
+        String certStr = new String(Files.readAllBytes(path));
+        X509Certificate cert = Crypto.loadX509Certificate(certStr);
+
+        AccessCheckStatus status = AuthZpeClient.allowAccess(newToken, cert, null, resource, action, roleName);
+        Assert.assertEquals(status, AccessCheckStatus.ALLOW);
+        Assert.assertEquals(roleName.toString(), "matchall");
+
+        // now the token is in the cache, so the confirmation check
+        // with a different certificate must fail
+
+        path = Paths.get("src/test/resources/mtls_token_mismatch.cert");
+        certStr = new String(Files.readAllBytes(path));
+        X509Certificate mismatchCert = Crypto.loadX509Certificate(certStr);
+
+        status = AuthZpeClient.allowAccess(newToken, mismatchCert, null, resource, action, roleName);
+        Assert.assertEquals(status, AccessCheckStatus.DENY_CERT_HASH_MISMATCH);
+    }
+
+    @Test
+    public void testZpeUpdaterInitInterrupted() {
+
+        // the init method waits for the policy loader to be ready
+        // so if our thread is interrupted, the wait must be aborted
+        // and the interrupted exception handled
+
+        Thread.currentThread().interrupt();
+        try {
+            new ZpeUpdater().init(null);
+        } finally {
+            // make sure the interrupted status is cleared so
+            // it does not impact any other test cases
+            Thread.interrupted();
+        }
+    }
+
+    @Test
     public void testFetchPublicKeysUsingSignKeyResolver() {
         AuthZpeClient.setMillisBetweenZtsCalls(0);
         String ecKeys = "{\n" +
@@ -1440,7 +1555,7 @@ public class TestAuthZpe {
                 "            {\n" +
                 "                \"kid\" : \"FdFYFzERwC2uCBB46pZQi4GG85LujR8obt-KWRBICVQ\",\n" +
                 "                \"kty\" : \"EC\",\n" +
-                "                \"crv\" : \"prime256v1\",\n" +
+                "                \"crv\" : \"P-256\",\n" +
                 "                \"x\"   : \"SVqB4JcUD6lsfvqMr-OKUNUphdNn64Eay60978ZlL74\",\n" +
                 "                \"y\"   : \"lf0u0pMj4lGAzZix5u4Cm5CMQIgMNpkwy163wtKYVKI\",\n" +
                 "                \"d\"   : \"0g5vAEKzugrXaRbgKG0Tj2qJ5lMP4Bezds1_sTybkfk\"\n" +
@@ -1450,21 +1565,14 @@ public class TestAuthZpe {
         HttpResponse response = new HttpResponse()
                 .withStatusCode(200)
                 .withBody(ecKeys);
-        ClientAndServer mockServer = startClientAndServer(1080);
+        ClientAndServer mockServer = ClientAndServer.startClientAndServer(1080);
         mockServer
                 .when(request().withPath("/mockJwksUri"))
                 .respond(response);
-        
+
         AuthZpeClient.setAccessTokenSignKeyResolver("http://127.0.0.1:1080/mockJwksUri", null);
         assertNotNull(AuthZpeClient.getZtsPublicKey("FdFYFzERwC2uCBB46pZQi4GG85LujR8obt-KWRBICVQ"));
         mockServer.stop();
-    }
-
-    @Test
-    public void testCanFetch() {
-        assertFalse(AuthZpeClient.canFetchLatestJwksFromZts());
-        AuthZpeClient.setMillisBetweenZtsCalls(0);
-        assertTrue(AuthZpeClient.canFetchLatestJwksFromZts());
     }
 
     @Test
@@ -1540,5 +1648,128 @@ public class TestAuthZpe {
         Assert.assertEquals(status, AccessCheckStatus.ALLOW);
 
         Assert.assertEquals(roleMap.size(), 3);
+    }
+
+    @Test
+    public void testInitializeAccessTokenSignKeyResolver() throws IOException {
+        final String originalJwkValue = System.clearProperty(ZpeConsts.ZPE_PROP_JWK_URI);
+        try {
+            AuthZpeClient.initializeAccessTokenSignKeyResolver(true);
+            fail();
+        } catch (Exception ex) {
+            assertTrue(ex.getMessage().contains("Missing required property"));
+        }
+
+        // optional initialization mode must not throw when uri is missing
+        AuthZpeClient.initializeAccessTokenSignKeyResolver(false);
+
+        System.setProperty(ZpeConsts.ZPE_PROP_JWK_URI, "");
+        try {
+            AuthZpeClient.initializeAccessTokenSignKeyResolver(true);
+            fail();
+        } catch (Exception ex) {
+            assertTrue(ex.getMessage().contains("Missing required property"));
+        }
+
+        // optional initialization mode must not throw when uri is empty
+        AuthZpeClient.initializeAccessTokenSignKeyResolver(false);
+
+        // try with unknown file paths - we'll be successful without any errors
+
+        final String jwkUri = new File("src/test/resources/jwk/athenz_jwks.json").getCanonicalPath();
+        System.setProperty(ZpeConsts.ZPE_PROP_JWK_URI, "file://" + jwkUri);
+        System.setProperty(ZpeConsts.ZPE_PROP_JWK_PRIVATE_KEY_PATH, "src/test/resources/jwk/athenz_private.pem");
+        System.setProperty(ZpeConsts.ZPE_PROP_JWK_X509_CERT_PATH, "src/test/resources/jwk/athenz_x509.pem");
+        AuthZpeClient.initializeAccessTokenSignKeyResolver(true);
+
+        // try with valid paths
+
+        String keyPath = new File("src/test/resources/unit_test_ec_private.key").getCanonicalPath();
+        String certPath = new File("src/test/resources/ec_public_x509.cert").getCanonicalPath();
+        System.setProperty(ZpeConsts.ZPE_PROP_JWK_PRIVATE_KEY_PATH, keyPath);
+        System.setProperty(ZpeConsts.ZPE_PROP_JWK_X509_CERT_PATH, certPath);
+        AuthZpeClient.initializeAccessTokenSignKeyResolver(true);
+
+        // reset the original state
+
+        if (originalJwkValue == null) {
+            System.clearProperty(ZpeConsts.ZPE_PROP_JWK_URI);
+        } else {
+            System.setProperty(ZpeConsts.ZPE_PROP_JWK_URI, originalJwkValue);
+        }
+        System.clearProperty(ZpeConsts.ZPE_PROP_JWK_PRIVATE_KEY_PATH);
+        System.clearProperty(ZpeConsts.ZPE_PROP_JWK_X509_CERT_PATH);
+    }
+
+    private boolean getTokenSignKeyResolverInitialized() throws Exception {
+        Field field = AuthZpeClient.class.getDeclaredField("tokenSignKeyResolverInitialized");
+        field.setAccessible(true);
+        return field.getBoolean(null);
+    }
+
+    private void setTokenSignKeyResolverInitialized(boolean value) throws Exception {
+        Field field = AuthZpeClient.class.getDeclaredField("tokenSignKeyResolverInitialized");
+        field.setAccessible(true);
+        field.setBoolean(null, value);
+    }
+
+    @Test
+    public void testInitRequiresJwkUriWhenResolverNotInitialized() throws Exception {
+        final String originalJwkValue = System.clearProperty(ZpeConsts.ZPE_PROP_JWK_URI);
+        final boolean originalInitialized = getTokenSignKeyResolverInitialized();
+        try {
+            setTokenSignKeyResolverInitialized(false);
+            try {
+                AuthZpeClient.init();
+                fail();
+            } catch (IllegalArgumentException ex) {
+                assertTrue(ex.getMessage().contains("Missing required property"));
+            }
+        } finally {
+            if (originalJwkValue == null) {
+                System.clearProperty(ZpeConsts.ZPE_PROP_JWK_URI);
+            } else {
+                System.setProperty(ZpeConsts.ZPE_PROP_JWK_URI, originalJwkValue);
+            }
+            setTokenSignKeyResolverInitialized(originalInitialized);
+        }
+    }
+
+    @Test
+    public void testInitSkipsResolverWhenAlreadyInitialized() throws Exception {
+        final String originalJwkValue = System.clearProperty(ZpeConsts.ZPE_PROP_JWK_URI);
+        final boolean originalInitialized = getTokenSignKeyResolverInitialized();
+        try {
+            setTokenSignKeyResolverInitialized(true);
+            AuthZpeClient.init();
+        } finally {
+            if (originalJwkValue == null) {
+                System.clearProperty(ZpeConsts.ZPE_PROP_JWK_URI);
+            } else {
+                System.setProperty(ZpeConsts.ZPE_PROP_JWK_URI, originalJwkValue);
+            }
+            setTokenSignKeyResolverInitialized(originalInitialized);
+        }
+    }
+
+    @Test
+    public void testInitInitializesResolverWhenUriPresent() throws Exception {
+        final String originalJwkValue = System.getProperty(ZpeConsts.ZPE_PROP_JWK_URI);
+        final boolean originalInitialized = getTokenSignKeyResolverInitialized();
+        try {
+            final String jwkUri = new File("src/test/resources/jwk/athenz_jwks.json").getCanonicalPath();
+            System.setProperty(ZpeConsts.ZPE_PROP_JWK_URI, "file://" + jwkUri);
+            setTokenSignKeyResolverInitialized(false);
+
+            AuthZpeClient.init();
+            assertTrue(getTokenSignKeyResolverInitialized());
+        } finally {
+            if (originalJwkValue == null) {
+                System.clearProperty(ZpeConsts.ZPE_PROP_JWK_URI);
+            } else {
+                System.setProperty(ZpeConsts.ZPE_PROP_JWK_URI, originalJwkValue);
+            }
+            setTokenSignKeyResolverInitialized(originalInitialized);
+        }
     }
 }

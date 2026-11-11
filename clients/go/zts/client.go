@@ -26,21 +26,19 @@ var _ = ioutil.NopCloser
 type ZTSClient struct {
 	URL             string
 	Transport       http.RoundTripper
-	CredsHeader     *string
-	CredsToken      *string
+	CredsHeaders    map[string]string
 	Timeout         time.Duration
 	DisableRedirect bool
 }
 
 // NewClient creates and returns a new HTTP client object for the ZTS service
 func NewClient(url string, transport http.RoundTripper) ZTSClient {
-	return ZTSClient{url, transport, nil, nil, 0, false}
+	return ZTSClient{url, transport, make(map[string]string), 0, false}
 }
 
 // AddCredentials adds the credentials to the client for subsequent requests.
 func (client *ZTSClient) AddCredentials(header string, token string) {
-	client.CredsHeader = &header
-	client.CredsToken = &token
+	client.CredsHeaders[header] = token
 }
 
 func (client ZTSClient) getClient() *http.Client {
@@ -62,11 +60,14 @@ func (client ZTSClient) getClient() *http.Client {
 }
 
 func (client ZTSClient) addAuthHeader(req *http.Request) {
-	if client.CredsHeader != nil && client.CredsToken != nil {
-		if strings.HasPrefix(*client.CredsHeader, "Cookie.") {
-			req.Header.Add("Cookie", (*client.CredsHeader)[7:]+"="+*client.CredsToken)
+	if len(client.CredsHeaders) == 0 {
+		return
+	}
+	for key, value := range client.CredsHeaders {
+		if strings.HasPrefix(key, "Cookie.") {
+			req.Header.Add("Cookie", (key)[7:]+"="+value)
 		} else {
-			req.Header.Add(*client.CredsHeader, *client.CredsToken)
+			req.Header.Add(key, value)
 		}
 	}
 }
@@ -291,7 +292,7 @@ func encodeParams(objs ...string) string {
 	return "?" + s[1:]
 }
 
-func (client ZTSClient) GetResourceAccess(action ActionName, resource ResourceName, domain DomainName, checkPrincipal EntityName) (*ResourceAccess, error) {
+func (client ZTSClient) GetResourceAccess(action ActionName, resource ResourceName, domain DomainName, checkPrincipal PrincipalName) (*ResourceAccess, error) {
 	var data *ResourceAccess
 	url := client.URL + "/access/" + fmt.Sprint(action) + "/" + fmt.Sprint(resource) + encodeParams(encodeStringParam("domain", string(domain), ""), encodeStringParam("principal", string(checkPrincipal), ""))
 	resp, err := client.httpGet(url, nil)
@@ -323,9 +324,9 @@ func (client ZTSClient) GetResourceAccess(action ActionName, resource ResourceNa
 	}
 }
 
-func (client ZTSClient) GetResourceAccessExt(action ActionName, resource string, domain DomainName, checkPrincipal EntityName) (*ResourceAccess, error) {
+func (client ZTSClient) GetResourceAccessExt(action ActionName, resource string, domain DomainName, checkPrincipal PrincipalName, caseSensitive *bool) (*ResourceAccess, error) {
 	var data *ResourceAccess
-	url := client.URL + "/access/" + fmt.Sprint(action) + encodeParams(encodeStringParam("resource", string(resource), ""), encodeStringParam("domain", string(domain), ""), encodeStringParam("principal", string(checkPrincipal), ""))
+	url := client.URL + "/access/" + fmt.Sprint(action) + encodeParams(encodeStringParam("resource", string(resource), ""), encodeStringParam("domain", string(domain), ""), encodeStringParam("principal", string(checkPrincipal), ""), encodeOptionalBoolParam("caseSensitive", caseSensitive))
 	resp, err := client.httpGet(url, nil)
 	if err != nil {
 		return data, err
@@ -631,7 +632,7 @@ func (client ZTSClient) PostRoleCertificateRequest(domainName DomainName, roleNa
 	}
 }
 
-func (client ZTSClient) GetAccess(domainName DomainName, roleName EntityName, principal EntityName) (*Access, error) {
+func (client ZTSClient) GetAccess(domainName DomainName, roleName EntityName, principal PrincipalName) (*Access, error) {
 	var data *Access
 	url := client.URL + "/access/domain/" + fmt.Sprint(domainName) + "/role/" + fmt.Sprint(roleName) + "/principal/" + fmt.Sprint(principal)
 	resp, err := client.httpGet(url, nil)
@@ -663,7 +664,7 @@ func (client ZTSClient) GetAccess(domainName DomainName, roleName EntityName, pr
 	}
 }
 
-func (client ZTSClient) GetRoleAccess(domainName DomainName, principal EntityName) (*RoleAccess, error) {
+func (client ZTSClient) GetRoleAccess(domainName DomainName, principal PrincipalName) (*RoleAccess, error) {
 	var data *RoleAccess
 	url := client.URL + "/access/domain/" + fmt.Sprint(domainName) + "/principal/" + fmt.Sprint(principal)
 	resp, err := client.httpGet(url, nil)
@@ -1091,9 +1092,9 @@ func (client ZTSClient) GetOAuthConfig() (*OAuthConfig, error) {
 	}
 }
 
-func (client ZTSClient) GetJWKList(rfc *bool) (*JWKList, error) {
+func (client ZTSClient) GetJWKList(rfc *bool, service ServiceName) (*JWKList, error) {
 	var data *JWKList
-	url := client.URL + "/oauth2/keys" + encodeParams(encodeOptionalBoolParam("rfc", rfc))
+	url := client.URL + "/oauth2/keys" + encodeParams(encodeOptionalBoolParam("rfc", rfc), encodeStringParam("service", string(service), "zts"))
 	resp, err := client.httpGet(url, nil)
 	if err != nil {
 		return data, err
@@ -1156,9 +1157,9 @@ func (client ZTSClient) PostAccessTokenRequest(request AccessTokenRequest) (*Acc
 	}
 }
 
-func (client ZTSClient) GetOIDCResponse(responseType string, clientId ServiceName, redirectUri string, scope string, state EntityName, nonce EntityName, keyType SimpleName, fullArn *bool, expiryTime *int32, output SimpleName, roleInAudClaim *bool) (*OIDCResponse, string, error) {
+func (client ZTSClient) GetOIDCResponse(responseType string, clientId ServiceName, redirectUri string, scope string, state EntityName, nonce EntityName, keyType SimpleName, fullArn *bool, expiryTime *int32, output SimpleName, roleInAudClaim *bool, allScopePresent *bool) (*OIDCResponse, string, error) {
 	var data *OIDCResponse
-	url := client.URL + "/oauth2/auth" + encodeParams(encodeStringParam("response_type", string(responseType), ""), encodeStringParam("client_id", string(clientId), ""), encodeStringParam("redirect_uri", string(redirectUri), ""), encodeStringParam("scope", string(scope), ""), encodeStringParam("state", string(state), ""), encodeStringParam("nonce", string(nonce), ""), encodeStringParam("keyType", string(keyType), ""), encodeOptionalBoolParam("fullArn", fullArn), encodeOptionalInt32Param("expiryTime", expiryTime), encodeStringParam("output", string(output), ""), encodeOptionalBoolParam("roleInAudClaim", roleInAudClaim))
+	url := client.URL + "/oauth2/auth" + encodeParams(encodeStringParam("response_type", string(responseType), ""), encodeStringParam("client_id", string(clientId), ""), encodeStringParam("redirect_uri", string(redirectUri), ""), encodeStringParam("scope", string(scope), ""), encodeStringParam("state", string(state), ""), encodeStringParam("nonce", string(nonce), ""), encodeStringParam("keyType", string(keyType), ""), encodeOptionalBoolParam("fullArn", fullArn), encodeOptionalInt32Param("expiryTime", expiryTime), encodeStringParam("output", string(output), ""), encodeOptionalBoolParam("roleInAudClaim", roleInAudClaim), encodeOptionalBoolParam("allScopePresent", allScopePresent))
 	resp, err := client.httpGet(url, nil)
 	if err != nil {
 		return nil, "", err
@@ -1188,6 +1189,39 @@ func (client ZTSClient) GetOIDCResponse(responseType string, clientId ServiceNam
 			errobj.Message = string(contentBytes)
 		}
 		return nil, "", errobj
+	}
+}
+
+func (client ZTSClient) PostIntrospectRequest(request IntrospectRequest) (*IntrospectResponse, error) {
+	var data *IntrospectResponse
+	url := client.URL + "/oauth2/introspect"
+	contentBytes := []byte(request)
+	resp, err := client.httpPostWithContentType(url, nil, contentBytes, "application/x-www-form-urlencoded")
+	if err != nil {
+		return data, err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 200:
+		err = json.NewDecoder(resp.Body).Decode(&data)
+		if err != nil {
+			return data, err
+		}
+		return data, nil
+	default:
+		var errobj rdl.ResourceError
+		contentBytes, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return data, err
+		}
+		json.Unmarshal(contentBytes, &errobj)
+		if errobj.Code == 0 {
+			errobj.Code = resp.StatusCode
+		}
+		if errobj.Message == "" {
+			errobj.Message = string(contentBytes)
+		}
+		return data, errobj
 	}
 }
 
@@ -1391,6 +1425,78 @@ func (client ZTSClient) PostExternalCredentialsRequest(provider SimpleName, doma
 	var data *ExternalCredentialsResponse
 	url := client.URL + "/external/" + fmt.Sprint(provider) + "/domain/" + fmt.Sprint(domainName) + "/creds"
 	contentBytes, err := json.Marshal(request)
+	if err != nil {
+		return data, err
+	}
+	resp, err := client.httpPost(url, nil, contentBytes)
+	if err != nil {
+		return data, err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 200:
+		err = json.NewDecoder(resp.Body).Decode(&data)
+		if err != nil {
+			return data, err
+		}
+		return data, nil
+	default:
+		var errobj rdl.ResourceError
+		contentBytes, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return data, err
+		}
+		json.Unmarshal(contentBytes, &errobj)
+		if errobj.Code == 0 {
+			errobj.Code = resp.StatusCode
+		}
+		if errobj.Message == "" {
+			errobj.Message = string(contentBytes)
+		}
+		return data, errobj
+	}
+}
+
+func (client ZTSClient) PostUserCertificateRequest(req *UserCertificateRequest) (*UserCertificate, error) {
+	var data *UserCertificate
+	url := client.URL + "/usercert"
+	contentBytes, err := json.Marshal(req)
+	if err != nil {
+		return data, err
+	}
+	resp, err := client.httpPost(url, nil, contentBytes)
+	if err != nil {
+		return data, err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 200:
+		err = json.NewDecoder(resp.Body).Decode(&data)
+		if err != nil {
+			return data, err
+		}
+		return data, nil
+	default:
+		var errobj rdl.ResourceError
+		contentBytes, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return data, err
+		}
+		json.Unmarshal(contentBytes, &errobj)
+		if errobj.Code == 0 {
+			errobj.Code = resp.StatusCode
+		}
+		if errobj.Message == "" {
+			errobj.Message = string(contentBytes)
+		}
+		return data, errobj
+	}
+}
+
+func (client ZTSClient) PostExternalMemberCertificateRequest(req *ExternalMemberCertificateRequest) (*ExternalMemberCertificate, error) {
+	var data *ExternalMemberCertificate
+	url := client.URL + "/extmembercert"
+	contentBytes, err := json.Marshal(req)
 	if err != nil {
 		return data, err
 	}

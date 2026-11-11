@@ -19,7 +19,6 @@ import static org.testng.Assert.*;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -117,7 +116,7 @@ public class X509CertUtilsTest {
         item2.add("instanceid1.instanceid.athenz.test");
         dnsNames.add(item2);
 
-        assertEquals("instanceid1", X509CertUtils.extractRequestInstanceId(cert));
+        assertEquals(X509CertUtils.extractRequestInstanceId(cert), "instanceid1");
     }
 
     @Test
@@ -127,7 +126,7 @@ public class X509CertUtilsTest {
         String pem = new String(Files.readAllBytes(path));
         X509Certificate cert = Crypto.loadX509Certificate(pem);
 
-        assertEquals("id-001", X509CertUtils.extractRequestInstanceId(cert));
+        assertEquals(X509CertUtils.extractRequestInstanceId(cert), "id-001");
     }
 
     @Test

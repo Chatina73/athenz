@@ -16,6 +16,7 @@
 
 package com.yahoo.athenz.common.server.notification.impl;
 
+import com.yahoo.athenz.auth.PrivateKeyStore;
 import com.yahoo.athenz.common.metrics.Metric;
 import com.yahoo.athenz.common.metrics.MetricFactory;
 import com.yahoo.athenz.common.server.notification.NotificationService;
@@ -32,7 +33,7 @@ public class MetricNotificationServiceFactory implements NotificationServiceFact
     private final static Logger LOG = LoggerFactory.getLogger(MetricNotificationServiceFactory.class);
 
     @Override
-    public NotificationService create() {
+    public NotificationService create(PrivateKeyStore privateKeyStore) {
         return new MetricNotificationService(loadMetricObject());
     }
 
@@ -42,10 +43,10 @@ public class MetricNotificationServiceFactory implements NotificationServiceFact
                 METRIC_DEFAULT_FACTORY_CLASS);
         MetricFactory metricFactory;
         try {
-            metricFactory = (MetricFactory) Class.forName(metricFactoryClass).newInstance();
-        } catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
-            LOG.error("Invalid MetricFactory class: {} error: {}", metricFactoryClass, e.getMessage());
-            throw new IllegalArgumentException("Invalid metric class");
+            metricFactory = (MetricFactory) Class.forName(metricFactoryClass).getDeclaredConstructor().newInstance();
+        } catch (Exception ex) {
+            LOG.error("Invalid MetricFactory class: {}", metricFactoryClass, ex);
+            throw new IllegalArgumentException("Invalid metric class", ex);
         }
 
         LOG.info("Loaded MetricFactory for receiving notification metrics: {}", metricFactoryClass);

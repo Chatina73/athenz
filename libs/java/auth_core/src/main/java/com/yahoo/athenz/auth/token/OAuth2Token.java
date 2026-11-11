@@ -15,18 +15,39 @@
  */
 package com.yahoo.athenz.auth.token;
 
+import com.nimbusds.jose.*;
+import com.nimbusds.jose.proc.SecurityContext;
+import com.nimbusds.jose.util.Base64URL;
+import com.nimbusds.jwt.*;
+import com.nimbusds.jwt.proc.*;
+import com.yahoo.athenz.auth.KeyStore;
+import com.yahoo.athenz.auth.token.jwts.JwtsHelper;
 import com.yahoo.athenz.auth.token.jwts.JwtsSigningKeyResolver;
-import io.jsonwebtoken.*;
+import com.yahoo.athenz.auth.util.CryptoException;
+import com.yahoo.athenz.auth.util.StringUtils;
 
 import java.security.PublicKey;
-import java.util.Date;
+import java.util.*;
+import java.util.function.Predicate;
 
 public class OAuth2Token {
 
-    public static final String HDR_KEY_ID = "kid";
+    public final static String SYS_AUTH_DOMAIN = "sys.auth";
+    public final static String ZTS_SERVICE_NAME = "zts";
 
     public static final String CLAIM_VERSION = "ver";
     public static final String CLAIM_AUTH_TIME = "auth_time";
+    public static final String CLAIM_ISSUER = "iss";
+    public static final String CLAIM_SUBJECT = "sub";
+    public static final String CLAIM_AUDIENCE = "aud";
+    public static final String CLAIM_EXPIRY = "exp";
+    public static final String CLAIM_ISSUE_TIME = "iat";
+    public static final String CLAIM_NOT_BEFORE = "nbf";
+    public static final String CLAIM_JWT_ID = "jti";
+    public static final String CLAIM_ACT = "act";
+    public static final String CLAIM_MAY_ACT = "may_act";
+    public static final String CLAIM_PRINCIPAL_ISSUER = "principal_issuer";
+    public static final String CLAIM_CLIENT_ID = "client_id";
 
     protected int version;
     protected long expiryTime;
@@ -37,99 +58,288 @@ public class OAuth2Token {
     protected String issuer;
     protected String subject;
     protected String jwtId;
-    protected Claims body = null;
+    protected String principalIssuer;
+    protected String clientIdDomainName;
+    protected String clientIdServiceName;
+    protected String tokenType;
+    protected LinkedHashMap<String, Object> act;
+    protected LinkedHashMap<String, Object> mayAct;
+
+    protected JWTClaimsSet claimsSet = null;
+    protected Map<String, Object> customClaims = null;
+    protected static DefaultJWTClaimsVerifier<SecurityContext> claimsVerifier = new DefaultJWTClaimsVerifier<>(null, null);
 
     public OAuth2Token() {
     }
 
     public OAuth2Token(final String token, JwtsSigningKeyResolver keyResolver) {
 
-        // if the keyresolver is null and the token does not have
-        // a signature we're going to treat and parse it as a jwt
+        try {
 
-        if (keyResolver == null && isSignatureMissing(token)) {
-            Jwt<Header, Claims> claims = Jwts.parserBuilder()
-                    .setAllowedClockSkewSeconds(60)
-                    .build()
-                    .parseClaimsJwt(token);
-            body = claims.getBody();
-        } else {
-            Jws<Claims> claims = Jwts.parserBuilder()
-                    .setSigningKeyResolver(keyResolver)
-                    .setAllowedClockSkewSeconds(60)
-                    .build()
-                    .parseClaimsJws(token);
-            body = claims.getBody();
+            // if the keyResolver is null and the token does not have
+            // a signature we're going to treat and parse it as a jwt
+            // without any claim validation
+
+            if (keyResolver == null) {
+                Base64URL[] parts = JOSEObject.split(token);
+                claimsSet = JwtsHelper.parseJWTWithoutSignature(parts);
+                tokenType = JwtsHelper.extractJWTTokenType(parts);
+            } else {
+
+                // create a processor and process the token which does signature verification
+                // along with standard claims validation (expiry, not before, etc.)
+
+                ConfigurableJWTProcessor<SecurityContext> jwtProcessor = JwtsHelper.getJWTProcessor(keyResolver);
+                final JWT jwt = JWTParser.parse(token);
+                claimsSet = jwtProcessor.process(jwt, null);
+
+                JOSEObjectType hdrType = jwt.getHeader().getType();
+                tokenType = hdrType == null ? null : hdrType.toString();
+            }
+
+            setTokenFields();
+
+        } catch (Exception ex) {
+            throw new CryptoException("Unable to parse token: " + ex.getMessage());
         }
+    }
 
-        setTokenFields();
+    public OAuth2Token(final String token, ConfigurableJWTProcessor<SecurityContext> jwtProcessor) {
+        try {
+
+            final JWT jwt = JWTParser.parse(token);
+            claimsSet = jwtProcessor.process(jwt, null);
+            setTokenFields();
+
+            JOSEObjectType hdrType = jwt.getHeader().getType();
+            tokenType = hdrType == null ? null : hdrType.toString();
+
+        } catch (Exception ex) {
+            throw new CryptoException("Unable to parse token: " + ex.getMessage());
+        }
     }
 
     public OAuth2Token(final String token, PublicKey publicKey) {
 
-        if (publicKey == null && isSignatureMissing(token)) {
-            Jwt<Header, Claims> claims = Jwts.parserBuilder()
-                    .setAllowedClockSkewSeconds(60)
-                    .build()
-                    .parseClaimsJwt(token);
-            body = claims.getBody();
-        } else {
-            Jws<Claims> claims = Jwts.parserBuilder()
-                    .setSigningKey(publicKey)
-                    .setAllowedClockSkewSeconds(60)
-                    .build()
-                    .parseClaimsJws(token);
-            body = claims.getBody();
+        try {
+
+            // if the public key is null and the token does not have
+            // a signature we're going to treat and parse it as a jwt
+            // without any claim validation
+
+            if (publicKey == null) {
+                Base64URL[] parts = JOSEObject.split(token);
+                claimsSet = JwtsHelper.parseJWTWithoutSignature(parts);
+                tokenType = JwtsHelper.extractJWTTokenType(parts);
+            } else {
+
+                // Create a verifier and parse the token and verify the signature
+
+                JWSVerifier verifier = JwtsHelper.getJWSVerifier(publicKey);
+                SignedJWT signedJWT = SignedJWT.parse(token);
+                if (!signedJWT.verify(verifier)) {
+                    throw new CryptoException("Unable to verify token signature");
+                }
+
+                // Extract and verify the claims (expiry, not before, etc.)
+
+                claimsSet = signedJWT.getJWTClaimsSet();
+                claimsVerifier.verify(claimsSet, null);
+
+                // set the token type
+
+                JOSEObjectType hdrType = signedJWT.getHeader().getType();
+                tokenType = hdrType == null ? null : hdrType.toString();
+            }
+
+            setTokenFields();
+
+        } catch (Exception ex) {
+            throw new CryptoException("Unable to parse token: " + ex.getMessage());
         }
-
-        setTokenFields();
     }
 
-    boolean isSignatureMissing(final String token) {
-        return token.length() == token.lastIndexOf('.') + 1;
+    public OAuth2Token(final String token, KeyStore publicKeyProvider, final Set<String> oauth2Issuers) {
+        parseOAuth2Token(token, publicKeyProvider, oauth2Issuers::contains);
     }
 
-    int parseIntegerValue(Claims body, final String claimName) {
+    public OAuth2Token(final String token, KeyStore publicKeyProvider, final String oauth2Issuer) {
+        parseOAuth2Token(token, publicKeyProvider, oauth2Issuer::equals);
+    }
 
-        // if the object is not of our expected integer class
-        // then we'll just return 0 and ignore all exceptions
+    private void parseOAuth2Token(final String token, KeyStore publicKeyProvider, Predicate<String> oauth2IssuerCheck) {
 
         try {
-            return body.get(claimName, Integer.class);
-        } catch (Exception ignored) {
+            // first parse the token to extract the fields from the body and header
+
+            SignedJWT signedJWT = SignedJWT.parse(token);
+
+            // Extract and verify the claims (expiry, not before, etc.)
+
+            claimsSet = signedJWT.getJWTClaimsSet();
+            claimsVerifier.verify(claimsSet, null);
+
+            // set the token type
+
+            JOSEObjectType hdrType = signedJWT.getHeader().getType();
+            tokenType = hdrType == null ? null : hdrType.toString();
+
+            // extract the issuer and subject of the token. there are two possible
+            // supported cases:
+            //  1. issuer matches our oauth2 issuer so we're dealing with a token signed by ZTS
+            //  2. otherwise, the token is signed by service itself so issuer and subject
+            //     must be present and equal
+
+            final String issuer = claimsSet.getIssuer();
+            final String subject = claimsSet.getSubject();
+            final String audience = getClaimAudience();
+
+            if (StringUtils.isEmpty(issuer) || StringUtils.isEmpty(subject) || StringUtils.isEmpty(audience)) {
+                throw new CryptoException("Invalid token: missing issuer, subject or audience");
+            }
+
+            boolean athenzIssuer = oauth2IssuerCheck.test(issuer);
+            if (!athenzIssuer) {
+                if (!issuer.equals(subject)) {
+                    throw new CryptoException("Invalid token: mismatched issuer (" + issuer
+                            + ") and subject (" + subject + ")");
+                }
+
+                // extract the audience of the token. for athenz support case this
+                // value must be present and match the oidc issuer for the server
+
+                if (!oauth2IssuerCheck.test(audience)) {
+                    throw new CryptoException("Invalid token: mismatched audience (" + audience + ") and issuer");
+                }
+            }
+
+            // our subject is the service identifier so we'll extract
+            // the domain and service values
+
+            int idx = subject.lastIndexOf('.');
+            if (idx < 0) {
+                throw new CryptoException("Invalid token: missing domain and service: " + subject);
+            }
+
+            clientIdDomainName = subject.substring(0, idx);
+            clientIdServiceName = subject.substring(idx + 1);
+
+            // if the token is an athenz token then we only support validation
+            // based on public key
+
+            JWSHeader header = signedJWT.getHeader();
+            if (athenzIssuer) {
+                validateWithPublicKey(signedJWT, header, publicKeyProvider, SYS_AUTH_DOMAIN, ZTS_SERVICE_NAME);
+            } else {
+                // if the header is signed with HMAC then we're going to get the
+                // secret from the keystore otherwise we're going to get the public key
+                // from the keystore for the domain/service/key id. The validate
+                // methods will throw crypto exceptions if they're not able to
+                // validate the signature
+
+                if (isHMACAlgorithm(header.getAlgorithm())) {
+                    validateWithSecret(signedJWT, publicKeyProvider);
+                } else {
+                    validateWithPublicKey(signedJWT, header, publicKeyProvider, clientIdDomainName, clientIdServiceName);
+                }
+            }
+
+            // if we got this far then we have a valid token so
+            // we'll set our claims set and extract the fields
+
+            setTokenFields();
+
+        } catch (Exception ex) {
+            throw new CryptoException("Unable to parse token: " + ex.getMessage());
         }
-        return 0;
     }
 
-    long parseLongValue(Claims body, final String claimName) {
-
-        // if the object is not of our expected long class
-        // then we'll just return 0 and ignore all exceptions
-
-        try {
-            return body.get(claimName, Long.class);
-        } catch (Exception ignored) {
-        }
-        return 0;
+    boolean isHMACAlgorithm(JWSAlgorithm algorithm) {
+        return algorithm.equals(JWSAlgorithm.HS256) || algorithm.equals(JWSAlgorithm.HS384)
+                || algorithm.equals(JWSAlgorithm.HS512);
     }
+
+    void validateWithSecret(SignedJWT signedJWT, KeyStore publicKeyProvider) throws JOSEException {
+
+        // get the secret for the given domain/service
+        // and create a verifier
+
+        final byte[] secret = publicKeyProvider.getServiceSecret(clientIdDomainName, clientIdServiceName);
+        if (secret == null) {
+            throw new CryptoException("Invalid token: unable to get secret for " + clientIdDomainName
+                    + "." + clientIdServiceName + " service");
+        }
+
+        JWSVerifier verifier = JwtsHelper.getJWSVerifier(secret);
+        if (!signedJWT.verify(verifier)) {
+            throw new CryptoException("Unable to verify token signature");
+        }
+    }
+
+    void validateWithPublicKey(SignedJWT signedJWT, JWSHeader header, KeyStore publicKeyProvider,
+            final String domainName, final String serviceName) throws JOSEException {
+
+        final String keyId = header.getKeyID();
+        if (StringUtils.isEmpty(keyId)) {
+            throw new CryptoException("Invalid token: missing key id");
+        }
+
+        // get the public key for the domain/service/key id
+        // and create a verifier
+
+        final PublicKey publicKey = publicKeyProvider.getServicePublicKey(domainName,
+                serviceName, keyId);
+        if (publicKey == null) {
+            throw new CryptoException("Invalid token: unable to get public key for " + domainName
+                    + "." + serviceName + " service with keyid: " + keyId);
+        }
+
+        JWSVerifier verifier = JwtsHelper.getJWSVerifier(publicKey);
+        if (!signedJWT.verify(verifier)) {
+            throw new CryptoException("Unable to verify token signature");
+        }
+    }
+
+    // our date values are stored in seconds
 
     long parseDateValue(Date date) {
-
-        // our date values are stored in seconds
-
         return date == null ? 0 : date.getTime() / 1000;
     }
 
     void setTokenFields() {
-        setVersion(parseIntegerValue(body, CLAIM_VERSION));
-        setAudience(body.getAudience());
-        setExpiryTime(parseDateValue(body.getExpiration()));
-        setIssueTime(parseDateValue(body.getIssuedAt()));
-        setNotBeforeTime(parseDateValue(body.getNotBefore()));
-        setAuthTime(parseLongValue(body, CLAIM_AUTH_TIME));
-        setIssuer(body.getIssuer());
-        setSubject(body.getSubject());
-        setJwtId(body.getId());
+
+        setVersion(JwtsHelper.getIntegerClaim(claimsSet, CLAIM_VERSION, 0));
+        setAudience(getClaimAudience());
+        setExpiryTime(parseDateValue(claimsSet.getExpirationTime()));
+        setIssueTime(parseDateValue(claimsSet.getIssueTime()));
+        setNotBeforeTime(parseDateValue(claimsSet.getNotBeforeTime()));
+        setAuthTime(JwtsHelper.getLongClaim(claimsSet, CLAIM_AUTH_TIME, 0));
+        setIssuer(claimsSet.getIssuer());
+        setSubject(claimsSet.getSubject());
+        setJwtId(claimsSet.getJWTID());
+        setPrincipalIssuer(JwtsHelper.getStringClaim(claimsSet, CLAIM_PRINCIPAL_ISSUER));
+
+        Object value = claimsSet.getClaim(CLAIM_MAY_ACT);
+        if (value instanceof Map) {
+            for (Map.Entry<String, Object> entry : ((Map<String, Object>) value).entrySet()) {
+                setMayActEntry(entry.getKey(), entry.getValue());
+            }
+        }
+
+        value = claimsSet.getClaim(CLAIM_ACT);
+        if (value instanceof Map) {
+            for (Map.Entry<String, Object> entry : ((Map<String, Object>) value).entrySet()) {
+                setActEntry(entry.getKey(), entry.getValue());
+            }
+        }
+    }
+
+    String getClaimAudience() {
+        List<String> audiences = claimsSet.getAudience();
+        if (audiences != null && !audiences.isEmpty()) {
+            return audiences.get(0);
+        }
+        return null;
     }
 
     public int getVersion() {
@@ -202,5 +412,103 @@ public class OAuth2Token {
 
     public void setJwtId(String jwtId) {
         this.jwtId = jwtId;
+    }
+
+    public String getClientIdDomainName() {
+        return clientIdDomainName;
+    }
+
+    public String getClientIdServiceName() {
+        return clientIdServiceName;
+    }
+
+    public LinkedHashMap<String, Object> getMayAct() {
+        return mayAct;
+    }
+
+    public void setMayAct(LinkedHashMap<String, Object> mayAct) {
+        this.mayAct = mayAct;
+    }
+
+    public void setMayActEntry(final String key, final Object value) {
+        if (mayAct == null) {
+            mayAct = new LinkedHashMap<>();
+        }
+        mayAct.put(key, value);
+    }
+
+    public LinkedHashMap<String, Object> getAct() {
+        return act;
+    }
+
+    public void setAct(LinkedHashMap<String, Object> act) {
+        this.act = act;
+    }
+
+    public void setActEntry(final String key, final Object value) {
+        if (act == null) {
+            act = new LinkedHashMap<>();
+        }
+        act.put(key, value);
+    }
+
+    public String getPrincipalIssuer() {
+        return principalIssuer;
+    }
+
+    public void setPrincipalIssuer(String principalIssuer) {
+        this.principalIssuer = principalIssuer;
+    }
+
+    public boolean setCustomClaim(final String name, final Object value) {
+
+        // first verify that the custom claim is not one of the standard claims
+
+        if (isStandardClaim(name)) {
+            return false;
+        }
+
+        // create the custom claims map if necessary
+
+        if (customClaims == null) {
+            customClaims = new java.util.HashMap<>();
+        }
+        customClaims.put(name, value);
+        return true;
+    }
+
+    public Object getClaim(final String name) {
+        return claimsSet.getClaim(name);
+    }
+
+    public String getTokenType() {
+        return tokenType;
+    }
+
+    /**
+     * Check if the given claim name is one of the standard claims
+     * in an OAuth2 token that is already handled separately.
+     *
+     * @param claimName claim name
+     * @return true if standard claim, false otherwise
+     */
+    public boolean isStandardClaim(final String claimName) {
+        switch (claimName) {
+            case CLAIM_ISSUER:
+            case CLAIM_SUBJECT:
+            case CLAIM_AUDIENCE:
+            case CLAIM_EXPIRY:
+            case CLAIM_ISSUE_TIME:
+            case CLAIM_NOT_BEFORE:
+            case CLAIM_JWT_ID:
+            case CLAIM_VERSION:
+            case CLAIM_AUTH_TIME:
+            case CLAIM_ACT:
+            case CLAIM_MAY_ACT:
+            case CLAIM_PRINCIPAL_ISSUER:
+                return true;
+            default:
+                return false;
+        }
     }
 }

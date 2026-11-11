@@ -22,7 +22,6 @@ import DeleteModal from '../modal/DeleteModal';
 import Color from '../denali/Color';
 import DateUtils from '../utils/DateUtils';
 import RequestUtils from '../utils/RequestUtils';
-import BusinessServiceModal from '../modal/BusinessServiceModal';
 import { css, keyframes } from '@emotion/react';
 import { deleteSubDomain } from '../../redux/thunks/domains';
 import { connect } from 'react-redux';
@@ -32,6 +31,9 @@ import {
     selectBusinessServicesAll,
     selectTimeZone,
 } from '../../redux/selectors/domains';
+import OnCallTeamModal from '../modal/OnCallTeamModal';
+import { MODAL_TIME_OUT } from '../constants/constants';
+import Alert from '../denali/Alert';
 
 const ManageDomainSectionDiv = styled.div`
     margin: 20px;
@@ -69,7 +71,7 @@ const TDStyled = styled.td`
     word-break: break-all;
 `;
 
-const TDStyledBusinessService = styled.td`
+const TDStyledOnCallTeam = styled.td`
     background-color: ${(props) => props.color};
     text-align: ${(props) => props.align};
     title: ${(props) => props.title};
@@ -120,10 +122,16 @@ class ManageDomains extends React.Component {
             businessServiceDomainName: '',
             category: 'domain',
             errorMessageForModal: '',
+            showOnCallModal: false,
+            domain: '',
+            onCall: '',
+            showSuccess: false,
         };
         this.saveJustification = this.saveJustification.bind(this);
         this.saveBusinessService = this.saveBusinessService.bind(this);
         this.domainNameProvided = this.domainNameProvided.bind(this);
+        this.onBusinessServiceInputChange =
+            this.onBusinessServiceInputChange.bind(this);
         this.dateUtils = new DateUtils();
     }
 
@@ -174,6 +182,13 @@ class ManageDomains extends React.Component {
     saveBusinessService(val) {
         this.setState({
             businessServiceName: val,
+            errorMessageForModal: '',
+        });
+    }
+
+    onBusinessServiceInputChange(val) {
+        this.setState({
+            businessServiceInInput: val,
         });
     }
 
@@ -277,12 +292,61 @@ class ManageDomains extends React.Component {
             });
     }
 
+    onClickOnCallTeam(domain, onCall) {
+        this.setState({
+            showOnCallModal: true,
+            domain: domain,
+            onCall: onCall,
+        });
+    }
+
+    onClickOnCallTeamCancel() {
+        this.setState({
+            showOnCallModal: false,
+        });
+    }
+
+    onUpdateOnCallTeamSuccessCb(teamName) {
+        this.setState({
+            showOnCallModal: false,
+            onCall: teamName,
+            showSuccess: true,
+            successMessage: 'Successfully updated on call team',
+        });
+
+        this.props.loadDomains('Successfully updated on call team');
+
+        setTimeout(
+            () =>
+                this.setState({
+                    showSuccess: false,
+                }),
+            MODAL_TIME_OUT + 1000
+        );
+    }
+
+    closeModal() {
+        this.setState({ showSuccess: false });
+    }
+
     onSubmitBusinessService() {
         if (this.state.auditEnabled && !this.state.auditRef) {
             this.setState({
                 errorMessageForModal: 'Justification is mandatory',
             });
             return;
+        }
+
+        if (this.state.businessServiceInInput) {
+            const colonIdx = this.state.businessServiceName.indexOf(':');
+            if (colonIdx === -1 && this.state.businessServiceInInput) {
+                // text is in input but the service name is not selected
+                this.setState({
+                    errorMessageForModal:
+                        'Business Service must be selected in the dropdown',
+                });
+                return;
+            }
         }
 
         if (this.state.businessServiceName) {
@@ -305,7 +369,9 @@ class ManageDomains extends React.Component {
         let domainName = this.state.businessServiceDomainName;
         let businessServiceName = this.state.businessServiceName;
         let domainMeta = {};
-        domainMeta.businessService = businessServiceName;
+        domainMeta.businessService = businessServiceName
+            ? businessServiceName
+            : '';
         this.updateMeta(domainMeta, domainName, this.props._csrf);
     }
 
@@ -324,12 +390,6 @@ class ManageDomains extends React.Component {
                       item.domain.name,
                       auditEnabled
                   );
-                  let businessServiceItem = this.onClickBusinessService.bind(
-                      this,
-                      item.domain.name,
-                      item.domain.businessService,
-                      auditEnabled
-                  );
 
                   let color = '';
                   if (i % 2 === 0) {
@@ -338,16 +398,9 @@ class ManageDomains extends React.Component {
                   if (domainType === 'Sub domain') {
                       deletable = true;
                   }
-                  let title = item.domain.businessService
-                      ? item.domain.businessService.substring(
-                            item.domain.businessService.indexOf(':') + 1
-                        )
-                      : 'add';
-                  if (!title) {
-                      title = item.domain.businessService
-                          ? item.domain.businessService
-                          : 'add';
-                  }
+
+                  let title = item.domain.onCall ?? 'add';
+
                   return (
                       <TrStyled key={item.domain.name} isSuccess={isSuccess}>
                           <TDStyled color={color} align={left}>
@@ -379,15 +432,24 @@ class ManageDomains extends React.Component {
                           <TDStyled color={color} align={center}>
                               {item.domain.account ? item.domain.account : ''}
                           </TDStyled>
-                          <TDStyledBusinessService
+                          <TDStyled color={color} align={center}>
+                              {item.domain.gcpProject}
+                          </TDStyled>
+                          <TDStyledOnCallTeam
                               color={color}
-                              align={left}
+                              align={center}
                               title={title}
                           >
-                              <StyledAnchor onClick={businessServiceItem}>
+                              <StyledAnchor
+                                  onClick={this.onClickOnCallTeam.bind(
+                                      this,
+                                      item.domain.name,
+                                      item.domain.onCall
+                                  )}
+                              >
                                   {title}
                               </StyledAnchor>
-                          </TDStyledBusinessService>
+                          </TDStyledOnCallTeam>
                           <TDStyled color={color} align={center}>
                               {deletable ? (
                                   <Icon
@@ -426,29 +488,20 @@ class ManageDomains extends React.Component {
                 />
             );
         }
-        if (this.state.showBusinessService) {
-            let clickBusinessServiceCancel =
-                this.onClickBusinessServiceCancel.bind(this);
-            let clickBusinessServiceSubmit =
-                this.onSubmitBusinessService.bind(this);
+
+        if (this.state.showOnCallModal) {
             rows.push(
-                <BusinessServiceModal
-                    isOpen={this.state.showBusinessService}
-                    cancel={clickBusinessServiceCancel}
-                    businessServiceName={this.state.businessServiceName}
-                    domainName={this.state.businessServiceDomainName}
-                    submit={clickBusinessServiceSubmit}
-                    showJustification={this.state.auditEnabled}
-                    onJustification={this.saveJustification}
-                    onBusinessService={this.saveBusinessService}
-                    key={'business-service-modal'}
-                    errorMessage={this.state.errorMessageForModal}
+                <OnCallTeamModal
+                    domain={this.state.domain}
+                    title='OnCall Team'
+                    isOpen={this.state.showOnCallModal}
+                    onCancel={this.onClickOnCallTeamCancel.bind(this)}
+                    onUpdateOnCallTeamSuccessCb={this.onUpdateOnCallTeamSuccessCb.bind(
+                        this
+                    )}
+                    onCallTeamName={this.state.onCall}
+                    csrf={this.props._csrf}
                     api={this.api}
-                    userId={this.state.userId}
-                    validBusinessServices={this.props.validBusinessServices}
-                    validBusinessServicesAll={
-                        this.props.validBusinessServicesAll
-                    }
                 />
             );
         }
@@ -459,6 +512,14 @@ class ManageDomains extends React.Component {
                 {this.state.errorMessage && (
                     <Color name={'red600'}>{this.state.errorMessage}</Color>
                 )}
+                {this.state.showSuccess ? (
+                    <Alert
+                        isOpen={this.state.showSuccess}
+                        title={this.state.successMessage}
+                        onClose={this.closeModal.bind(this)}
+                        type='success'
+                    />
+                ) : null}
                 <RoleTable>
                     <thead>
                         <tr>
@@ -476,8 +537,11 @@ class ManageDomains extends React.Component {
                             <TableHeadStyled align={center}>
                                 AWS Account #
                             </TableHeadStyled>
-                            <TableHeadStyled align={left}>
-                                Business Service
+                            <TableHeadStyled align={center}>
+                                GCP Project ID
+                            </TableHeadStyled>
+                            <TableHeadStyled align={center}>
+                                ONCALL TEAM
                             </TableHeadStyled>
                             <TableHeadStyled align={center}>
                                 Delete

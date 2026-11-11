@@ -16,11 +16,13 @@
 
 package com.yahoo.athenz.zms.notification;
 
+import com.yahoo.athenz.common.server.ServerResourceException;
 import com.yahoo.athenz.common.server.notification.*;
 import com.yahoo.athenz.zms.DBService;
+import com.yahoo.athenz.zms.Domain;
 import com.yahoo.athenz.zms.Role;
 import com.yahoo.athenz.zms.RoleMember;
-import com.yahoo.athenz.zms.store.AthenzDomain;
+import com.yahoo.athenz.common.server.store.AthenzDomain;
 import com.yahoo.rdl.Timestamp;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
@@ -35,19 +37,17 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.never;
 import static org.testng.Assert.*;
-import static org.testng.Assert.assertFalse;
-import static org.testng.AssertJUnit.assertEquals;
 
 public class PutRoleMembershipNotificationTaskTest {
-    private final NotificationToEmailConverterCommon notificationToEmailConverterCommon = new NotificationToEmailConverterCommon(null);
+    private final NotificationConverterCommon notificationConverterCommon = new NotificationConverterCommon(null);
 
     @Test
-    public void testGenerateAndSendPostPutMembershipNotification() {
+    public void testGenerateAndSendPostPutMembershipNotification() throws ServerResourceException {
         DBService dbsvc = Mockito.mock(DBService.class);
         NotificationService mockNotificationService =  Mockito.mock(NotificationService.class);
-        NotificationServiceFactory testfact = () -> mockNotificationService;
-        NotificationManager notificationManager = getNotificationManager(dbsvc, testfact);
-        notificationManager.shutdown();
+        NotificationServiceFactory testfact = Mockito.mock(NotificationServiceFactory.class);
+        Mockito.when(testfact.create(any())).thenReturn(mockNotificationService);
+
         Map<String, String> details = new HashMap<>();
         details.put("domain", "testdomain1");
         details.put("role", "role1");
@@ -89,40 +89,66 @@ public class PutRoleMembershipNotificationTaskTest {
         athenzDomain2.setRoles(roles2);
 
         Mockito.when(dbsvc.getRolesByDomain("sys.auth.audit.org")).thenReturn(athenzDomain1.getRoles());
+        Mockito.when(dbsvc.getRole("sys.auth.audit.org", "neworg", Boolean.FALSE, Boolean.TRUE, Boolean.FALSE))
+                .thenReturn(orgRole);
+
         Mockito.when(dbsvc.getRolesByDomain("sys.auth.audit.domain")).thenReturn(athenzDomain2.getRoles());
+        Mockito.when(dbsvc.getRole("sys.auth.audit.domain", "testdomain1", Boolean.FALSE, Boolean.TRUE, Boolean.FALSE))
+                .thenReturn(domainRole);
+
+        Mockito.when(dbsvc.getPendingMembershipApproverRoles(1)).thenReturn(Collections.emptySet());
+
+        NotificationManager notificationManager = getNotificationManager(dbsvc, testfact);
+        notificationManager.shutdown();
 
         ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
 
         Role notifyRole = new Role().setAuditEnabled(true).setSelfServe(false);
-        List<Notification> notifications = new PutRoleMembershipNotificationTask("testdomain1", "neworg", notifyRole, details, dbsvc, USER_DOMAIN_PREFIX, notificationToEmailConverterCommon).getNotifications();
+        List<Notification> notifications = new PutRoleMembershipNotificationTask("testdomain1", "neworg", notifyRole,
+                details, dbsvc, USER_DOMAIN_PREFIX, notificationConverterCommon).getNotifications(null);
         notificationManager.sendNotifications(notifications);
 
-        Notification notification = new Notification();
+        Notification notification = new Notification(Notification.Type.ROLE_MEMBER_APPROVAL)
+                .setConsolidatedBy(Notification.ConsolidatedBy.PRINCIPAL);
         notification.addRecipient("user.domapprover1")
                 .addRecipient("user.domapprover2")
                 .addRecipient("user.orgapprover1")
                 .addRecipient("user.orgapprover2");
         notification.addDetails("domain", "testdomain1").addDetails("role", "role1");
 
-        PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter converter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter(notificationToEmailConverterCommon);
+        PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter converter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter(notificationConverterCommon);
         notification.setNotificationToEmailConverter(converter);
 
         PutRoleMembershipNotificationTask.PutMembershipNotificationToMetricConverter metricConverter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToMetricConverter();
         notification.setNotificationToMetricConverter(metricConverter);
 
-        Mockito.verify(mockNotificationService, atLeastOnce()).notify(captor.capture());
-        Notification actualNotification = captor.getValue();
+        PutRoleMembershipNotificationTask.PutMembershipNotificationToSlackMessageConverter slackMessageConverter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToSlackMessageConverter(notificationConverterCommon);
+        notification.setNotificationToSlackMessageConverter(slackMessageConverter);
 
-        assertEquals(actualNotification, notification);
+        Notification secondNotification = new Notification(Notification.Type.ROLE_MEMBER_APPROVAL).setConsolidatedBy(Notification.ConsolidatedBy.DOMAIN);
+        secondNotification.addRecipient("user.domapprover1")
+                .addRecipient("user.domapprover2")
+                .addRecipient("user.orgapprover1")
+                .addRecipient("user.orgapprover2");
+        secondNotification.addDetails("domain", "testdomain1").addDetails("role", "role1");
+        secondNotification.setNotificationToEmailConverter(converter);
+        secondNotification.setNotificationToMetricConverter(metricConverter);
+        secondNotification.setNotificationToSlackMessageConverter(slackMessageConverter);
+
+        Mockito.verify(mockNotificationService, atLeast(2)).notify(captor.capture());
+        List<Notification> actualNotificationList = captor.getAllValues();
+
+        assertEquals(actualNotificationList.get(0), notification);
+        assertEquals(actualNotificationList.get(1), secondNotification);
     }
 
     @Test
-    public void testGenerateAndSendPostPutMembershipNotificationNullDomainRole() {
+    public void testGenerateAndSendPostPutMembershipNotificationNullDomainRole() throws ServerResourceException {
         DBService dbsvc = Mockito.mock(DBService.class);
         NotificationService mockNotificationService =  Mockito.mock(NotificationService.class);
-        NotificationServiceFactory testfact = () -> mockNotificationService;
-        NotificationManager notificationManager = getNotificationManager(dbsvc, testfact);
-        notificationManager.shutdown();
+        NotificationServiceFactory testfact = Mockito.mock(NotificationServiceFactory.class);
+        Mockito.when(testfact.create(any())).thenReturn(mockNotificationService);
+
         Map<String, String> details = new HashMap<>();
         details.put("domain", "testdomain1");
         details.put("role", "role1");
@@ -146,38 +172,60 @@ public class PutRoleMembershipNotificationTaskTest {
         athenzDomain.setRoles(roles);
 
         Mockito.when(dbsvc.getRolesByDomain("sys.auth.audit.org")).thenReturn(athenzDomain.getRoles());
+        Mockito.when(dbsvc.getRole("sys.auth.audit.org", "neworg", Boolean.FALSE, Boolean.TRUE, Boolean.FALSE))
+                .thenReturn(orgRole);
+
+        Mockito.when(dbsvc.getPendingMembershipApproverRoles(1)).thenReturn(Collections.emptySet());
+
+        NotificationManager notificationManager = getNotificationManager(dbsvc, testfact);
+        notificationManager.shutdown();
 
         ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
 
         Role notifyRole = new Role().setAuditEnabled(true).setSelfServe(false);
-        List<Notification> notifications = new PutRoleMembershipNotificationTask("testdomain1", "neworg", notifyRole, details, dbsvc, USER_DOMAIN_PREFIX, notificationToEmailConverterCommon).getNotifications();
+        List<Notification> notifications = new PutRoleMembershipNotificationTask("testdomain1", "neworg", notifyRole,
+                details, dbsvc, USER_DOMAIN_PREFIX, notificationConverterCommon).getNotifications();
         notificationManager.sendNotifications(notifications);
 
-        Notification notification = new Notification();
+        Notification notification = new Notification(Notification.Type.ROLE_MEMBER_APPROVAL)
+                .setConsolidatedBy(Notification.ConsolidatedBy.PRINCIPAL);
         notification
                 .addRecipient("user.orgapprover1")
                 .addRecipient("user.orgapprover2");
         notification.addDetails("domain", "testdomain1").addDetails("role", "role1");
 
-        PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter converter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter(notificationToEmailConverterCommon);
+        PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter converter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter(notificationConverterCommon);
         notification.setNotificationToEmailConverter(converter);
 
         PutRoleMembershipNotificationTask.PutMembershipNotificationToMetricConverter metricConverter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToMetricConverter();
         notification.setNotificationToMetricConverter(metricConverter);
 
-        Mockito.verify(mockNotificationService, atLeastOnce()).notify(captor.capture());
-        Notification actualNotification = captor.getValue();
+        PutRoleMembershipNotificationTask.PutMembershipNotificationToSlackMessageConverter slackMessageConverter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToSlackMessageConverter(notificationConverterCommon);
+        notification.setNotificationToSlackMessageConverter(slackMessageConverter);
 
-        assertEquals(actualNotification, notification);
+        Notification secondNotification = new Notification(Notification.Type.ROLE_MEMBER_APPROVAL).setConsolidatedBy(Notification.ConsolidatedBy.DOMAIN);
+        secondNotification
+                .addRecipient("user.orgapprover1")
+                .addRecipient("user.orgapprover2");
+        secondNotification.addDetails("domain", "testdomain1").addDetails("role", "role1");
+        secondNotification.setNotificationToEmailConverter(converter);
+        secondNotification.setNotificationToMetricConverter(metricConverter);
+        secondNotification.setNotificationToSlackMessageConverter(slackMessageConverter);
+
+        Mockito.verify(mockNotificationService, atLeast(2)).notify(captor.capture());
+        List<Notification> actualNotificationList = captor.getAllValues();
+
+        assertEquals(actualNotificationList.get(0), notification);
+        assertEquals(actualNotificationList.get(1), secondNotification);
     }
 
     @Test
-    public void testGenerateAndSendPostPutMembershipNotificationNullOrgRole() {
+    public void testGenerateAndSendPostPutMembershipNotificationNullOrgRole() throws ServerResourceException {
         DBService dbsvc = Mockito.mock(DBService.class);
         NotificationService mockNotificationService =  Mockito.mock(NotificationService.class);
-        NotificationServiceFactory testfact = () -> mockNotificationService;
-        NotificationManager notificationManager = getNotificationManager(dbsvc, testfact);
-        notificationManager.shutdown();
+        NotificationServiceFactory testfact = Mockito.mock(NotificationServiceFactory.class);
+        Mockito.when(testfact.create(any())).thenReturn(mockNotificationService);
+
         Map<String, String> details = new HashMap<>();
         details.put("domain", "testdomain1");
         details.put("role", "role1");
@@ -201,38 +249,60 @@ public class PutRoleMembershipNotificationTaskTest {
         athenzDomain.setRoles(roles);
 
         Mockito.when(dbsvc.getRolesByDomain("sys.auth.audit.domain")).thenReturn(athenzDomain.getRoles());
+        Mockito.when(dbsvc.getRole("sys.auth.audit.domain", "testdomain1", Boolean.FALSE, Boolean.TRUE, Boolean.FALSE))
+                .thenReturn(domainRole);
+
+        Mockito.when(dbsvc.getPendingMembershipApproverRoles(1)).thenReturn(Collections.emptySet());
+
+        NotificationManager notificationManager = getNotificationManager(dbsvc, testfact);
+        notificationManager.shutdown();
 
         ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
 
         Role notifyRole = new Role().setAuditEnabled(true).setSelfServe(false);
-        List<Notification> notifications = new PutRoleMembershipNotificationTask("testdomain1", "neworg", notifyRole, details, dbsvc, USER_DOMAIN_PREFIX, notificationToEmailConverterCommon).getNotifications();
+        List<Notification> notifications = new PutRoleMembershipNotificationTask("testdomain1", "neworg", notifyRole,
+                details, dbsvc, USER_DOMAIN_PREFIX, notificationConverterCommon).getNotifications(null);
         notificationManager.sendNotifications(notifications);
 
-        Notification notification = new Notification();
+        Notification notification = new Notification(Notification.Type.ROLE_MEMBER_APPROVAL)
+                .setConsolidatedBy(Notification.ConsolidatedBy.PRINCIPAL);
         notification
                 .addRecipient("user.domapprover1")
                 .addRecipient("user.domapprover2");
         notification.addDetails("domain", "testdomain1").addDetails("role", "role1");
 
-        PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter converter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter(notificationToEmailConverterCommon);
+        PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter converter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter(notificationConverterCommon);
         notification.setNotificationToEmailConverter(converter);
 
         PutRoleMembershipNotificationTask.PutMembershipNotificationToMetricConverter metricConverter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToMetricConverter();
         notification.setNotificationToMetricConverter(metricConverter);
 
-        Mockito.verify(mockNotificationService, atLeastOnce()).notify(captor.capture());
-        Notification actualNotification = captor.getValue();
+        PutRoleMembershipNotificationTask.PutMembershipNotificationToSlackMessageConverter slackMessageConverter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToSlackMessageConverter(notificationConverterCommon);
+        notification.setNotificationToSlackMessageConverter(slackMessageConverter);
 
-        assertEquals(actualNotification, notification);
+        Notification secondNotification = new Notification(Notification.Type.ROLE_MEMBER_APPROVAL).setConsolidatedBy(Notification.ConsolidatedBy.DOMAIN);
+        secondNotification
+                .addRecipient("user.domapprover1")
+                .addRecipient("user.domapprover2");
+        secondNotification.addDetails("domain", "testdomain1").addDetails("role", "role1");
+        secondNotification.setNotificationToEmailConverter(converter);
+        secondNotification.setNotificationToMetricConverter(metricConverter);
+        secondNotification.setNotificationToSlackMessageConverter(slackMessageConverter);
+
+        Mockito.verify(mockNotificationService, atLeast(2)).notify(captor.capture());
+        List<Notification> actualNotificationList = captor.getAllValues();
+
+        assertEquals(actualNotificationList.get(0), notification);
+        assertEquals(actualNotificationList.get(1), secondNotification);
     }
 
     @Test
-    public void testGenerateAndSendPostPutMembershipNotificationSelfserve() {
+    public void testGenerateAndSendPostPutMembershipNotificationSelfserve() throws ServerResourceException {
         DBService dbsvc = Mockito.mock(DBService.class);
         NotificationService mockNotificationService =  Mockito.mock(NotificationService.class);
-        NotificationServiceFactory testfact = () -> mockNotificationService;
-        NotificationManager notificationManager = getNotificationManager(dbsvc, testfact);
-        notificationManager.shutdown();
+        NotificationServiceFactory testfact = Mockito.mock(NotificationServiceFactory.class);
+        Mockito.when(testfact.create(any())).thenReturn(mockNotificationService);
+
         Map<String, String> details = new HashMap<>();
         details.put("domain", "testdomain1");
         details.put("role", "role1");
@@ -255,39 +325,64 @@ public class PutRoleMembershipNotificationTaskTest {
         AthenzDomain athenzDomain = new AthenzDomain("testdomain1");
         athenzDomain.setRoles(roles);
 
+        Domain localDomain = new Domain().setName("testdomain1").setSlackChannel("testdomain1-channel");
+        Mockito.when(dbsvc.getDomain("testdomain1", Boolean.FALSE)).thenReturn(localDomain);
+
         Mockito.when(dbsvc.getRolesByDomain("testdomain1")).thenReturn(athenzDomain.getRoles());
+        Mockito.when(dbsvc.getRole("testdomain1", "admin", Boolean.FALSE, Boolean.TRUE, Boolean.FALSE))
+                .thenReturn(adminRole);
+
+        Mockito.when(dbsvc.getPendingMembershipApproverRoles(1)).thenReturn(Collections.emptySet());
+
+        NotificationManager notificationManager = getNotificationManager(dbsvc, testfact);
+        notificationManager.shutdown();
 
         ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
 
         Role notifyRole = new Role().setAuditEnabled(false).setSelfServe(true);
-        List<Notification> notifications = new PutRoleMembershipNotificationTask("testdomain1", "neworg", notifyRole, details, dbsvc, USER_DOMAIN_PREFIX, notificationToEmailConverterCommon).getNotifications();
+        List<Notification> notifications = new PutRoleMembershipNotificationTask("testdomain1", "neworg", notifyRole,
+                details, dbsvc, USER_DOMAIN_PREFIX, notificationConverterCommon).getNotifications(null);
         notificationManager.sendNotifications(notifications);
 
-        Notification notification = new Notification();
+        Notification notification = new Notification(Notification.Type.ROLE_MEMBER_APPROVAL)
+                .setConsolidatedBy(Notification.ConsolidatedBy.PRINCIPAL);
         notification
                 .addRecipient("user.domadmin1")
                 .addRecipient("user.domadmin2");
         notification.addDetails("domain", "testdomain1").addDetails("role", "role1");
 
-        PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter converter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter(notificationToEmailConverterCommon);
+        PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter converter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter(notificationConverterCommon);
         notification.setNotificationToEmailConverter(converter);
 
         PutRoleMembershipNotificationTask.PutMembershipNotificationToMetricConverter metricConverter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToMetricConverter();
         notification.setNotificationToMetricConverter(metricConverter);
 
-        Mockito.verify(mockNotificationService, atLeastOnce()).notify(captor.capture());
-        Notification actualNotification = captor.getValue();
+        PutRoleMembershipNotificationTask.PutMembershipNotificationToSlackMessageConverter slackMessageConverter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToSlackMessageConverter(notificationConverterCommon);
+        notification.setNotificationToSlackMessageConverter(slackMessageConverter);
 
-        assertEquals(actualNotification, notification);
+        Notification secondNotification = new Notification(Notification.Type.ROLE_MEMBER_APPROVAL).setConsolidatedBy(Notification.ConsolidatedBy.DOMAIN);
+        secondNotification.addRecipient("testdomain1");
+        secondNotification.addDetails("domain", "testdomain1").addDetails("role", "role1");
+        secondNotification.setNotificationToEmailConverter(converter);
+        secondNotification.setNotificationToMetricConverter(metricConverter);
+        secondNotification.setNotificationToSlackMessageConverter(slackMessageConverter);
+        Map<String, NotificationDomainMeta> metaMap = new HashMap<>();
+        metaMap.put("testdomain1", new NotificationDomainMeta("testdomain1").setSlackChannel("testdomain1-channel"));
+        secondNotification.setNotificationDomainMeta(metaMap);
+        Mockito.verify(mockNotificationService, atLeast(2)).notify(captor.capture());
+        List<Notification> actualNotificationList = captor.getAllValues();
+
+        assertEquals(actualNotificationList.get(0), notification);
+        assertEquals(actualNotificationList.get(1), secondNotification);
     }
 
     @Test
-    public void testGenerateAndSendPostPutMembershipNotificationNotifyRoles() {
+    public void testGenerateAndSendPostPutMembershipNotificationNotifyRoles() throws ServerResourceException {
         DBService dbsvc = Mockito.mock(DBService.class);
         NotificationService mockNotificationService =  Mockito.mock(NotificationService.class);
-        NotificationServiceFactory testfact = () -> mockNotificationService;
-        NotificationManager notificationManager = getNotificationManager(dbsvc, testfact);
-        notificationManager.shutdown();
+        NotificationServiceFactory testfact = Mockito.mock(NotificationServiceFactory.class);
+        Mockito.when(testfact.create(any())).thenReturn(mockNotificationService);
+
         Map<String, String> details = new HashMap<>();
         details.put("domain", "testdomain1");
         details.put("role", "role1");
@@ -329,63 +424,92 @@ public class PutRoleMembershipNotificationTaskTest {
         athenzDomain2.setRoles(roles2);
 
         Mockito.when(dbsvc.getRolesByDomain("testdomain1")).thenReturn(athenzDomain1.getRoles());
+        Mockito.when(dbsvc.getRole("testdomain1", "notify", Boolean.FALSE, Boolean.TRUE, Boolean.FALSE))
+                .thenReturn(localRole);
+
         Mockito.when(dbsvc.getRolesByDomain("athenz")).thenReturn(athenzDomain2.getRoles());
+        Mockito.when(dbsvc.getRole("athenz", "approvers", Boolean.FALSE, Boolean.TRUE, Boolean.FALSE))
+                .thenReturn(domainRole);
+
+        Mockito.when(dbsvc.getPendingMembershipApproverRoles(1)).thenReturn(Collections.emptySet());
+
+        NotificationManager notificationManager = getNotificationManager(dbsvc, testfact);
+        notificationManager.shutdown();
 
         ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
 
         Role notifyRole = new Role().setAuditEnabled(false).setSelfServe(false).setReviewEnabled(true)
                 .setNotifyRoles("athenz:role.approvers,notify");
-        List<Notification> notifications = new PutRoleMembershipNotificationTask("testdomain1", "neworg", notifyRole, details, dbsvc, USER_DOMAIN_PREFIX, notificationToEmailConverterCommon).getNotifications();
+        List<Notification> notifications = new PutRoleMembershipNotificationTask("testdomain1", "neworg", notifyRole,
+                details, dbsvc, USER_DOMAIN_PREFIX, notificationConverterCommon).getNotifications(null);
         notificationManager.sendNotifications(notifications);
 
-        Notification notification = new Notification();
+        Notification notification = new Notification(Notification.Type.ROLE_MEMBER_APPROVAL)
+                .setConsolidatedBy(Notification.ConsolidatedBy.PRINCIPAL);
         notification.addRecipient("user.domapprover1")
                 .addRecipient("user.domapprover2")
                 .addRecipient("user.approver1")
                 .addRecipient("user.approver2");
         notification.addDetails("domain", "testdomain1").addDetails("role", "role1");
 
-        PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter converter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter(notificationToEmailConverterCommon);
+        PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter converter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter(notificationConverterCommon);
         notification.setNotificationToEmailConverter(converter);
 
         PutRoleMembershipNotificationTask.PutMembershipNotificationToMetricConverter metricConverter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToMetricConverter();
         notification.setNotificationToMetricConverter(metricConverter);
 
-        Mockito.verify(mockNotificationService, atLeastOnce()).notify(captor.capture());
-        Notification actualNotification = captor.getValue();
+        PutRoleMembershipNotificationTask.PutMembershipNotificationToSlackMessageConverter slackMessageConverter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToSlackMessageConverter(notificationConverterCommon);
+        notification.setNotificationToSlackMessageConverter(slackMessageConverter);
 
-        assertEquals(actualNotification, notification);
-        assertEquals(actualNotification, notification);
+        Notification secondNotification = new Notification(Notification.Type.ROLE_MEMBER_APPROVAL).setConsolidatedBy(Notification.ConsolidatedBy.DOMAIN);
+        secondNotification.addRecipient("user.domapprover1")
+                .addRecipient("user.domapprover2")
+                .addRecipient("user.approver1")
+                .addRecipient("user.approver2");
+        secondNotification.addDetails("domain", "testdomain1").addDetails("role", "role1");
+        secondNotification.setNotificationToEmailConverter(converter);
+        secondNotification.setNotificationToMetricConverter(metricConverter);
+        secondNotification.setNotificationToSlackMessageConverter(slackMessageConverter);
+
+        Mockito.verify(mockNotificationService, atLeast(2)).notify(captor.capture());
+        List<Notification> actualNotificationList = captor.getAllValues();
+
+        assertEquals(actualNotificationList.get(0), notification);
+        assertEquals(actualNotificationList.get(1), secondNotification);
     }
 
     @Test
-    public void testGenerateAndSendPostPutMembershipNotificationInvalidType() {
+    public void testGenerateAndSendPostPutMembershipNotificationInvalidType() throws ServerResourceException {
 
         DBService dbsvc = Mockito.mock(DBService.class);
         Mockito.when(dbsvc.getPendingMembershipApproverRoles(1)).thenReturn(Collections.emptySet());
 
         NotificationService mockNotificationService =  Mockito.mock(NotificationService.class);
-        NotificationServiceFactory testfact = () -> mockNotificationService;
+        NotificationServiceFactory testfact = Mockito.mock(NotificationServiceFactory.class);
+        Mockito.when(testfact.create(any())).thenReturn(mockNotificationService);
         NotificationManager notificationManager = getNotificationManager(dbsvc, testfact);
         notificationManager.shutdown();
         Role notifyRole = new Role().setAuditEnabled(false).setSelfServe(false);
-        List<Notification> notifications = new PutRoleMembershipNotificationTask("testdomain1", "neworg", notifyRole, null, dbsvc, USER_DOMAIN_PREFIX, notificationToEmailConverterCommon).getNotifications();
+        List<Notification> notifications = new PutRoleMembershipNotificationTask("testdomain1", "neworg", notifyRole,
+                null, dbsvc, USER_DOMAIN_PREFIX, notificationConverterCommon).getNotifications(null);
         notificationManager.sendNotifications(notifications);
         Mockito.verify(mockNotificationService, times(0)).notify(any());
     }
 
     @Test
-    public void testGenerateAndSendPostPutMembershipNotificationNullNotificationSvc() {
+    public void testGenerateAndSendPostPutMembershipNotificationNullNotificationSvc() throws ServerResourceException {
 
         DBService dbsvc = Mockito.mock(DBService.class);
         Mockito.when(dbsvc.getPendingMembershipApproverRoles(1)).thenReturn(Collections.emptySet());
 
-        NotificationServiceFactory testfact = () -> null;
+        NotificationServiceFactory testfact = Mockito.mock(NotificationServiceFactory.class);
+        Mockito.when(testfact.create(any())).thenReturn(null);
         NotificationService mockNotificationService =  Mockito.mock(NotificationService.class);
         NotificationManager notificationManager = getNotificationManager(dbsvc, testfact);
         notificationManager.shutdown();
         Role notifyRole = new Role().setAuditEnabled(false).setSelfServe(false);
-        List<Notification> notifications = new PutRoleMembershipNotificationTask("testdomain1", "neworg", notifyRole, null, dbsvc, USER_DOMAIN_PREFIX, notificationToEmailConverterCommon).getNotifications();
+        List<Notification> notifications = new PutRoleMembershipNotificationTask("testdomain1", "neworg", notifyRole,
+                null, dbsvc, USER_DOMAIN_PREFIX, notificationConverterCommon).getNotifications(null);
         notificationManager.sendNotifications(notifications);
         verify(mockNotificationService, never()).notify(any(Notification.class));
     }
@@ -400,10 +524,10 @@ public class PutRoleMembershipNotificationTaskTest {
                 new HashMap<>(),
                 dbsvc,
                 USER_DOMAIN_PREFIX,
-                notificationToEmailConverterCommon);
+                notificationConverterCommon);
 
         String description = putMembershipNotificationTask.getDescription();
-        assertEquals("Membership Approval Notification", description);
+        assertEquals(description, "Membership Approval Notification");
     }
 
     @Test
@@ -411,6 +535,7 @@ public class PutRoleMembershipNotificationTaskTest {
         System.setProperty("athenz.notification_workflow_url", "https://athenz.example.com/workflow");
         System.setProperty("athenz.notification_support_text", "#Athenz slack channel");
         System.setProperty("athenz.notification_support_url", "https://link.to.athenz.channel.com");
+        System.setProperty("athenz.notification_athenz_ui_url", "https://athenz.example.com");
 
         Map<String, String> details = new HashMap<>();
         details.put("domain", "dom1");
@@ -419,9 +544,9 @@ public class PutRoleMembershipNotificationTaskTest {
         details.put("reason", "test reason");
         details.put("requester", "user.requester");
 
-        Notification notification = new Notification();
+        Notification notification = new Notification(Notification.Type.ROLE_MEMBER_APPROVAL);
         notification.setDetails(details);
-        PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter converter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter(new NotificationToEmailConverterCommon(null));
+        PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter converter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter(new NotificationConverterCommon(null));
         NotificationEmail notificationAsEmail = converter.getNotificationAsEmail(notification);
 
         String body = notificationAsEmail.getBody();
@@ -431,7 +556,7 @@ public class PutRoleMembershipNotificationTaskTest {
         assertTrue(body.contains("user.member1"));
         assertTrue(body.contains("test reason"));
         assertTrue(body.contains("user.requester"));
-        assertTrue(body.contains("https://athenz.example.com/workflow"));
+        assertTrue(body.contains("https://athenz.example.com/workflow/domain?domain=dom1"));
 
         // Make sure support text and url do not appear
 
@@ -439,14 +564,15 @@ public class PutRoleMembershipNotificationTaskTest {
         assertFalse(body.contains("link.to.athenz.channel.com"));
 
         System.clearProperty("athenz.notification_workflow_url");
-        System.clearProperty("notification_support_text");
-        System.clearProperty("notification_support_url");
+        System.clearProperty("athenz.notification_support_text");
+        System.clearProperty("athenz.notification_support_url");
+        System.clearProperty("athenz.notification_athenz_ui_url");
     }
 
     @Test
     public void getEmailSubject() {
-        Notification notification = new Notification();
-        PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter converter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter(notificationToEmailConverterCommon);
+        Notification notification = new Notification(Notification.Type.ROLE_MEMBER_APPROVAL);
+        PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter converter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToEmailConverter(notificationConverterCommon);
         NotificationEmail notificationAsEmail = converter.getNotificationAsEmail(notification);
         String subject = notificationAsEmail.getSubject();
         assertEquals(subject, "Membership Approval Notification");
@@ -461,7 +587,7 @@ public class PutRoleMembershipNotificationTaskTest {
         details.put("reason", "test reason");
         details.put("requester", "user.requester");
 
-        Notification notification = new Notification();
+        Notification notification = new Notification(Notification.Type.ROLE_MEMBER_APPROVAL);
         notification.setDetails(details);
 
         PutRoleMembershipNotificationTask.PutMembershipNotificationToMetricConverter converter =
@@ -482,4 +608,39 @@ public class PutRoleMembershipNotificationTaskTest {
 
         assertEquals(new NotificationMetric(expectedAttributes), notificationAsMetrics);
     }
+
+    @Test
+    public void testGetSlackMessage() {
+        System.setProperty("athenz.notification_workflow_url", "https://athenz.example.com/workflow");
+        System.setProperty("athenz.notification_support_text", "#Athenz slack channel");
+        System.setProperty("athenz.notification_support_url", "https://link.to.athenz.channel.com");
+        System.setProperty("athenz.notification_athenz_ui_url", "https://athenz.example.com");
+
+        Map<String, String> details = new HashMap<>();
+        details.put("domain", "dom1");
+        details.put("role", "role1");
+        details.put("member", "user.member1");
+        details.put("reason", "test reason");
+        details.put("requester", "user.requester");
+
+        Notification notification = new Notification(Notification.Type.ROLE_MEMBER_APPROVAL).setConsolidatedBy(Notification.ConsolidatedBy.DOMAIN);
+        notification.setDetails(details);
+        PutRoleMembershipNotificationTask.PutMembershipNotificationToSlackMessageConverter converter = new PutRoleMembershipNotificationTask.PutMembershipNotificationToSlackMessageConverter(new NotificationConverterCommon(null));
+        NotificationSlackMessage notificationAsSlackMessage = converter.getNotificationAsSlackMessage(notification);
+
+        String message = notificationAsSlackMessage.getMessage();
+        assertNotNull(message);
+        assertTrue(message.contains("dom1"));
+        assertTrue(message.contains("role1"));
+        assertTrue(message.contains("user.member1"));
+        assertTrue(message.contains("test reason"));
+        assertTrue(message.contains("user.requester"));
+        assertTrue(message.contains("https://athenz.example.com/workflow/domain?domain=dom1"));
+
+        System.clearProperty("athenz.notification_workflow_url");
+        System.clearProperty("athenz.notification_support_text");
+        System.clearProperty("athenz.notification_support_url");
+        System.clearProperty("athenz.notification_athenz_ui_url");
+    }
+
 }

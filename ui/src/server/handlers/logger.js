@@ -13,13 +13,36 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const { v4: uuid } = require('uuid');
+const { randomUUID: uuid } = require('crypto');
 const debug = require('debug')('AthenzUI:server:handlers:logger');
 
 module.exports = function (expressApp, config) {
     expressApp.use((req, res, next) => {
         req.headers.rid = uuid();
+        // expose the request id as the CSP nonce so pages/_document.js can stamp
+        // it on the scripts next renders (secure.js allows 'nonce-<rid>' only)
+        res.locals.nonce = req.headers.rid;
         res.on('finish', () => {
+            console.log(
+                'requestDone',
+                JSON.stringify({
+                    timestamp: new Date().toISOString(),
+                    method: req.method,
+                    host: req.headers.host,
+                    path: req.originalUrl.includes('oauth2/callback')
+                        ? '/oauth2/callback'
+                        : req.originalUrl,
+                    user: req.session.shortId
+                        ? req.session.shortId
+                        : 'invalid user',
+                    remoteIP: req.connection.remoteAddress,
+                    statusCode: res.statusCode,
+                    bytesWritten:
+                        req.connection.bytesWritten -
+                        (req.connection.lastBytesWritten || 0),
+                })
+            );
+
             req.connection.lastBytesWritten = req.connection.bytesWritten;
             if (req.body && req.body.requests) {
                 Object.values(req.body.requests).forEach((call) => {

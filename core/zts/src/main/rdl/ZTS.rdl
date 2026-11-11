@@ -26,4 +26,6 @@ include "TransportRule.rdli";
 include "Info.rdli";
 include "ExternalCredentials.rdli";
 include "DomainDetails.rdli";
+include "UserCert.rdli";
+include "ExternalMemberCert.rdli";
 include "Schema.rdli";

@@ -5,16 +5,15 @@ package athenzutils
 
 import (
 	"encoding/json"
-	"errors"
 	"github.com/AthenZ/athenz/clients/go/zts"
-	"gopkg.in/square/go-jose.v2/jwt"
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	authv1 "k8s.io/client-go/pkg/apis/clientauthentication/v1"
-	"strings"
 	"time"
 )
 
-func FetchIdToken(ztsURL, svcKeyFile, svcCertFile, svcCACertFile, clientId, redirectUri, scope, nonce, state, keyType string, fullArn *bool, proxy bool, expireTime *int32, roleInAudClaim *bool) (string, error) {
+func FetchIdToken(ztsURL, svcKeyFile, svcCertFile, svcCACertFile, clientId, scope, nonce, state, keyType string, fullArn *bool, proxy bool, expireTime *int32, roleInAudClaim, allScopesPresent *bool) (string, error) {
 
 	client, err := ZtsClient(ztsURL, svcKeyFile, svcCertFile, svcCACertFile, proxy)
 	if err != nil {
@@ -23,27 +22,16 @@ func FetchIdToken(ztsURL, svcKeyFile, svcCertFile, svcCACertFile, clientId, redi
 	client.DisableRedirect = true
 
 	// request an id token
-	_, location, err := client.GetOIDCResponse("id_token", zts.ServiceName(clientId), redirectUri, scope, zts.EntityName(state), zts.EntityName(nonce), zts.SimpleName(keyType), fullArn, expireTime, "", roleInAudClaim)
+	response, _, err := client.GetOIDCResponse("id_token", zts.ServiceName(clientId), "", scope, zts.EntityName(state), zts.EntityName(nonce), zts.SimpleName(keyType), fullArn, expireTime, "json", roleInAudClaim, allScopesPresent)
 	if err != nil {
 		return "", err
 	}
-
-	//the format of the location header is <redirect-uri>#id_token=<token>&state=<state>
-	idTokenLabel := "#id_token="
-	startIdx := strings.Index(location, idTokenLabel)
-	if startIdx == -1 {
-		return "", errors.New("location header does not contain id_token field")
-	}
-	idToken := location[startIdx+len(idTokenLabel):]
-	endIdx := strings.Index(idToken, "&state")
-	if endIdx != -1 {
-		idToken = idToken[:endIdx]
-	}
-	return idToken, nil
+	return response.Id_token, nil
 }
 
 func FetchIdTokenExpiryTime(idToken string) (*time.Time, error) {
-	tok, err := jwt.ParseSigned(idToken)
+	signatureAlgorithms := []jose.SignatureAlgorithm{jose.RS256, jose.RS384, jose.RS512, jose.PS256, jose.PS384, jose.PS512, jose.ES256, jose.ES384, jose.ES512, jose.EdDSA}
+	tok, err := jwt.ParseSigned(idToken, signatureAlgorithms)
 	if err != nil {
 		return nil, err
 	}

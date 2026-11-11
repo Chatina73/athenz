@@ -27,13 +27,14 @@ import AddModal from '../modal/AddModal';
 import DateUtils from '../utils/DateUtils';
 import Icon from '../denali/icons/Icon';
 import {
-    ADD_ROLE_AUDIT_ENABLED_TOOLTIP,
+    AUDIT_ENABLED_TOOLTIP,
     ADD_ROLE_AUTHORITY_ROLE_NAME_PLACEHOLDER,
     ADD_ROLE_DELEGATED_DOMAIN_PLACEHOLDER,
     ADD_ROLE_JUSTIFICATION_PLACEHOLDER,
     ADD_ROLE_MEMBER_PLACEHOLDER,
     ADD_ROLE_REMINDER_PLACEHOLDER,
-    ADD_ROLE_REVIEW_ENABLED_TOOLTIP,
+    REVIEW_ENABLED_TOOLTIP,
+    ROLE,
 } from '../constants/constants';
 import { addRole } from '../../redux/thunks/roles';
 import { connect } from 'react-redux';
@@ -43,6 +44,9 @@ import {
     selectUserLink,
 } from '../../redux/selectors/domains';
 import produce from 'immer';
+import InputDropdown from '../denali/InputDropdown';
+import MemberUtils from '../utils/MemberUtils';
+import { selectAllUsers } from '../../redux/selectors/user';
 
 const CATEGORIES = [
     {
@@ -75,6 +79,10 @@ const StyledButtonGroup = styled(ButtonGroup)`
 `;
 
 const StyledInput = styled(Input)`
+    width: 100%;
+`;
+
+const StyledInputAutoComplete = styled(InputDropdown)`
     width: 100%;
 `;
 
@@ -155,6 +163,7 @@ class AddRole extends React.Component {
         this.onSubmit = this.onSubmit.bind(this);
         this.expandSettings = this.expandSettings.bind(this);
         this.toggleAuditEnabled = this.toggleAuditEnabled.bind(this);
+        this.userSearch = this.userSearch.bind(this);
         this.dateUtils = new DateUtils();
 
         let role = {
@@ -166,6 +175,7 @@ class AddRole extends React.Component {
             category: 'regular',
             name: '',
             newMemberName: '',
+            memberNameInInput: '',
             memberExpiry: '',
             memberReviewReminder: '',
             members: [],
@@ -236,15 +246,6 @@ class AddRole extends React.Component {
 
     addMember() {
         let name = this.state.newMemberName;
-        let expirationDate =
-            this.state.memberExpiry && this.state.memberExpiry.length > 0
-                ? this.state.memberExpiry
-                : '';
-        let reviewReminderDate =
-            this.state.memberReviewReminder &&
-            this.state.memberReviewReminder.length > 0
-                ? this.state.memberReviewReminder
-                : '';
         let members = this.state.members;
 
         if (!name) {
@@ -259,14 +260,12 @@ class AddRole extends React.Component {
         for (let i = 0; i < names.length; i++) {
             members.push({
                 memberName: names[i],
-                expiration: expirationDate
-                    ? this.dateUtils.uxDatetimeToRDLTimestamp(expirationDate)
-                    : '',
-                reviewReminder: reviewReminderDate
-                    ? this.dateUtils.uxDatetimeToRDLTimestamp(
-                          reviewReminderDate
-                      )
-                    : '',
+                expiration: this.dateUtils.uxDatetimeToRDLTimestamp(
+                    this.state.memberExpiry
+                ),
+                reviewReminder: this.dateUtils.uxDatetimeToRDLTimestamp(
+                    this.state.memberReviewReminder
+                ),
             });
         }
 
@@ -275,6 +274,7 @@ class AddRole extends React.Component {
             newMemberName: '',
             memberExpiry: '',
             memberReviewReminder: '',
+            memberNameInInput: '',
         });
     }
 
@@ -293,6 +293,13 @@ class AddRole extends React.Component {
         this.setState({
             trustDomain: evt.target.value,
         });
+    }
+
+    onInputValueChange(inputVal) {
+        this.setState({ ['memberNameInInput']: inputVal });
+        if (this.state.newMemberName && this.state.newMemberName !== inputVal) {
+            this.setState({ ['newMemberName']: '' });
+        }
     }
 
     onSubmit() {
@@ -322,10 +329,8 @@ class AddRole extends React.Component {
                     this.state.members.filter((member) => {
                         return member != null || member != undefined;
                     }) || [];
-                if (
-                    this.state.newMemberName &&
-                    this.state.newMemberName !== ''
-                ) {
+
+                if (this.state.newMemberName) {
                     draft.roleMembers.push({
                         memberName: this.state.newMemberName,
                         expiration: this.dateUtils.uxDatetimeToRDLTimestamp(
@@ -342,6 +347,18 @@ class AddRole extends React.Component {
                 draft.trust = this.state.trustDomain;
             }
         });
+
+        if (
+            this.state.newMemberName.trim() !==
+            this.state.memberNameInInput.trim()
+        ) {
+            this.setState({
+                errorMessage:
+                    'Member must be selected in the dropdown or member input field must be empty.',
+            });
+            return;
+        }
+
         if (this.state.category === 'delegated') {
             if (!role.trust) {
                 this.setState({
@@ -388,8 +405,11 @@ class AddRole extends React.Component {
         });
     }
 
+    userSearch(part) {
+        return MemberUtils.userSearch(part, this.props.userList);
+    }
+
     render() {
-        let memberNameChanged = this.inputChanged.bind(this, 'newMemberName');
         let memberExpiryDateChanged = this.inputChanged.bind(
             this,
             'memberExpiry'
@@ -423,9 +443,9 @@ class AddRole extends React.Component {
         const arrowdown = 'arrowhead-down-circle';
         let reviewToolTip =
             this.state.reviewEnabled || this.state.role.auditEnabled
-                ? ADD_ROLE_REVIEW_ENABLED_TOOLTIP +
+                ? REVIEW_ENABLED_TOOLTIP(ROLE) +
                   '\n' +
-                  ADD_ROLE_AUDIT_ENABLED_TOOLTIP
+                  AUDIT_ENABLED_TOOLTIP(ROLE)
                 : null;
         let reviewTriggerStyle =
             this.state.reviewEnabled || this.state.role.auditEnabled
@@ -464,12 +484,30 @@ class AddRole extends React.Component {
                         </StyledInputLabel>
                         <ContentDiv style={reviewTriggerStyle}>
                             <AddMemberDiv>
-                                <StyledInput
+                                <StyledInputAutoComplete
+                                    value={this.state.memberNameInInput}
+                                    selectedDropdownValue={
+                                        this.state.newMemberName
+                                    } // marks value in dropdown selected
+                                    onInputValueChange={(inputVal) => {
+                                        this.onInputValueChange(inputVal);
+                                    }}
                                     placeholder={ADD_ROLE_MEMBER_PLACEHOLDER}
-                                    value={this.state.newMemberName}
-                                    onChange={memberNameChanged}
-                                    noanim
-                                    fluid
+                                    itemToString={(i) =>
+                                        i === null ? '' : i.value
+                                    }
+                                    id='member-name'
+                                    name='member-name'
+                                    onChange={(evt) =>
+                                        this.setState({
+                                            ['newMemberName']: evt
+                                                ? evt.value
+                                                : '',
+                                        })
+                                    }
+                                    asyncSearchFunc={this.userSearch}
+                                    noanim={true}
+                                    fluid={true}
                                 />
                             </AddMemberDiv>
                         </ContentDiv>
@@ -503,6 +541,7 @@ class AddRole extends React.Component {
                                 secondary
                                 size={'small'}
                                 onClick={this.addMember}
+                                data-wdio={'add-role-member'}
                             >
                                 Add
                             </StyledButton>
@@ -523,6 +562,7 @@ class AddRole extends React.Component {
                         <StyledInputLabel>Delegated to</StyledInputLabel>
                         <ContentDiv>
                             <StyledInput
+                                id={'delegated-to-input'}
                                 placeholder={
                                     ADD_ROLE_DELEGATED_DOMAIN_PLACEHOLDER
                                 }
@@ -537,6 +577,7 @@ class AddRole extends React.Component {
                 {this.getJustification()}
                 <SectionDiv>
                     <Icon
+                        id={'advanced-settings-icon'}
                         icon={this.state.showSettings ? arrowup : arrowdown}
                         onClick={this.expandSettings}
                         color={colors.icons}
@@ -570,6 +611,8 @@ class AddRole extends React.Component {
                                 members={members}
                                 role={this.state.role}
                                 reviewEnabled={this.state.reviewEnabled}
+                                // to disable all settings except description for delegated role
+                                delegated={this.state.category === 'delegated'}
                             />
                         </tbody>
                     </StyleTable>
@@ -598,6 +641,7 @@ const mapStateToProps = (state, props) => {
         isDomainAuditEnabled: selectDomainAuditEnabled(state),
         userProfileLink: selectUserLink(state),
         userAuthorityAttributes: selectAuthorityAttributes(state),
+        userList: selectAllUsers(state),
     };
 };
 

@@ -15,6 +15,9 @@
  */
 package com.yahoo.athenz.zms;
 
+import com.yahoo.athenz.common.server.rest.ServerResourceContext;
+import com.yahoo.athenz.common.server.ServerResourceException;
+import com.yahoo.athenz.zms.utils.ZMSUtils;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -25,31 +28,42 @@ import com.yahoo.athenz.auth.Principal;
 import com.yahoo.athenz.common.ServerCommonConsts;
 import com.yahoo.athenz.common.messaging.DomainChangeMessage;
 import com.yahoo.athenz.common.server.rest.Http;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.List;
 
 public class RsrcCtxWrapper implements ResourceContext {
 
-    private final com.yahoo.athenz.common.server.rest.ResourceContext ctx;
+    private static final Logger LOG = LoggerFactory.getLogger(RsrcCtxWrapper.class);
+
+    private final ServerResourceContext ctx;
     private final Object timerMetric;
     private final boolean optionalAuth;
     private final String apiName;
     private final boolean eventPublishersEnabled;
+    private final Authority userAuthority;
+    private final String userDomain;
+    private boolean principalValidated = false;
     private List<DomainChangeMessage> domainChangeMessages;
-    
+
     RsrcCtxWrapper(ServletContext servletContext, HttpServletRequest request, HttpServletResponse response,
                    Http.AuthorityList authList, boolean optionalAuth, Authorizer authorizer, Object timerMetric,
-                   final String apiName, boolean eventPublishersEnabled) {
+                   final String apiName, boolean eventPublishersEnabled,
+                   Authority userAuthority, String userDomain) {
         this.optionalAuth = optionalAuth;
         this.timerMetric = timerMetric;
         this.apiName = apiName.toLowerCase();
         this.eventPublishersEnabled = eventPublishersEnabled;
-        ctx = new com.yahoo.athenz.common.server.rest.ResourceContext(servletContext, request,
+        this.userAuthority = userAuthority;
+        this.userDomain = userDomain;
+        ctx = new ServerResourceContext(servletContext, request,
                 response, authList, authorizer);
     }
 
-    com.yahoo.athenz.common.server.rest.ResourceContext context() {
+    ServerResourceContext context() {
         return ctx;
     }
 
@@ -98,7 +112,8 @@ public class RsrcCtxWrapper implements ResourceContext {
     public void authenticate() {
         try {
             ctx.authenticate(optionalAuth);
-        } catch (com.yahoo.athenz.common.server.rest.ResourceException restExc) {
+            validateUserPrincipal(principal());
+        } catch (ServerResourceException restExc) {
             throwZmsException(restExc);
         }
     }
@@ -107,9 +122,24 @@ public class RsrcCtxWrapper implements ResourceContext {
     public void authorize(String action, String resource, String trustedDomain) {
         try {
             ctx.authorize(action, resource, trustedDomain);
-        } catch (com.yahoo.athenz.common.server.rest.ResourceException restExc) {
+            validateUserPrincipal(principal());
+        } catch (ServerResourceException restExc) {
             logPrincipal();
             throwZmsException(restExc);
+        }
+    }
+
+    void validateUserPrincipal(final Principal principal) throws ServerResourceException {
+        if (principalValidated || principal == null || userAuthority == null || userDomain == null) {
+            return;
+        }
+        principalValidated = true;
+        if (!userDomain.equals(principal.getDomain())) {
+            return;
+        }
+        if (userAuthority.getUserType(principal.getFullName()) != Authority.UserType.USER_ACTIVE) {
+            LOG.error("validateUserPrincipal: user {} is not valid", principal.getFullName());
+            throw new ServerResourceException(ServerResourceException.UNAUTHORIZED, "user is not valid");
         }
     }
 
@@ -126,7 +156,15 @@ public class RsrcCtxWrapper implements ResourceContext {
         }
         ctx.request().setAttribute(ServerCommonConsts.REQUEST_PRINCIPAL, principalName);
         logAuthorityId(principal.getAuthority());
+        logCertificateSerialNumber(principal.getX509Certificate());
         return principalName;
+    }
+
+    public void logCertificateSerialNumber(X509Certificate x509Cert) {
+        if (x509Cert == null) {
+            return;
+        }
+        ctx.request().setAttribute(ServerCommonConsts.REQUEST_X509_SERIAL, x509Cert.getSerialNumber().toString());
     }
 
     public void logAuthorityId(Authority authority) {
@@ -136,7 +174,7 @@ public class RsrcCtxWrapper implements ResourceContext {
         ctx.request().setAttribute(ServerCommonConsts.REQUEST_AUTHORITY_ID, authority.getID());
     }
 
-    void throwZmsException(com.yahoo.athenz.common.server.rest.ResourceException restExc) {
+    void throwZmsException(ServerResourceException restExc) {
 
         // first check to see if this is an auth failure and if
         // that's the case include the WWW-Authenticate challenge
@@ -145,16 +183,7 @@ public class RsrcCtxWrapper implements ResourceContext {
 
         // now throw a ZMS exception based on the rest exception
 
-        String msg  = null;
-        Object data = restExc.getData();
-        if (data instanceof String) {
-            msg = (String) data;
-        }
-        if (msg == null) {
-            msg = restExc.getMessage();
-        }
-        throw new com.yahoo.athenz.zms.ResourceException(restExc.getCode(),
-                new ResourceError().code(restExc.getCode()).message(msg));
+        throw ZMSUtils.error(restExc);
     }
 
     public void addDomainChangeMessage(DomainChangeMessage domainChangeMsg) {

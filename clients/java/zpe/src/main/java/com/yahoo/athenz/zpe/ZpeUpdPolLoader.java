@@ -83,7 +83,12 @@ public class ZpeUpdPolLoader implements Closeable {
     // find the java7 api for monitoring files
     // see http://docs.oracle.com/javase/tutorial/essential/io/notification.html
 
-    private final ScheduledExecutorService scheduledExecutorSvc = Executors.newScheduledThreadPool(1);
+    private final ScheduledExecutorService scheduledExecutorSvc = Executors.newScheduledThreadPool(1, r -> {
+        Thread t = new Thread(r, "ZpeUpdPolLoader-scheduler-" + System.identityHashCode(r));
+        t.setDaemon(true);
+        return t;
+    });
+
     private ZpeUpdMonitor updMonWorker;
 
     // key is the domain name, value is a map keyed by role name with list of assertions
@@ -333,20 +338,18 @@ public class ZpeUpdPolLoader implements Closeable {
     private PolicyData getJWSPolicyData(JWSPolicyData jwsPolicyData) {
 
         Function<String, PublicKey> keyGetter = AuthZpeClient::getZtsPublicKey;
-        if (!Crypto.validateJWSDocument(jwsPolicyData.getProtectedHeader(), jwsPolicyData.getPayload(),
-                jwsPolicyData.getSignature(), keyGetter)) {
 
-            // if our validation failed then it's possible our signature was
-            // provided in p1363 format and our BC supports DER format only
+        // first we're going to assume that our signature was provided in P1363 format
+        // since that's what zpu is asking for by default.
 
-            final String derSignature = getDERSignature(jwsPolicyData.getProtectedHeader(), jwsPolicyData.getSignature());
-            if (derSignature == null) {
-                LOG.error("zts signature validation failed");
-                return null;
-            }
+        final String derSignature = getDERSignature(jwsPolicyData.getProtectedHeader(), jwsPolicyData.getSignature());
+        if (derSignature == null || !Crypto.validateJWSDocument(jwsPolicyData.getProtectedHeader(), jwsPolicyData.getPayload(),
+                derSignature, keyGetter)) {
+
+            // assume the signature was already in DER format, so we'll use it directly
 
             if (!Crypto.validateJWSDocument(jwsPolicyData.getProtectedHeader(), jwsPolicyData.getPayload(),
-                    derSignature, keyGetter)) {
+                    jwsPolicyData.getSignature(), keyGetter)) {
                 LOG.error("zts signature validation failed");
                 return null;
             }

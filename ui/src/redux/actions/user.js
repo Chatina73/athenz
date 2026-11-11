@@ -35,3 +35,29 @@ export const RETURN_USER_RESOURCE_ACCESS_LIST =
 export const returnUserResourceAccessList = () => ({
     type: RETURN_USER_RESOURCE_ACCESS_LIST,
 });
+
+export const ADD_ALL_USERS = 'ADD_ALL_USERS';
+export const addUsersToStore = (userList) => ({
+    type: ADD_ALL_USERS,
+    payload: {
+        userList: userList,
+    },
+});
+
+export const STORE_PENDING_ROLE = 'STORE_PENDING_ROLE';
+export const storePendingRole = (role, domainName, roleName) => {
+    return {
+        type: STORE_PENDING_ROLE,
+        payload: {
+            role,
+            domainName,
+            roleName,
+        },
+    };
+};
+
+export const STORE_PENDING_GROUP = 'STORE_PENDING_GROUP';
+export const storePendingGroup = (group, domainName, groupName) => ({
+    type: STORE_PENDING_GROUP,
+    payload: { group, domainName, groupName },
+});

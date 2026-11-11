@@ -18,7 +18,6 @@ import API from '../../api';
 
 import {
     addKeyToStore,
-    addServiceHostToStore,
     addServiceToStore,
     allowProviderTemplateToStore,
     deleteKeyFromStore,
@@ -34,7 +33,6 @@ import { storeServices } from '../actions/domains';
 import {
     buildErrorForDoesntExistCase,
     buildErrorForDuplicateCase,
-    getCurrentTime,
     getFullName,
     isExpired,
     listToMap,
@@ -45,19 +43,9 @@ import {
     thunkSelectService,
     thunkSelectServices,
 } from '../selectors/services';
-import { roleDelimiter, serviceDelimiter } from '../config';
-import {
-    loadingFailed,
-    loadingInProcess,
-    loadingSuccess,
-} from '../actions/loading';
-import { thunkSelectRoles } from '../selectors/roles';
-import { deleteRoleFromStore } from '../actions/roles';
-import { getRoles } from './roles';
-import {
-    SERVICE_TYPE_DYNAMIC,
-    SERVICE_TYPE_STATIC,
-} from '../../components/constants/constants';
+import { serviceDelimiter } from '../config';
+import { SERVICE_TYPE_DYNAMIC } from '../../components/constants/constants';
+import { getFeatureFlag } from './domains';
 
 export const addService =
     (domainName, service, _csrf) => async (dispatch, getState) => {
@@ -181,6 +169,18 @@ export const addKey =
         }
     };
 
+export const searchServices = (subString) => async () => {
+    if (!subString) {
+        return 'you must provide part of service name to search for';
+    } else {
+        try {
+            return API().searchServices(subString);
+        } catch (err) {
+            return Promise.reject(err);
+        }
+    }
+};
+
 export const getServices = (domainName) => async (dispatch, getState) => {
     if (getState().services.expiry) {
         if (getState().services.domainName !== domainName) {
@@ -227,7 +227,10 @@ export const getProvider =
             return Promise.resolve();
         } else {
             try {
-                let data = await API().getProvider(domainName, serviceName);
+                let data = await API().getProviderAccess(
+                    domainName,
+                    serviceName
+                );
                 dispatch(
                     loadProvidersToStore(
                         getFullName(domainName, serviceDelimiter, serviceName),
@@ -267,15 +270,20 @@ export const allowProviderTemplate =
     };
 
 export const getServiceHeaderAndInstances =
-    (domainName, serviceName, category) => async (dispatch, getState) => {
+    (domainName, serviceName, category, _csrf) =>
+    async (dispatch, getState) => {
         serviceName = serviceName.toLowerCase();
         await dispatch(getServices(domainName));
-        await dispatch(getServiceInstances(domainName, serviceName, category));
+        await dispatch(
+            getServiceInstances(domainName, serviceName, category, _csrf)
+        );
         await dispatch(getServiceHeaderDetails(domainName, serviceName));
+        await dispatch(getFeatureFlag());
     };
 
 export const getServiceInstances =
-    (domainName, serviceName, category) => async (dispatch, getState) => {
+    (domainName, serviceName, category, _csrf) =>
+    async (dispatch, getState) => {
         serviceName = serviceName.toLowerCase();
         let currService = thunkSelectService(
             getState(),
@@ -291,7 +299,8 @@ export const getServiceInstances =
             let instances = await API().getInstances(
                 domainName,
                 serviceName,
-                category
+                category,
+                _csrf
             );
             dispatch(
                 loadInstancesToStore(
@@ -343,7 +352,8 @@ export const addServiceHost =
             const staticInstances = await API().getInstances(
                 domainName,
                 serviceName,
-                'static'
+                'static',
+                _csrf
             );
             dispatch(
                 loadInstancesToStore(
@@ -369,7 +379,7 @@ export const deleteInstance =
         _csrf
     ) =>
     async (dispatch, getState) => {
-        await dispatch(getServiceInstances(domain, service, category));
+        await dispatch(getServiceInstances(domain, service, category, _csrf));
         let instancesData = selectInstancesWorkLoadData(
             getState(),
             domain,

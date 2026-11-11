@@ -26,8 +26,8 @@ import com.yahoo.athenz.auth.PrivateKeyStore;
 import com.yahoo.athenz.common.server.http.HttpDriver;
 import com.yahoo.athenz.common.server.http.HttpDriverResponse;
 import com.yahoo.athenz.zms.ZMSConsts;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
+import org.apache.hc.client5.http.classic.methods.HttpPost;
+import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.eclipse.jetty.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,10 +44,12 @@ public class ServiceProviderClient {
 
     private static final Logger LOG = LoggerFactory.getLogger(ServiceProviderClient.class);
 
-    public ServiceProviderClient(PrivateKeyStore keyStore, ServiceProviderManager serviceProviderManager, String homeDomainPrefix) throws KeyRefresherException, IOException, InterruptedException {
+    public ServiceProviderClient(PrivateKeyStore keyStore, String homeDomainPrefix)
+            throws KeyRefresherException, IOException, InterruptedException {
+
         SSLContext sslContext = getDomainDependencyProviderSSLContext(keyStore);
         if (sslContext != null) {
-            this.httpDriver = getHttpDriver(sslContext, serviceProviderManager);
+            this.httpDriver = getHttpDriver(sslContext);
             this.homeDomainPrefix = homeDomainPrefix;
         } else {
             this.httpDriver = null;
@@ -60,7 +62,10 @@ public class ServiceProviderClient {
         this.homeDomainPrefix = homeDomainPrefix;
     }
 
-    public DomainDependencyProviderResponse getDependencyStatus(ServiceProviderManager.DomainDependencyProvider domainDependencyProvider, String domain, String principal) {
+    public DomainDependencyProviderResponse getDependencyStatus(
+            ServiceProviderManager.DomainDependencyProvider domainDependencyProvider,
+            String domain, String principal) {
+
         if (this.httpDriver == null) {
             // ServiceProviderClient wasn't initialized. Do not enforce dependency check.
             DomainDependencyProviderResponse domainDependencyProviderResponse = new DomainDependencyProviderResponse();
@@ -95,20 +100,24 @@ public class ServiceProviderClient {
         }
     }
 
-    private SSLContext getDomainDependencyProviderSSLContext(PrivateKeyStore keyStore) throws KeyRefresherException, IOException, InterruptedException {
+    private SSLContext getDomainDependencyProviderSSLContext(PrivateKeyStore keyStore)
+            throws KeyRefresherException, IOException, InterruptedException {
+
         final String trustStore = System.getProperty(ZMSConsts.ZMS_PROP_PROVIDER_TRUST_STORE, "");
         final String trustStorePassword = System.getProperty(ZMSConsts.ZMS_PROP_PROVIDER_TRUST_STORE_PASSWORD, "");
         final String appName = System.getProperty(ZMSConsts.ZMS_PROP_PROVIDER_APP_NAME, "");
         final String certPath = System.getProperty(ZMSConsts.ZMS_PROP_PROVIDER_CERT_PATH, "");
         final String keyPath = System.getProperty(ZMSConsts.ZMS_PROP_PROVIDER_KEY_PATH, "");
+        final String keygroupName = System.getProperty(ZMSConsts.ZMS_PROP_PROVIDER_KEYGROUP_NAME, "");
 
-        if (StringUtil.isEmpty(trustStore) || StringUtil.isEmpty(certPath) || StringUtil.isEmpty(keyPath) || StringUtil.isEmpty(trustStorePassword)) {
+        if (StringUtil.isEmpty(trustStore) || StringUtil.isEmpty(certPath) ||
+                StringUtil.isEmpty(keyPath) || StringUtil.isEmpty(trustStorePassword)) {
             LOG.warn("ServiceProviderClient Configuration properties are missing. Providers will not be contacted when deleting domains.");
             return null;
         }
         KeyRefresher keyRefresher = Utils.generateKeyRefresher(
                 trustStore,
-                keyStore.getSecret(appName, trustStorePassword),
+                keyStore.getSecret(appName, keygroupName, trustStorePassword),
                 certPath,
                 keyPath);
         keyRefresher.startup();
@@ -117,7 +126,7 @@ public class ServiceProviderClient {
                 keyRefresher.getTrustManagerProxy());
     }
 
-    private HttpDriver getHttpDriver(SSLContext sslContext, ServiceProviderManager serviceProviderManager) {
+    private HttpDriver getHttpDriver(SSLContext sslContext) {
 
         int maxPoolRoute = Integer.parseInt(System.getProperty(ZMS_PROP_PROVIDER_MAX_POOL_ROUTE, "45"));
         int maxPoolTotal = Integer.parseInt(System.getProperty(ZMS_PROP_PROVIDER_MAX_POOL_TOTAL, "50"));
@@ -126,7 +135,7 @@ public class ServiceProviderClient {
         int clientConnectTimeoutMs = Integer.parseInt(System.getProperty(ZMS_PROP_PROVIDER_CONNECT_TIMEOUT_MS, "5000"));
         int clientReadTimeoutMs = Integer.parseInt(System.getProperty(ZMS_PROP_PROVIDER_READ_TIMEOUT_MS, "15000"));
 
-        return new HttpDriver.Builder("", sslContext)
+        return new HttpDriver.Builder(sslContext)
                 .maxPoolPerRoute(maxPoolRoute)
                 .maxPoolTotal(maxPoolTotal)
                 .clientRetryIntervalMs(clientRetryIntervalMs)
@@ -136,9 +145,12 @@ public class ServiceProviderClient {
                 .build();
     }
 
-    private DomainDependencyProviderResponse getDependencyStatusFromProvider(ServiceProviderManager.DomainDependencyProvider domainDependencyProvider, String domain, String principal) throws IOException {
+    private DomainDependencyProviderResponse getDependencyStatusFromProvider(
+            ServiceProviderManager.DomainDependencyProvider domainDependencyProvider,
+            String domain, String principal) throws IOException {
+
         DomainDependencyProviderResponse domainDependencyProviderResponse = new DomainDependencyProviderResponse();
-        String url = getProviderEndpoint(domainDependencyProvider, domain);
+        String url = getProviderEndpoint(domainDependencyProvider);
 
         HttpPost httpPost = new HttpPost(url);
         httpPost.setHeader("Content-type", "application/json");
@@ -169,7 +181,7 @@ public class ServiceProviderClient {
         return domainDependencyProviderResponse;
     }
 
-    private String getProviderEndpoint(ServiceProviderManager.DomainDependencyProvider domainDependencyProvider, String domain) {
+    private String getProviderEndpoint(ServiceProviderManager.DomainDependencyProvider domainDependencyProvider) {
         String url = domainDependencyProvider.getProviderEndpoint();
         if (domainDependencyProvider.isInstanceProvider()) {
             if (!url.endsWith("/")) {

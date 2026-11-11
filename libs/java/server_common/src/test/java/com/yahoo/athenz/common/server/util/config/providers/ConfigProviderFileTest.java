@@ -31,8 +31,7 @@ public class ConfigProviderFileTest {
 
         File configFile = File.createTempFile("ConfigProviderFileTest", ".conf");
         try (PrintWriter out = new PrintWriter(configFile)) {
-            out.print("" +
-                    "  ConfigProviderFileTest-1 : value-1 \n" +
+            out.print("  ConfigProviderFileTest-1 : value-1 \n" +
                     "  # remark \n" +
                     "  ConfigProviderFileTest-2 : value-2 \n");
         }
@@ -50,16 +49,16 @@ public class ConfigProviderFileTest {
         assertEquals(configFile.getAbsolutePath(), source.file.getAbsolutePath());
 
         Collection<ConfigEntry> entries = source.getConfigEntries();
-        assertEquals(2, entries.size());
+        assertEquals(entries.size(), 2);
 
         ConfigEntry first = entries.stream().filter(entry -> entry.key.equals("ConfigProviderFileTest-1")).findFirst().orElse(null);
         assertNotNull(first);
-        assertEquals("value-1", first.value);
+        assertEquals(first.value, "value-1");
         assertEquals(source, first.sourceSource);
 
         ConfigEntry second = entries.stream().filter(entry -> entry.key.equals("ConfigProviderFileTest-2")).findFirst().orElse(null);
         assertNotNull(second);
-        assertEquals("value-2", second.value);
+        assertEquals(second.value, "value-2");
         assertEquals(source, second.sourceSource);
 
         @SuppressWarnings("unused") boolean deleted = configFile.delete();

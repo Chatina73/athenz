@@ -23,8 +23,6 @@ import com.yahoo.athenz.auth.Principal;
 import com.yahoo.athenz.auth.impl.SimplePrincipal;
 import com.yahoo.athenz.common.ServerCommonConsts;
 import com.yahoo.athenz.zms.*;
-import com.yahoo.athenz.zms.notification.MockNotificationService;
-import com.yahoo.athenz.zms.utils.ZMSUtils;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,16 +31,11 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.*;
 
 import static com.yahoo.athenz.zms.ZMSConsts.*;
 import static java.util.stream.Collectors.toList;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.*;
 
@@ -66,7 +59,7 @@ public class ServiceProviderManagerTest {
     public void testIsServiceProvider() throws InterruptedException, ExecutionException {
         String testDomainName = "test.domain";
         String testRoleName = "test_role";
-        long fetchFrequency = 1L; // For the test, fetch every second
+        long fetchFrequency = 5L; // For the test, fetch every 5 seconds
         int numberOfThreads = 10;
         System.setProperty(ZMS_PROP_SERVICE_PROVIDER_MANAGER_DOMAIN, testDomainName);
         System.setProperty(ZMS_PROP_SERVICE_PROVIDER_MANAGER_ROLE, testRoleName);
@@ -86,7 +79,7 @@ public class ServiceProviderManagerTest {
                 "service.provider.test2",
                 "service.provider.test3"), testRoleName);
 
-        when(dbService.getRole(Mockito.eq(testDomainName), Mockito.eq(testRoleName), Mockito.eq(false), Mockito.eq(true), Mockito.eq(false)))
+        when(dbService.getRole(testDomainName, testRoleName, false, true, false))
                 .thenReturn(testRole1)
                 .thenReturn(testRole2)
                 .thenReturn(testRole3);
@@ -95,13 +88,13 @@ public class ServiceProviderManagerTest {
             ServiceIdentity serviceIdentity = new ServiceIdentity();
             serviceIdentity.setName("service.provider.test" + i);
             serviceIdentity.setProviderEndpoint("https://localhost:4443/test" + i);
-            when(dbService.getServiceIdentity(eq("service.provider"), eq("test" + i), eq(true))).thenReturn(serviceIdentity);
-
-
+            when(dbService.getServiceIdentity("service.provider", "test" + i, true)).thenReturn(serviceIdentity);
         }
+
         Principal providerServicePrincipal = SimplePrincipal.create("service.provider", "test1", (String) null);
         Authorizer authorizer = Mockito.mock(Authorizer.class);
-        when(authorizer.access(eq(ServerCommonConsts.ACTION_LAUNCH), eq(ServerCommonConsts.RESOURCE_INSTANCE), eq(providerServicePrincipal), isNull())).thenReturn(true);
+        when(authorizer.access(ServerCommonConsts.ACTION_LAUNCH, ServerCommonConsts.RESOURCE_INSTANCE,
+                providerServicePrincipal, null)).thenReturn(true);
         ServiceProviderManager serviceProviderManager = ServiceProviderManager.getInstance(dbService, authorizer);
 
         // Simulate calls from different threads to check service provider
@@ -112,16 +105,64 @@ public class ServiceProviderManagerTest {
         }
         List<Future<Boolean>> futures = executor.invokeAll(assertServiceProviderTasks);
         executor.shutdown();
-        for (int i = 0; i < futures.size(); ++i) {
-            if (!futures.get(i).get()) {
+        for (Future<Boolean> future : futures) {
+            if (!future.get()) {
                 fail();
             }
         }
 
-
+        serviceProviderManager.shutdown();
+        serviceProviderManager.setServiceProviders(Collections.emptyMap());
         System.clearProperty(ZMS_PROP_SERVICE_PROVIDER_MANAGER_FREQUENCY_SECONDS);
         System.clearProperty(ZMS_PROP_SERVICE_PROVIDER_MANAGER_DOMAIN);
         System.clearProperty(ZMS_PROP_SERVICE_PROVIDER_MANAGER_ROLE);
+    }
+
+    @Test
+    public void testRefreshServiceProvidersEmptyRole() {
+        String testDomainName = "test.domain";
+        String testRoleName = "test_role";
+        System.setProperty(ZMS_PROP_SERVICE_PROVIDER_MANAGER_DOMAIN, testDomainName);
+        System.setProperty(ZMS_PROP_SERVICE_PROVIDER_MANAGER_ROLE, testRoleName);
+        DBService dbService = Mockito.mock(DBService.class);
+        Authorizer authorizer = Mockito.mock(Authorizer.class);
+
+        // a role without any members must reset the cache to an empty list
+
+        Role emptyRole = new Role().setName(testRoleName).setRoleMembers(new ArrayList<>());
+        when(dbService.getRole(testDomainName, testRoleName, false, true, false)).thenReturn(emptyRole);
+
+        ServiceProviderManager serviceProviderManager = ServiceProviderManager.getInstance(dbService, authorizer);
+        try {
+            assertTrue(serviceProviderManager.serviceProviders.isEmpty());
+            assertTrue(serviceProviderManager.getServiceProvidersWithEndpoints().isEmpty());
+            assertFalse(serviceProviderManager.isServiceProvider("service.provider.test1"));
+        } finally {
+            serviceProviderManager.shutdown();
+            System.clearProperty(ZMS_PROP_SERVICE_PROVIDER_MANAGER_DOMAIN);
+            System.clearProperty(ZMS_PROP_SERVICE_PROVIDER_MANAGER_ROLE);
+        }
+    }
+
+    @Test
+    public void testDomainDependencyProviderEquality() {
+        ServiceProviderManager.DomainDependencyProvider provider1 =
+                new ServiceProviderManager.DomainDependencyProvider("athenz.provider", "https://localhost:4443", true);
+        ServiceProviderManager.DomainDependencyProvider provider2 =
+                new ServiceProviderManager.DomainDependencyProvider("athenz.provider", "https://localhost:4443", true);
+
+        assertEquals(provider1, provider1);
+        assertEquals(provider1, provider2);
+        assertEquals(provider1.hashCode(), provider2.hashCode());
+
+        assertNotEquals(provider1, null);
+        assertNotEquals(provider1, "athenz.provider");
+        assertNotEquals(provider1, new ServiceProviderManager.DomainDependencyProvider(
+                "athenz.provider", "https://localhost:4443", false));
+        assertNotEquals(provider1, new ServiceProviderManager.DomainDependencyProvider(
+                "athenz.provider2", "https://localhost:4443", true));
+        assertNotEquals(provider1, new ServiceProviderManager.DomainDependencyProvider(
+                "athenz.provider", null, true));
     }
 
     private Role generateRoleWithMembers(List<String> memberNames, String roleName) {
@@ -137,7 +178,7 @@ public class ServiceProviderManagerTest {
         return testRole;
     }
 
-    public class AssertServiceProviderTask implements Callable<Boolean> {
+    public static class AssertServiceProviderTask implements Callable<Boolean> {
         final int threadNumber;
         final ServiceProviderManager serviceProviderManager;
         final long fetchFrequency;
@@ -162,7 +203,8 @@ public class ServiceProviderManagerTest {
                 assertEquals(serviceProvidersWithEndpoints.size(), 1);
 
                 // Now sleep until the second fetch from DB (fetchFrequency + add a small delta)
-                ZMSTestUtils.sleep((1000 * fetchFrequency) + 50);
+                LOGGER.info("sleeping until the second refresh happens...");
+                ZMSTestUtils.sleep((1000 * fetchFrequency) + 1000);
 
                 // Assert service.provider.test2 and service.provider.test3 added
                 assertFalse(serviceProviderManager.isServiceProvider(null));
@@ -181,7 +223,8 @@ public class ServiceProviderManagerTest {
                 assertEquals(serviceProvidersWithEndpoints.get("service.provider.test3").getProviderEndpoint(), "https://localhost:4443/test3");
 
                 // Now check final fetch from DB
-                ZMSTestUtils.sleep(1000 * fetchFrequency);
+                LOGGER.info("sleeping until final refresh happens...");
+                ZMSTestUtils.sleep(1000 * fetchFrequency + 1000);
 
                 // Assert service.provider.test1 was removed
                 assertFalse(serviceProviderManager.isServiceProvider(null));

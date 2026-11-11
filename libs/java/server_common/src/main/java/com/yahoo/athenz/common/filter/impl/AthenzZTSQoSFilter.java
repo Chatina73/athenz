@@ -31,7 +31,7 @@ import jakarta.servlet.http.HttpServletRequest;
 /**
  * AthenzZTSQoSFilter extends Jetty's QoSFilter to allow separate
  * handling of URIs for certificates and tokens
- *
+ * <p>
  * {@literal
  * <filter>
  *   <filter-name>AthenzZTSQoSFilterCerts</filter-name>
@@ -53,7 +53,7 @@ import jakarta.servlet.http.HttpServletRequest;
  * }
  */
 
-public class AthenzZTSQoSFilter extends org.eclipse.jetty.servlets.QoSFilter {
+public class AthenzZTSQoSFilter extends org.eclipse.jetty.ee10.servlets.QoSFilter {
 
     private static final Logger LOG = LoggerFactory.getLogger(AthenzZTSQoSFilter.class);
 

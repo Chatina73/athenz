@@ -115,22 +115,23 @@ public class SecureBootProvider implements InstanceProvider {
         this.attrValidator = attrValidator;
     }
 
-    private ResourceException forbiddenError(String message, String txt) {
+    private ProviderResourceException forbiddenError(String message, String txt) {
         LOG.error("mesaage: {}, logText: {}", message, txt);
-        return new ResourceException(ResourceException.FORBIDDEN, message);
+        return new ProviderResourceException(ProviderResourceException.FORBIDDEN, message);
     }
 
     @Override
-    public InstanceConfirmation confirmInstance(InstanceConfirmation confirmation) {
+    public InstanceConfirmation confirmInstance(InstanceConfirmation confirmation) throws ProviderResourceException {
         return validateInstanceRequest(confirmation, true);
     }
 
     @Override
-    public InstanceConfirmation refreshInstance(InstanceConfirmation confirmation) {
+    public InstanceConfirmation refreshInstance(InstanceConfirmation confirmation) throws ProviderResourceException {
         return validateInstanceRequest(confirmation, false);
     }
 
-    InstanceConfirmation validateInstanceRequest(InstanceConfirmation confirmation, final boolean register) {
+    InstanceConfirmation validateInstanceRequest(InstanceConfirmation confirmation, final boolean register)
+            throws ProviderResourceException {
         final String instanceDomain = confirmation.getDomain();
         final String instanceService = confirmation.getService();
 
@@ -170,20 +171,22 @@ public class SecureBootProvider implements InstanceProvider {
         // validate the certificate san DNS names
         StringBuilder instanceId = new StringBuilder(256);
         if (!InstanceUtils.validateCertRequestSanDnsNames(instanceAttributes, instanceDomain,
-                instanceService, dnsSuffixes, null, null, false, instanceId)) {
+                instanceService, dnsSuffixes, null, null, false, instanceId, null)) {
             throw forbiddenError("Unable to validate certificate request DNS", logTxt(confirmation));
         }
 
         Map<String, String> attributes = new HashMap<>();
+        attributes.put(InstanceProvider.ZTS_CERT_SSH, "true");
         confirmation.setAttributes(attributes);
+
         return confirmation;
     }
 
     /**
      * validateIssuer ensures that IssuerDN is passed in.
      * If issuerDNs is configured, it validates the IssuerDN against the configured values
-     * @param attributes
-     * @return
+     * @param attributes map of attributes passed by ZTS
+     * @return true if the issuer dn is in our configured list
      */
     boolean validateIssuer(final Map<String, String> attributes) {
         final String dn = InstanceUtils.getInstanceProperty(attributes,
@@ -226,15 +229,29 @@ public class SecureBootProvider implements InstanceProvider {
         final String subjectDn = InstanceUtils.getInstanceProperty(attributes,
                 InstanceProvider.ZTS_INSTANCE_CERT_SUBJECT_DN);
         final String cn = getSubjectCn(subjectDn);
-        return hostname.equals(cn);
+        if (hostname.equals(cn)) {
+            return true;
+        }
+
+        // if our CN is not a hostname and the public CA providers no longer
+        // issue x.509 certificates with client eku profile, it could be the
+        // hostname is specified as part of the certificate itself so we'll
+        // check that value as well
+
+        final String certHostname = InstanceUtils.getInstanceProperty(attributes,
+                InstanceProvider.ZTS_INSTANCE_CERT_HOSTNAME);
+        if (StringUtil.isEmpty(certHostname)) {
+            return false;
+        }
+        return hostname.equals(certHostname);
     }
 
     /**
      * validateCertHostname matches the instance hostname against the value passed in
      * by ZTS in cert hostname, which ZTS extracts it from SAN URI
-     * @param hostname
-     * @param attributes
-     * @return
+     * @param hostname value to be checked for
+     * @param attributes map of attributes passed by ZTS
+     * @return true if the passed hostname matches the value from the attributes
      */
     static boolean validateCertHostname(final String hostname, final Map<String, String> attributes) {
         final String certHostname = InstanceUtils.getInstanceProperty(attributes,
@@ -270,7 +287,7 @@ public class SecureBootProvider implements InstanceProvider {
 
         // Let's get an uncompressed list of IP strings for the hostname to compare
         Set<String> hostIps = hostnameResolver.getAllByName(hostname).stream()
-                .map(ip -> flattenIp(ip))
+                .map(SecureBootProvider::flattenIp)
                 .filter(ip -> !StringUtil.isEmpty(ip))
                 .collect(Collectors.toSet());
 

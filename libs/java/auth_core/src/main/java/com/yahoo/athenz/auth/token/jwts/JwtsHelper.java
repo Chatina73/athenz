@@ -17,6 +17,22 @@ package com.yahoo.athenz.auth.token.jwts;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nimbusds.jose.*;
+import com.nimbusds.jose.crypto.*;
+import com.nimbusds.jose.jwk.JWKSelector;
+import com.nimbusds.jose.proc.DefaultJOSEObjectTypeVerifier;
+import com.nimbusds.jose.proc.JOSEObjectTypeVerifier;
+import com.nimbusds.jose.proc.JWSVerificationKeySelector;
+import com.nimbusds.jose.proc.SecurityContext;
+import com.nimbusds.jose.util.Base64URL;
+import com.nimbusds.jose.util.Resource;
+import com.nimbusds.jose.util.ResourceRetriever;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.proc.ConfigurableJWTProcessor;
+import com.nimbusds.jwt.proc.DefaultJWTProcessor;
+import com.yahoo.athenz.auth.util.Crypto;
+import com.yahoo.athenz.auth.util.CryptoException;
+import com.yahoo.athenz.zts.AthenzJWKConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,46 +42,100 @@ import javax.net.ssl.SSLSocketFactory;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLConnection;
+import java.net.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.interfaces.ECPrivateKey;
+import java.security.interfaces.ECPublicKey;
+import java.security.interfaces.RSAPublicKey;
+import java.text.ParseException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+
+import com.nimbusds.jose.jwk.JWK;
+import com.nimbusds.jose.jwk.source.JWKSource;
 
 public class JwtsHelper {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(JwtsHelper.class);
     private static final ObjectMapper JSON_MAPPER = initJsonMapper();
 
-    static ObjectMapper initJsonMapper() {
+    public static final String TYPE_JWT     = "jwt";
+    public static final String TYPE_AT_JWT  = "at+jwt";
+    public static final String TYPE_JWT_JAG = "oauth-id-jag+jwt";
+
+    public static final Set<JWSAlgorithm> JWS_SUPPORTED_ALGORITHMS = Set.of(
+            JWSAlgorithm.RS256,
+            JWSAlgorithm.RS384,
+            JWSAlgorithm.RS512,
+            JWSAlgorithm.ES256,
+            JWSAlgorithm.ES384,
+            JWSAlgorithm.ES512
+    );
+
+    public static final DefaultJOSEObjectTypeVerifier<SecurityContext> JWT_TYPE_VERIFIER =
+            new DefaultJOSEObjectTypeVerifier<>(
+                new JOSEObjectType(TYPE_AT_JWT),
+                new JOSEObjectType(TYPE_JWT),
+                null);
+
+    public static final DefaultJOSEObjectTypeVerifier<SecurityContext> JWT_JAG_TYPE_VERIFIER =
+            new DefaultJOSEObjectTypeVerifier<>(new JOSEObjectType(TYPE_JWT_JAG));
+
+    public static ObjectMapper initJsonMapper() {
         ObjectMapper mapper = new ObjectMapper();
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         return mapper;
     }
 
     public String extractJwksUri(final String openIdConfigUri, final SSLContext sslContext) {
+        return extractJwksUri(openIdConfigUri, sslContext, null);
+    }
 
-        final String opendIdConfigData = getHttpData(openIdConfigUri, sslContext);
+    public OpenIdConfiguration extractOpenIdConfiguration(final String openIdConfigUri, final SSLContext sslContext, final String proxyUrl) {
+
+        final String opendIdConfigData = getHttpData(openIdConfigUri, sslContext, proxyUrl);
         if (opendIdConfigData == null) {
             return null;
         }
 
         try {
-            OpenIdConfiguration openIdConfig = JSON_MAPPER.readValue(opendIdConfigData, OpenIdConfiguration.class);
-            return openIdConfig.getJwksUri();
+            return JSON_MAPPER.readValue(opendIdConfigData, OpenIdConfiguration.class);
         } catch (Exception ex) {
-            LOGGER.error("Unable to extract jwks uri", ex);
+            LOGGER.error("Unable to parse open id configuration: {}", ex.getMessage());
         }
-
         return null;
     }
 
-    public String getHttpData(final String serverUri, final SSLContext sslContext) {
+    public String extractJwksUri(final String openIdConfigUri, final SSLContext sslContext, final String proxyUrl) {
+
+        OpenIdConfiguration openIdConfig = extractOpenIdConfiguration(openIdConfigUri, sslContext, proxyUrl);
+        if (openIdConfig == null) {
+            return null;
+        }
+        return openIdConfig.getJwksUri();
+    }
+
+    String getHttpData(final String serverUri, final SSLContext sslContext, final String proxyUrl) {
 
         if (serverUri == null || serverUri.isEmpty()) {
+            LOGGER.error("Server URI is null or empty");
             return null;
         }
 
         try {
-            URLConnection con = getUrlConnection(serverUri);
+            URLConnection con;
+            if (proxyUrl == null || proxyUrl.isEmpty()) {
+                con = getUrlConnection(serverUri);
+            } else {
+                URL url = new URL(proxyUrl);
+                con = getUrlConnection(serverUri, url.getHost(), url.getPort());
+            }
+
             con.setRequestProperty("Accept", "application/json");
             con.setConnectTimeout(10000);
             con.setReadTimeout(15000);
@@ -92,11 +162,8 @@ public class JwtsHelper {
             }
 
             try (BufferedReader br = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
+
                 StringBuilder sb = new StringBuilder();
-
-                // not using assignment in expression in order to
-                // get clover to calculate coverage
-
                 String line = br.readLine();
                 while (line != null) {
                     sb.append(line);
@@ -106,7 +173,7 @@ public class JwtsHelper {
                 return sb.toString();
             }
         } catch (Exception ex) {
-            LOGGER.error("Unable to extract document from {} error: {}", serverUri, ex.getMessage());
+            LOGGER.error("Unable to get http data from {} error: {}", serverUri, ex.getMessage());
         }
 
         return null;
@@ -118,5 +185,217 @@ public class JwtsHelper {
 
     URLConnection getUrlConnection(final String serverUrl) throws IOException {
         return new URL(serverUrl).openConnection();
+    }
+
+    URLConnection getUrlConnection(final String serverUrl, final String proxyHost, final Integer proxyPort) throws IOException {
+        SocketAddress addr = new InetSocketAddress(proxyHost, proxyPort);
+        Proxy proxy = new Proxy(Proxy.Type.HTTP, addr);
+        return new URL(serverUrl).openConnection(proxy);
+    }
+
+    public static JWSSigner getJWSSigner(PrivateKey privateKey) throws JOSEException {
+        switch (privateKey.getAlgorithm()) {
+            case Crypto.RSA:
+                return new RSASSASigner(privateKey);
+            case Crypto.EC:
+            case Crypto.ECDSA:
+                return new ECDSASigner((ECPrivateKey) privateKey);
+        }
+        throw new JOSEException("Unsupported algorithm: " + privateKey.getAlgorithm());
+    }
+
+    public static JWSVerifier getJWSVerifier(PublicKey publicKey) throws JOSEException {
+        switch (publicKey.getAlgorithm()) {
+            case Crypto.RSA:
+                return new RSASSAVerifier((RSAPublicKey) publicKey);
+            case Crypto.EC:
+            case Crypto.ECDSA:
+                return new ECDSAVerifier((ECPublicKey) publicKey);
+        }
+        throw new JOSEException("Unsupported algorithm: " + publicKey.getAlgorithm());
+    }
+
+    public static JWSVerifier getJWSVerifier(byte[] secret) throws JOSEException {
+        return new MACVerifier(secret);
+    }
+
+    public static ConfigurableJWTProcessor<SecurityContext> getJWTProcessor(JwtsSigningKeyResolver keyResolver) {
+
+        // we're going to allow all possible types of tokens
+        // at+jwt, jwt, and null (typ not specified, e.g. id tokens)
+
+        return getJWTProcessor(keyResolver, JWT_TYPE_VERIFIER);
+    }
+
+    public static ConfigurableJWTProcessor<SecurityContext> getJWTProcessor(JwtsSigningKeyResolver keyResolver,
+            JOSEObjectTypeVerifier<SecurityContext> typeVerifier) {
+
+        // we're going to allow only the requested type of tokens
+
+        ConfigurableJWTProcessor<SecurityContext> jwtProcessor = new DefaultJWTProcessor<>();
+        jwtProcessor.setJWSTypeVerifier(typeVerifier);
+
+        jwtProcessor.setJWSKeySelector(new JWSVerificationKeySelector<>(JwtsHelper.JWS_SUPPORTED_ALGORITHMS,
+                keyResolver.getKeySource()));
+        return jwtProcessor;
+    }
+
+    public static ConfigurableJWTProcessor<SecurityContext> getJWTProcessor(List<JwtsResolver> jwtsResolvers,
+            JOSEObjectTypeVerifier<SecurityContext> typeVerifier) {
+
+        ConfigurableJWTProcessor<SecurityContext> jwtProcessor = new DefaultJWTProcessor<>();
+        jwtProcessor.setJWSTypeVerifier(typeVerifier);
+
+        JwtsSigningKeyResolver keyResolver = new JwtsSigningKeyResolver(jwtsResolvers, false);
+        jwtProcessor.setJWSKeySelector(new JWSVerificationKeySelector<>(JwtsHelper.JWS_SUPPORTED_ALGORITHMS,
+                keyResolver.getKeySource()));
+        return jwtProcessor;
+    }
+
+    public static int getIntegerClaim(JWTClaimsSet claims, final String claim, int defaultValue) {
+        try {
+            Integer value = claims.getIntegerClaim(claim);
+            return value == null ? defaultValue : value;
+        } catch (ParseException ex) {
+            return defaultValue;
+        }
+    }
+
+    public static long getLongClaim(JWTClaimsSet claims, final String claim, long defaultValue) {
+        try {
+            Long value = claims.getLongClaim(claim);
+            return value == null ? defaultValue : value;
+        } catch (ParseException ex) {
+            return defaultValue;
+        }
+    }
+
+    public static String getStringClaim(JWTClaimsSet claims, final String claim) {
+        try {
+            return claims.getStringClaim(claim);
+        } catch (ParseException e) {
+            return null;
+        }
+    }
+
+    public static List<String> getStringListClaim(JWTClaimsSet claims, final String claim) {
+        try {
+            return claims.getStringListClaim(claim);
+        } catch (ParseException e) {
+            return null;
+        }
+    }
+
+    public static String getAudience(JWTClaimsSet claims) {
+        List<String> audiences = claims.getAudience();
+        if (audiences == null || audiences.isEmpty()) {
+            return null;
+        }
+        return audiences.get(0);
+    }
+
+    public static JWTClaimsSet parseJWTWithoutSignature(final String token) {
+
+        try {
+            Base64URL[] parts = JOSEObject.split(token);
+            return parseJWTWithoutSignature(parts);
+        } catch (ParseException ex) {
+            throw new CryptoException("Unable to parse token: " + ex.getMessage());
+        }
+    }
+
+    public static JWTClaimsSet parseJWTWithoutSignature(Base64URL[] parts) {
+
+        if (parts == null) {
+            throw new CryptoException("Invalid token: parts cannot be null");
+        }
+        if (parts.length != 3 || !parts[2].toString().isEmpty()) {
+            throw new CryptoException("Token has a signature but no key resolver");
+        }
+        try {
+            return JWTClaimsSet.parse(parts[1].decodeToString());
+        } catch (ParseException ex) {
+            throw new CryptoException("Unable to parse token: " + ex.getMessage());
+        }
+    }
+
+    public static String extractJWTTokenType(final String token) {
+        try {
+            Base64URL[] parts = JOSEObject.split(token);
+            return extractJWTTokenType(parts);
+        } catch (ParseException ex) {
+            throw new CryptoException("Unable to parse token: " + ex.getMessage());
+        }
+    }
+
+    public static String extractJWTTokenType(Base64URL[] parts) {
+        if (parts == null) {
+            throw new CryptoException("Invalid token: parts cannot be null");
+        }
+        if (parts.length != 3) {
+            throw new CryptoException("Invalid token: not a valid JWT");
+        }
+        try {
+            Header header = Header.parse(parts[0]);
+            return header.getType() != null ? header.getType().toString() : null;
+        } catch (ParseException ex) {
+            throw new CryptoException("Unable to parse token: " + ex.getMessage());
+        }
+    }
+
+    public static class CompositeJWKSource<C extends SecurityContext> implements JWKSource<C> {
+
+        private final List<JWKSource<C>> keySources;
+
+        public CompositeJWKSource() {
+            this.keySources = new ArrayList<>();
+        }
+
+        public void addKeySource(JWKSource<C> keySource) {
+            keySources.add(keySource);
+        }
+
+        @Override
+        public List<JWK> get(JWKSelector selector, C context) throws KeySourceException {
+            for (JWKSource<C> keySource : keySources) {
+                try {
+                    List<JWK> jwks = keySource.get(selector, context);
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug("key-source {} match set: {}", keySource, jwks);
+                    }
+                    if (jwks != null && !jwks.isEmpty()) {
+                        return jwks;
+                    }
+                } catch (Exception ex) {
+                    if (LOGGER.isDebugEnabled()) {
+                        LOGGER.debug("Unable to process key source: {}, {}/{}", keySource, ex.getClass(), ex.getMessage());
+                    }
+                }
+            }
+            return null;
+        }
+    }
+
+    public static class SiaJwkResourceRetriever implements ResourceRetriever {
+
+        @Override
+        public Resource retrieveResource(URL url) {
+
+            try {
+                Path path = Paths.get(url.getPath());
+                if (!path.toFile().exists()) {
+                    LOGGER.info("conf file {} does not exist", url.getPath());
+                    return null;
+                }
+
+                AthenzJWKConfig jwkConf = JSON_MAPPER.readValue(Files.readAllBytes(path), AthenzJWKConfig.class);
+                final String keysJson = "{\"keys\":" + JSON_MAPPER.writeValueAsString(jwkConf.zts.getKeys()) + "}";
+                return new Resource(keysJson, "application/json");
+
+            } catch (Exception ex) {
+                LOGGER.error("Unable to extract athenz jwk config {}", url.getPath(), ex);
+            }
+            return null;
+        }
     }
 }

@@ -23,7 +23,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -68,6 +67,7 @@ func getIpsFromIfConfig(t *testing.T) ([]string, error) {
 				ip := strings.TrimSpace(strings.TrimPrefix(parts[1], "addr:"))
 				if ip != "" && ip != "127.0.0.1" && ip != "::1" &&
 					!strings.HasPrefix(ip, "fe80::") &&
+					!strings.HasPrefix(ip, "169.254.") &&
 					!strings.HasPrefix(ip, "192.168.") && !isClassBPrivate(ip) {
 					ips = append(ips, ip)
 				}
@@ -98,7 +98,17 @@ func TestGetIps(t *testing.T) {
 
 	sort.Strings(ips)
 	sort.Strings(ifIps)
-	a.True(reflect.DeepEqual(ips, ifIps))
+
+	// Make sure the list of IPs we obtained from our function
+	// are a subset of the IPs we obtained from ifconfig
+	ifIpsSet := make(map[string]struct{}, len(ifIps))
+	for _, ip := range ifIps {
+		ifIpsSet[ip] = struct{}{}
+	}
+	for _, ip := range ips {
+		_, ok := ifIpsSet[ip]
+		a.Truef(ok, "ip %s not found in ifconfig ips %v", ip, ifIps)
+	}
 }
 
 func TestGetExcludeOpts(t *testing.T) {

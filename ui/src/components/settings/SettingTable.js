@@ -22,9 +22,16 @@ import Alert from '../denali/Alert';
 import RequestUtils from '../utils/RequestUtils';
 import _ from 'lodash';
 import {
-    ADD_GROUP_DELETE_PROTECTION_DESC,
-    ADD_ROLE_DELETE_PROTECTION_DESC,
+    AUTHORITY_FILTER_DESC,
+    GROUP,
+    DELETE_PROTECTION_DESC,
+    GROUP_ROLE_DOMAIN_FILTER_DESC,
     MODAL_TIME_OUT,
+    ROLE,
+    AUTHORITY_EXPIRY,
+    AUTHORITY_EXPIRY_DESC,
+    AUTHORITY_FILTERS,
+    SELF_RENEW_MINS_DESC,
 } from '../constants/constants';
 import { updateSettings } from '../../redux/thunks/collections';
 import { connect } from 'react-redux';
@@ -32,6 +39,11 @@ import { selectIsLoading } from '../../redux/selectors/loading';
 import { selectAuthorityAttributes } from '../../redux/selectors/domains';
 import { ReduxPageLoader } from '../denali/ReduxPageLoader';
 import { selectDomainAuditEnabled } from '../../redux/selectors/domainData';
+import {
+    isRoleResourceMetaManaged,
+    resolveResourceOwnershipCliOnError,
+} from '../utils/resourceOwnership';
+import { cliRoleMetaDiff } from '../utils/zmsCliCommands';
 
 const StyleTable = styled.table`
     width: 100%;
@@ -108,6 +120,7 @@ class SettingTable extends React.Component {
             showSubmit: false,
             showSuccess: false,
             errorMessage: null,
+            resourceOwnershipCliCommand: null,
             enableSubmit: false,
             boolUserAuthorityAttributes: boolUserAuthorityAttributes,
             dateUserAuthorityAttributes: dateUserAuthorityAttributes,
@@ -121,6 +134,7 @@ class SettingTable extends React.Component {
 
     setCollectionDetails(collection) {
         let collectionDetails = {
+            description: collection.description,
             reviewEnabled: !!collection.reviewEnabled,
             auditEnabled: !!collection.auditEnabled,
             hasRoleMembers:
@@ -133,6 +147,7 @@ class SettingTable extends React.Component {
                 Object.keys(collection.groupMembers).length !== 0,
             deleteProtection: !!collection.deleteProtection,
             selfServe: !!collection.selfServe,
+            selfRenew: !!collection.selfRenew,
             memberExpiryDays:
                 collection.memberExpiryDays === undefined
                     ? ''
@@ -177,6 +192,18 @@ class SettingTable extends React.Component {
                 collection.userAuthorityExpiration === undefined
                     ? ''
                     : collection.userAuthorityExpiration.toString(),
+            maxMembers:
+                collection.maxMembers === undefined
+                    ? ''
+                    : collection.maxMembers.toString(),
+            selfRenewMins:
+                collection.selfRenewMins === undefined
+                    ? ''
+                    : collection.selfRenewMins.toString(),
+            principalDomainFilter:
+                collection.principalDomainFilter === undefined
+                    ? ''
+                    : collection.principalDomainFilter.toString(),
         };
         return collectionDetails;
     }
@@ -195,6 +222,7 @@ class SettingTable extends React.Component {
             showSubmit: false,
             showSuccess: false,
             errorMessage: null,
+            resourceOwnershipCliCommand: null,
             enableSubmit: false,
         });
     }
@@ -217,6 +245,7 @@ class SettingTable extends React.Component {
         this.setState({
             showSubmit: false,
             errorMessage: null,
+            resourceOwnershipCliCommand: null,
             justification: '',
         });
     }
@@ -238,6 +267,7 @@ class SettingTable extends React.Component {
         this.setState({
             showSuccess: null,
             errorMessage: null,
+            resourceOwnershipCliCommand: null,
         });
     }
 
@@ -246,6 +276,10 @@ class SettingTable extends React.Component {
 
         if (this.props.category === 'role') {
             collectionMeta = this.state.copyCollectionDetails;
+            collectionMeta.principalDomainFilter =
+                this.state.copyCollectionDetails.principalDomainFilter;
+            collectionMeta.userAuthorityFilter =
+                this.state.copyCollectionDetails.userAuthorityFilter;
         } else if (this.props.category === 'group') {
             collectionMeta.auditEnabled =
                 this.state.copyCollectionDetails.auditEnabled;
@@ -253,6 +287,10 @@ class SettingTable extends React.Component {
                 this.state.copyCollectionDetails.reviewEnabled;
             collectionMeta.selfServe =
                 this.state.copyCollectionDetails.selfServe;
+            collectionMeta.selfRenew =
+                this.state.copyCollectionDetails.selfRenew;
+            collectionMeta.selfRenewMins =
+                this.state.copyCollectionDetails.selfRenewMins;
             collectionMeta.memberExpiryDays =
                 this.state.copyCollectionDetails.memberExpiryDays;
             collectionMeta.serviceExpiryDays =
@@ -263,6 +301,10 @@ class SettingTable extends React.Component {
                 this.state.copyCollectionDetails.userAuthorityExpiration;
             collectionMeta.deleteProtection =
                 this.state.copyCollectionDetails.deleteProtection;
+            collectionMeta.maxMembers =
+                this.state.copyCollectionDetails.maxMembers;
+            collectionMeta.principalDomainFilter =
+                this.state.copyCollectionDetails.principalDomainFilter;
         } else if (this.props.category === 'domain') {
             collectionMeta.memberExpiryDays =
                 this.state.copyCollectionDetails.memberExpiryDays;
@@ -293,6 +335,7 @@ class SettingTable extends React.Component {
                     originalCollectionDetails: newCollectionDetails,
                     copyCollectionDetails: _.cloneDeep(newCollectionDetails),
                     errorMessage: null,
+                    resourceOwnershipCliCommand: null,
                     showSuccess: true,
                     showSubmit: false,
                     enableSubmit: false,
@@ -307,8 +350,30 @@ class SettingTable extends React.Component {
                 );
             })
             .catch((err) => {
+                const errMsg = RequestUtils.xhrErrorCheckHelper(err);
+                const aud = this.props.isDomainAuditEnabled
+                    ? this.state.justification
+                    : null;
                 this.setState({
-                    errorMessage: RequestUtils.xhrErrorCheckHelper(err),
+                    errorMessage: errMsg,
+                    resourceOwnershipCliCommand:
+                        resolveResourceOwnershipCliOnError(
+                            this.props.category === 'role' &&
+                                isRoleResourceMetaManaged(
+                                    this.props.collectionDetails
+                                        .resourceOwnership
+                                ),
+                            err,
+                            (zmsUrl) =>
+                                cliRoleMetaDiff(
+                                    this.props.domain,
+                                    this.props.collection,
+                                    this.state.originalCollectionDetails,
+                                    this.state.copyCollectionDetails,
+                                    aud,
+                                    zmsUrl
+                                )
+                        ),
                 });
             });
     }
@@ -331,6 +396,9 @@ class SettingTable extends React.Component {
                 showJustification={this.props.isDomainAuditEnabled}
                 onJustification={this.saveJustification}
                 errorMessage={this.state.errorMessage}
+                resourceOwnershipCliCommand={
+                    this.state.resourceOwnershipCliCommand
+                }
             />
         ) : (
             ''
@@ -371,6 +439,7 @@ class SettingTable extends React.Component {
                     value={this.state.copyCollectionDetails.reviewEnabled}
                     onValueChange={this.onValueChange}
                     _csrf={this.props._csrf}
+                    disabled={this.props.roleIsDelegated || false}
                 />
             );
 
@@ -384,6 +453,7 @@ class SettingTable extends React.Component {
                 <StyledSettingRow
                     key={'setting-row-auditEnabled'}
                     disabled={
+                        this.props.roleIsDelegated ||
                         this.state.originalCollectionDetails.auditEnabled ||
                         this.state.copyCollectionDetails.hasRoleMembers ||
                         this.state.copyCollectionDetails.hasGroupMembers
@@ -409,12 +479,13 @@ class SettingTable extends React.Component {
                     type='switch'
                     desc={
                         this.props.category === 'role'
-                            ? ADD_ROLE_DELETE_PROTECTION_DESC
-                            : ADD_GROUP_DELETE_PROTECTION_DESC
+                            ? DELETE_PROTECTION_DESC(ROLE)
+                            : DELETE_PROTECTION_DESC(GROUP)
                     }
                     value={this.state.copyCollectionDetails.deleteProtection}
                     onValueChange={this.onValueChange}
                     _csrf={this.props._csrf}
+                    disabled={this.props.roleIsDelegated || false}
                 />
             );
         let selfServiceDesc =
@@ -431,6 +502,47 @@ class SettingTable extends React.Component {
                     type='switch'
                     desc={selfServiceDesc}
                     value={this.state.copyCollectionDetails.selfServe}
+                    onValueChange={this.onValueChange}
+                    _csrf={this.props._csrf}
+                    disabled={this.props.roleIsDelegated || false}
+                />
+            );
+
+        let selfRenewDesc =
+            'Flag indicates whether or not ' +
+            this.props.category +
+            ' allows self renew';
+        (this.props.category === 'role' || this.props.category === 'group') &&
+            rows.push(
+                <StyledSettingRow
+                    key={'setting-row-selfRenew'}
+                    domain={this.props.domain}
+                    name='selfRenew'
+                    label='Self-Renew'
+                    type='switch'
+                    desc={selfRenewDesc}
+                    value={this.state.copyCollectionDetails.selfRenew}
+                    onValueChange={this.onValueChange}
+                    _csrf={this.props._csrf}
+                    disabled={this.props.roleIsDelegated || false}
+                />
+            );
+
+        (this.props.category === 'role' || this.props.category === 'group') &&
+            rows.push(
+                <StyledSettingRow
+                    key={'setting-row-selfRenewMins'}
+                    domain={this.props.domain}
+                    name='selfRenewMins'
+                    label='Self Renew'
+                    type='input'
+                    unit='Mins'
+                    desc={SELF_RENEW_MINS_DESC}
+                    value={this.state.copyCollectionDetails.selfRenewMins}
+                    disabled={
+                        this.props.roleIsDelegated ||
+                        !this.state.copyCollectionDetails.selfRenew
+                    }
                     onValueChange={this.onValueChange}
                     _csrf={this.props._csrf}
                 />
@@ -452,6 +564,7 @@ class SettingTable extends React.Component {
                 value={this.state.copyCollectionDetails.memberExpiryDays}
                 onValueChange={this.onValueChange}
                 _csrf={this.props._csrf}
+                disabled={this.props.roleIsDelegated || false}
             />
         );
 
@@ -468,6 +581,7 @@ class SettingTable extends React.Component {
                     value={this.state.copyCollectionDetails.memberReviewDays}
                     onValueChange={this.onValueChange}
                     _csrf={this.props._csrf}
+                    disabled={this.props.roleIsDelegated || false}
                 />
             );
 
@@ -488,6 +602,7 @@ class SettingTable extends React.Component {
                     value={this.state.copyCollectionDetails.groupExpiryDays}
                     onValueChange={this.onValueChange}
                     _csrf={this.props._csrf}
+                    disabled={this.props.roleIsDelegated || false}
                 />
             );
 
@@ -504,6 +619,7 @@ class SettingTable extends React.Component {
                     value={this.state.copyCollectionDetails.groupReviewDays}
                     onValueChange={this.onValueChange}
                     _csrf={this.props._csrf}
+                    disabled={this.props.roleIsDelegated || false}
                 />
             );
 
@@ -523,6 +639,7 @@ class SettingTable extends React.Component {
                 value={this.state.copyCollectionDetails.serviceExpiryDays}
                 onValueChange={this.onValueChange}
                 _csrf={this.props._csrf}
+                disabled={this.props.roleIsDelegated || false}
             />
         );
 
@@ -539,6 +656,7 @@ class SettingTable extends React.Component {
                     value={this.state.copyCollectionDetails.serviceReviewDays}
                     onValueChange={this.onValueChange}
                     _csrf={this.props._csrf}
+                    disabled={this.props.roleIsDelegated || false}
                 />
             );
 
@@ -559,6 +677,7 @@ class SettingTable extends React.Component {
                     value={this.state.copyCollectionDetails.tokenExpiryMins}
                     onValueChange={this.onValueChange}
                     _csrf={this.props._csrf}
+                    disabled={this.props.roleIsDelegated || false}
                 />
             );
 
@@ -575,6 +694,7 @@ class SettingTable extends React.Component {
                     value={this.state.copyCollectionDetails.certExpiryMins}
                     onValueChange={this.onValueChange}
                     _csrf={this.props._csrf}
+                    disabled={this.props.roleIsDelegated || false}
                 />
             );
 
@@ -597,20 +717,20 @@ class SettingTable extends React.Component {
             );
 
         (this.props.category === 'role' || this.props.category === 'group') &&
+            !this.props.roleIsDelegated &&
             rows.push(
                 <StyledSettingRow
                     key={'setting-row-userAuthorityFilter'}
-                    domain={this.props.domain}
                     name='userAuthorityFilter'
-                    label='User Authority Filter'
-                    type='dropdown'
+                    label={AUTHORITY_FILTERS}
+                    type='multiselect'
                     options={this.state.boolUserAuthorityAttributes}
-                    placeholder='User Authority Filter'
-                    desc='membership filtered based on user authority configured attributes'
+                    placeholder={AUTHORITY_FILTERS}
+                    desc={AUTHORITY_FILTER_DESC}
                     value={this.state.copyCollectionDetails.userAuthorityFilter}
                     onValueChange={this.onValueChange}
                     _csrf={this.props._csrf}
-                    // userProfileLink={this.props.userProfileLink}
+                    disabled={this.props.roleIsDelegated || false}
                 />
             );
 
@@ -618,23 +738,71 @@ class SettingTable extends React.Component {
             rows.push(
                 <StyledSettingRow
                     key={'setting-row-userAuthorityExpiration'}
-                    domain={this.props.domain}
                     name='userAuthorityExpiration'
-                    label='User Authority Expiration'
+                    label={AUTHORITY_EXPIRY}
                     type='dropdown'
                     options={this.state.dateUserAuthorityAttributes}
-                    placeholder='User Authority Expiration'
-                    desc='expiration enforced by a user authority configured attribute'
+                    placeholder={AUTHORITY_EXPIRY}
+                    desc={AUTHORITY_EXPIRY_DESC}
                     value={
                         this.state.copyCollectionDetails.userAuthorityExpiration
                     }
                     onValueChange={this.onValueChange}
                     _csrf={this.props._csrf}
-                    // userProfileLink={this.props.userProfileLink}
+                    disabled={this.props.roleIsDelegated || false}
                 />
             );
 
-        rows.push();
+        this.props.category === 'role' &&
+            rows.push(
+                <StyledSettingRow
+                    key={'setting-row-description'}
+                    name='description'
+                    label='Role Description'
+                    type='text'
+                    placeholder='Role Description'
+                    desc='Role Description (Optional)'
+                    value={this.state.copyCollectionDetails.description}
+                    onValueChange={this.onValueChange}
+                    _csrf={this.props._csrf}
+                />
+            );
+
+        (this.props.category === 'role' || this.props.category === 'group') &&
+            rows.push(
+                <StyledSettingRow
+                    key={'setting-row-maxmembers'}
+                    name='maxMembers'
+                    label='Max Members'
+                    type='input'
+                    unit='Number'
+                    desc={
+                        'Maximum number of members allowed in the ' +
+                        this.props.category
+                    }
+                    value={this.state.copyCollectionDetails.maxMembers}
+                    onValueChange={this.onValueChange}
+                    _csrf={this.props._csrf}
+                    disabled={this.props.roleIsDelegated || false}
+                />
+            );
+
+        (this.props.category === 'role' || this.props.category === 'group') &&
+            rows.push(
+                <StyledSettingRow
+                    key={'setting-row-domainfilter'}
+                    name='principalDomainFilter'
+                    label='Domain Filter'
+                    type='text'
+                    desc={GROUP_ROLE_DOMAIN_FILTER_DESC}
+                    value={
+                        this.state.copyCollectionDetails.principalDomainFilter
+                    }
+                    onValueChange={this.onValueChange}
+                    _csrf={this.props._csrf}
+                    disabled={this.props.roleIsDelegated || false}
+                />
+            );
 
         return this.props.isLoading.length !== 0 ? (
             <ReduxPageLoader message={'Loading setting'} />

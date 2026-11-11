@@ -23,13 +23,17 @@
     <parent>
         <groupId>com.yahoo.athenz</groupId>
         <artifactId>athenz</artifactId>
-        <version>1.11.39-SNAPSHOT</version>
+        <version>1.12.52-SNAPSHOT</version>
         <relativePath>../../../pom.xml</relativePath>
     </parent>
 
     <artifactId>athenz-syncer-common</artifactId>
     <name>athenz-syncer-common</name>
     <description>Syncer Common Logic</description>
+
+    <properties>
+        <code.coverage.min>0.79</code.coverage.min>
+    </properties>
 
     <dependencies>
         <dependency>
@@ -51,6 +55,43 @@
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
             <version>${jackson-databind.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.yahoo.athenz</groupId>
+            <artifactId>athenz-zms-core</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.yahoo.athenz</groupId>
+            <artifactId>athenz-auth-core</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>${guava.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.yahoo.athenz</groupId>
+            <artifactId>athenz-client-common</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.yahoo.athenz</groupId>
+            <artifactId>athenz-cert-refresher</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.yahoo.athenz</groupId>
+            <artifactId>athenz-zms-java-client</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>${aws2.version}</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 </project>

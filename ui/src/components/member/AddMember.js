@@ -20,15 +20,27 @@ import { colors } from '../denali/styles';
 import Input from '../denali/Input';
 import InputLabel from '../denali/InputLabel';
 import styled from '@emotion/styled';
-import Checkbox from '../denali/CheckBox';
 import DateUtils from '../utils/DateUtils';
-import NameUtils from '../utils/NameUtils';
 import RequestUtils from '../utils/RequestUtils';
-import MemberUtils from '../utils/MemberUtils';
 import { GROUP_MEMBER_NAME_REGEX, USER_DOMAIN } from '../constants/constants';
 import RegexUtils from '../utils/RegexUtils';
 import { connect } from 'react-redux';
 import { addMember } from '../../redux/thunks/collections';
+import InputDropdown from '../denali/InputDropdown';
+import MemberUtils from '../utils/MemberUtils';
+import { selectAllUsers } from '../../redux/selectors/user';
+import Downshift from 'downshift';
+import ManagedResourceIcon from '../resource-ownership/ManagedResourceIcon';
+import {
+    isRoleResourceMembersManaged,
+    resolveResourceOwnershipCliOnError,
+} from '../utils/resourceOwnership';
+import { getMembersManagedIconTooltip } from '../utils/resourceOwnershipUi';
+import { selectResourceOwnershipUi } from '../../redux/selectors/domains';
+import {
+    cliAddRoleMember,
+    cliAddTemporaryRoleMember,
+} from '../utils/zmsCliCommands';
 
 const SectionsDiv = styled.div`
     width: 760px;
@@ -55,7 +67,7 @@ const StyledInputLabel = styled(InputLabel)`
     line-height: 36px;
 `;
 
-const StyledInput = styled(Input)`
+const StyledInput = styled(InputDropdown)`
     max-width: 800px;
     margin-right: 10px;
     width: ${(props) => (props.category === 'group' ? '500px' : '580px')};
@@ -97,16 +109,35 @@ class AddMember extends React.Component {
     constructor(props) {
         super(props);
         this.onSubmit = this.onSubmit.bind(this);
+        this.userSearch = this.userSearch.bind(this);
+
         this.state = {
             showModal: !!this.props.showAddMember,
+            resourceOwnershipCliCommand: null,
         };
         this.dateUtils = new DateUtils();
+    }
+
+    componentDidUpdate(prevProps) {
+        if (prevProps.showAddMember !== this.props.showAddMember) {
+            this.setState({
+                showModal: !!this.props.showAddMember,
+                errorMessage: null,
+                resourceOwnershipCliCommand: null,
+            });
+        }
+    }
+
+    clearStateIfInputDoesntMatchIt(inputVal) {
+        if (this.state.memberName && this.state.memberName !== inputVal) {
+            this.setState({ ['memberName']: '' });
+        }
     }
 
     onSubmit() {
         if (!this.state.memberName || this.state.memberName.trim() === '') {
             this.setState({
-                errorMessage: 'Member name is required.',
+                errorMessage: 'Member must be selected in the dropdown.',
             });
             return;
         }
@@ -168,6 +199,7 @@ class AddMember extends React.Component {
                 this.setState({
                     showModal: false,
                     justification: '',
+                    resourceOwnershipCliCommand: null,
                 });
                 this.props.onSubmit(
                     `${this.state.memberName}-${this.props.category}-${this.props.domainName}-${this.props.collection}`,
@@ -175,14 +207,48 @@ class AddMember extends React.Component {
                 );
             })
             .catch((err) => {
+                const errMsg = RequestUtils.xhrErrorCheckHelper(err);
+                const aud =
+                    this.props.justificationRequired && this.state.justification
+                        ? this.state.justification
+                        : null;
                 this.setState({
-                    errorMessage: RequestUtils.xhrErrorCheckHelper(err),
+                    errorMessage: errMsg,
+                    resourceOwnershipCliCommand:
+                        resolveResourceOwnershipCliOnError(
+                            isRoleResourceMembersManaged(
+                                this.props.resourceOwnership
+                            ),
+                            err,
+                            (zmsUrl) =>
+                                member.expiration || member.reviewReminder
+                                    ? cliAddTemporaryRoleMember(
+                                          this.props.domainName,
+                                          this.props.collection,
+                                          member.memberName,
+                                          member.expiration || '',
+                                          member.reviewReminder || '',
+                                          aud,
+                                          zmsUrl
+                                      )
+                                    : cliAddRoleMember(
+                                          this.props.domainName,
+                                          this.props.collection,
+                                          member.memberName,
+                                          aud,
+                                          zmsUrl
+                                      )
+                        ),
                 });
             });
     }
 
     inputChanged(key, evt) {
         this.setState({ [key]: evt.target.value });
+    }
+
+    userSearch(part) {
+        return MemberUtils.userSearch(part, this.props.userList);
     }
 
     render() {
@@ -194,14 +260,37 @@ class AddMember extends React.Component {
                     </StyledInputLabel>
                     <ContentDiv>
                         <StyledInput
+                            selectedDropdownValue={this.state.memberName} // marks value in dropdown selected
+                            defaultHighlightedIndex={0} // highlights first value in dropdown
+                            stateReducer={(state, changes) => {
+                                // keep input changes when user clicks outside input
+                                if (
+                                    changes.type &&
+                                    (changes.type ===
+                                        Downshift.stateChangeTypes.mouseUp ||
+                                        changes.type ===
+                                            Downshift.stateChangeTypes
+                                                .blurInput)
+                                ) {
+                                    changes.inputValue = state.inputValue;
+                                }
+                                return changes;
+                            }}
                             category={this.props.category}
+                            fluid={true}
                             id='member-name'
                             name='member-name'
-                            value={this.state.memberName}
-                            onChange={this.inputChanged.bind(
-                                this,
-                                'memberName'
-                            )}
+                            itemToString={(i) => (i === null ? '' : i.value)}
+                            asyncSearchFunc={this.userSearch}
+                            onChange={(evt) =>
+                                this.setState({
+                                    ['memberName']: evt ? evt.value : '',
+                                })
+                            }
+                            onInputValueChange={(inputVal) => {
+                                // remove value from state if input changed
+                                this.clearStateIfInputDoesntMatchIt(inputVal);
+                            }}
                             placeholder={
                                 this.props.category === 'role' &&
                                 this.props.collection !== 'admin'
@@ -259,19 +348,45 @@ class AddMember extends React.Component {
             </SectionsDiv>
         );
 
+        const isMembersManaged = isRoleResourceMembersManaged(
+            this.props.resourceOwnership
+        );
+        const title = (
+            <span
+                style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '8px',
+                }}
+            >
+                {'Add Member to ' +
+                    this.props.category +
+                    ': ' +
+                    this.props.collection}
+                {isMembersManaged ? (
+                    <ManagedResourceIcon
+                        show={true}
+                        tooltip={getMembersManagedIconTooltip(
+                            this.props.resourceOwnershipUi
+                        )}
+                        size='1em'
+                    />
+                ) : null}
+            </span>
+        );
+
         return (
             <div data-testid='add-member'>
                 <AddModal
                     isOpen={this.state.showModal}
                     cancel={this.props.onCancel}
                     submit={this.onSubmit}
-                    title={
-                        'Add Member to ' +
-                        this.props.category +
-                        ': ' +
-                        this.props.collection
-                    }
+                    title={title}
                     errorMessage={this.state.errorMessage}
+                    resourceOwnershipCliCommand={
+                        this.state.resourceOwnershipCliCommand
+                    }
                     sections={sections}
                 />
             </div>
@@ -282,6 +397,8 @@ class AddMember extends React.Component {
 const mapStateToProps = (state, props) => {
     return {
         ...props,
+        userList: selectAllUsers(state),
+        resourceOwnershipUi: selectResourceOwnershipUi(state),
     };
 };
 

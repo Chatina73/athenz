@@ -15,6 +15,7 @@
  */
 
 import { selectUserPendingMembers } from './user';
+import { resolveResourceOwnershipUi } from '../../components/utils/resourceOwnershipUi';
 
 export const thunkSelectPendingMembersList = (state, domainName) => {
     let domainPendingMembers = selectPendingMembersList(state, domainName);
@@ -64,6 +65,11 @@ export const selectHeaderDetails = (state) => {
     return state.domains.headerDetails ? state.domains.headerDetails : {};
 };
 
+export const selectZmsUrl = (state) => {
+    const hd = selectHeaderDetails(state);
+    return hd.zmsUrl || null;
+};
+
 export const selectTimeZone = (state) => {
     return state.domains.timeZone ? state.domains.timeZone : 'UTC';
 };
@@ -75,9 +81,49 @@ export const selectProductMasterLink = (state) => {
         : {};
 };
 
-export const selectFeatureFlag = (state) => {
-    return state.domains.featureFlag ? state.domains.featureFlag : false;
+export const selectResourceOwnershipGuideLink = (state) => {
+    const hd = selectHeaderDetails(state);
+    return hd && hd.resourceOwnershipGuideLink
+        ? hd.resourceOwnershipGuideLink
+        : {};
 };
+
+export const selectResourceOwnershipUi = (state) => {
+    const hd = selectHeaderDetails(state);
+    return resolveResourceOwnershipUi(hd && hd.resourceOwnershipUi);
+};
+
+export const selectFeatureFlag = (state) => {
+    const ff = state.domains.featureFlag;
+    if (ff && typeof ff === 'object') return ff.enabled;
+    return ff ? ff : false;
+};
+
+export const selectShowInstances = (state) => {
+    const ff = state.domains.featureFlag;
+    if (ff && typeof ff === 'object') return ff.showInstances !== false;
+    return true;
+};
+
+export const selectShowProviders = (state) => {
+    const ff = state.domains.featureFlag;
+    if (ff && typeof ff === 'object') return ff.showProviders !== false;
+    return true;
+};
+
+export const selectShowMicrosegmentation = (state) => {
+    const ff = state.domains.featureFlag;
+    if (ff && typeof ff === 'object') return ff.showMicrosegmentation !== false;
+    return true;
+};
+
+export const selectShowCloudAccountDetails = (state) => {
+    const ff = state.domains.featureFlag;
+    if (ff && typeof ff === 'object')
+        return ff.showCloudAccountDetails !== false;
+    return true;
+};
+
 export const selectAuthorityAttributes = (state) => {
     return state.domains.authorityAttributes
         ? state.domains.authorityAttributes

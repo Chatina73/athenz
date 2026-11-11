@@ -17,32 +17,36 @@ package com.yahoo.athenz.instance.provider.impl;
 
 import com.yahoo.athenz.auth.token.AccessToken;
 import com.yahoo.athenz.auth.util.Crypto;
+import com.yahoo.athenz.auth.util.CryptoException;
 import com.yahoo.athenz.common.server.http.HttpDriver;
+import com.yahoo.athenz.instance.provider.ExternalCredentialsProvider;
 import com.yahoo.athenz.instance.provider.InstanceConfirmation;
 import com.yahoo.athenz.instance.provider.InstanceProvider;
-import com.yahoo.athenz.instance.provider.ResourceException;
-import io.jsonwebtoken.SignatureAlgorithm;
+import com.yahoo.athenz.instance.provider.ProviderResourceException;
+import com.yahoo.athenz.zts.ExternalCredentialsResponse;
 import org.mockito.Mockito;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import javax.net.ssl.SSLContext;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.security.PrivateKey;
-import java.security.PublicKey;
 import java.util.HashMap;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.testng.Assert.*;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 public class InstanceAzureProviderTest {
 
     private final File ecPrivateKey = new File("./src/test/resources/unit_test_ec_private.key");
-    private final File ecPublicKey = new File("./src/test/resources/unit_test_ec_public.key");
 
     @BeforeMethod
     public void setup() {
@@ -58,6 +62,36 @@ public class InstanceAzureProviderTest {
         System.clearProperty(InstanceAzureProvider.AZURE_PROP_MGMT_CONNECT_TIMEOUT_MS);
     }
 
+    private void setUpExternalCredentialsProvider(InstanceAzureProvider provider) {
+        ExternalCredentialsProvider credentialsProvider = Mockito.mock(ExternalCredentialsProvider.class);
+        provider.setExternalCredentialsProvider(credentialsProvider);
+        ExternalCredentialsResponse response = new ExternalCredentialsResponse();
+        response.setAttributes(new HashMap<>());
+        response.getAttributes().put("accessToken", "access-token");
+        Mockito.when(credentialsProvider.getExternalCredentials(any(), any(), any())).thenReturn(response);
+    }
+
+    @Test
+    public void testInitializeWithOpenIdConfig() throws IOException {
+
+        File issuerFile = new File("./src/test/resources/config-openid/");
+        File configFile = new File("./src/test/resources/config-openid/.well-known/openid-configuration");
+        createEmptyConfigFile(configFile);
+
+        System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI, "file://" + issuerFile.getCanonicalPath());
+
+        // std test where the http driver will return null for the config object
+
+        InstanceAzureProvider provider = new InstanceAzureProvider();
+        try {
+            provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
+            fail();
+        } catch (CryptoException ex) {
+            assertTrue(ex.getMessage().contains("Jwks uri must be specified"));
+        }
+        Files.delete(configFile.toPath());
+    }
+
     @Test
     public void testInitializeDefaults() throws IOException {
 
@@ -65,9 +99,10 @@ public class InstanceAzureProviderTest {
         System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI, "file://" + configUri.getCanonicalPath());
 
         InstanceAzureProvider provider = new InstanceAzureProvider();
+        setUpExternalCredentialsProvider(provider);
         provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
 
-        assertEquals(provider.getProviderScheme(), InstanceProvider.Scheme.HTTP);
+        assertEquals(provider.getProviderScheme(), InstanceProvider.Scheme.CLASS);
         assertTrue(provider.dnsSuffixes.contains("azure.cloud"));
         assertEquals(provider.azureJwksUri, "file://src/test/resources/keys.json");
         provider.close();
@@ -78,22 +113,21 @@ public class InstanceAzureProviderTest {
     @Test
     public void testInitializeEmptyValues() throws IOException {
 
-        File configUri = new File("./src/test/resources/azure-openid-nouri.json");
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI, "file://" + configUri.getCanonicalPath());
+        setupProviderSettings(false);
+
         System.clearProperty(InstanceAzureProvider.AZURE_PROP_DNS_SUFFIX);
 
         InstanceAzureProvider provider = new InstanceAzureProvider();
+        setUpExternalCredentialsProvider(provider);
         provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
 
         assertTrue(provider.dnsSuffixes.isEmpty());
-        assertNull(provider.azureJwksUri);
         provider.close();
-
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI);
+        clearProviderSettings();
     }
 
     @Test
-    public void testConfirmInstance() throws IOException {
+    public void testConfirmInstance() throws IOException, ProviderResourceException {
 
         File configFile = new File("./src/test/resources/azure-openid.json");
         File jwksUri = new File("./src/test/resources/azure-jwks.json");
@@ -103,6 +137,16 @@ public class InstanceAzureProviderTest {
         System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI, "file://" + configFile.getCanonicalPath());
         InstanceAzureProvider provider = new InstanceAzureProvider();
         provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
+
+        ExternalCredentialsResponse credentialsResponse = new ExternalCredentialsResponse();
+        credentialsResponse.setAttributes(new HashMap<>());
+        credentialsResponse.getAttributes().put("accessToken", "access-token");
+        provider.externalCredentialsProvider = Mockito.mock(ExternalCredentialsProvider.class);
+        Mockito.when(provider.externalCredentialsProvider.getExternalCredentials(eq("azure"), eq("athenz"), argThat(arg -> {
+            return arg.getClientId().equals("athenz.azure.azure-client") &&
+                   arg.getAttributes().get("athenzScope").equals("openid athenz.azure:role.azure-client") &&
+                   arg.getAttributes().size() == 1;
+        }))).thenReturn(credentialsResponse);
 
         InstanceConfirmation confirmation = new InstanceConfirmation();
         confirmation.setDomain("athenz");
@@ -123,13 +167,7 @@ public class InstanceAzureProviderTest {
         data.setToken(createAccessToken());
 
         confirmation.setAttestationData(provider.jsonMapper.writeValueAsString(data));
-
-        PublicKey publicKey = Crypto.loadPublicKey(ecPublicKey);
-        provider.signingKeyResolver.addPublicKey("eckey1", publicKey);
-
         provider.httpDriver = setupHttpDriver();
-        InstanceAzureProvider.AzureCredentialsUpdater updater = provider.new AzureCredentialsUpdater();
-        updater.run();
 
         InstanceConfirmation providerConfirm = provider.confirmInstance(confirmation);
         assertNotNull(providerConfirm);
@@ -142,7 +180,7 @@ public class InstanceAzureProviderTest {
     }
 
     @Test
-    public void testConfirmInstanceProviderConfig() throws IOException {
+    public void testConfirmInstanceProviderConfig() throws IOException, ProviderResourceException {
 
         File configFile = new File("./src/test/resources/azure-openid.json");
         File jwksUri = new File("./src/test/resources/azure-jwks.json");
@@ -152,6 +190,7 @@ public class InstanceAzureProviderTest {
         System.setProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI, "https://azure-zts");
         System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI, "file://" + configFile.getCanonicalPath());
         InstanceAzureProvider provider = new InstanceAzureProvider();
+        setUpExternalCredentialsProvider(provider);
         provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
 
         InstanceConfirmation confirmation = new InstanceConfirmation();
@@ -173,13 +212,7 @@ public class InstanceAzureProviderTest {
         data.setToken(createAccessToken());
 
         confirmation.setAttestationData(provider.jsonMapper.writeValueAsString(data));
-
-        PublicKey publicKey = Crypto.loadPublicKey(ecPublicKey);
-        provider.signingKeyResolver.addPublicKey("eckey1", publicKey);
-
         provider.httpDriver = setupHttpDriver();
-        InstanceAzureProvider.AzureCredentialsUpdater updater = provider.new AzureCredentialsUpdater();
-        updater.run();
 
         InstanceConfirmation providerConfirm = provider.confirmInstance(confirmation);
         assertNotNull(providerConfirm);
@@ -193,15 +226,12 @@ public class InstanceAzureProviderTest {
     }
 
     @Test
-    public void testRefreshInstance() throws IOException {
+    public void testRefreshInstance() throws IOException, ProviderResourceException {
 
-        File configFile = new File("./src/test/resources/azure-openid.json");
-        File jwksUri = new File("./src/test/resources/azure-jwks.json");
-        createOpenIdConfigFile(configFile, jwksUri, true);
+        setupProviderSettings(true);
 
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI, "https://azure-zts");
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI, "file://" + configFile.getCanonicalPath());
         InstanceAzureProvider provider = new InstanceAzureProvider();
+        setUpExternalCredentialsProvider(provider);
         provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
 
         InstanceConfirmation confirmation = new InstanceConfirmation();
@@ -224,43 +254,61 @@ public class InstanceAzureProviderTest {
 
         confirmation.setAttestationData(provider.jsonMapper.writeValueAsString(data));
 
-        PublicKey publicKey = Crypto.loadPublicKey(ecPublicKey);
-        provider.signingKeyResolver.addPublicKey("eckey1", publicKey);
+        String vmDetailsWithUserAssignedIdentities =
+                "{\n" +
+                "  \"name\": \"athenz-client\",\n" +
+                "  \"id\": \"/subscriptions/123456/resourceGroups/Athenz/providers/Microsoft.Compute/virtualMachines/athenz-client\",\n" +
+                "  \"location\": \"westus2\",\n" +
+                "  \"tags\": {\n" +
+                "    \"athenz\": \"athenz.backend\"\n" +
+                "  },\n" +
+                "  \"identity\": {\n" +
+                "    \"type\": \"UserAssigned\",\n" +
+                "    \"userAssignedIdentities\": {\n" +
+                "      \"/subscriptions/23423423-d46a-45db-aad6-29a1fdab4f86/resourceGroups/system/providers/Microsoft.ManagedIdentity/userAssignedIdentities/my-id\": {\n" +
+                "        \"principalId\": \"111111-2222-3333-4444-555555555\",\n" +
+                "        \"clientId\": \"f6ed0c62-f2cb-4ebc-8c4e-e81c43887914\"\n" +
+                "      }\n" +
+                "    }\n" +
+                "  },\n" +
+                "  \"properties\": {\n" +
+                "    \"vmId\": \"2222-3333\"\n" +
+                "  }\n" +
+                "}";
 
-        provider.httpDriver = setupHttpDriver();
-        provider.fetchAccessToken();
+        provider.httpDriver = setupHttpDriver(vmDetailsWithUserAssignedIdentities);
 
         InstanceConfirmation providerConfirm = provider.refreshInstance(confirmation);
         assertNotNull(providerConfirm);
 
         provider.close();
-
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI);
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI);
-        removeOpenIdConfigFile(configFile, jwksUri);
+        clearProviderSettings();
     }
 
     private HttpDriver setupHttpDriver() throws IOException {
-
-        HttpDriver httpDriver = Mockito.mock(HttpDriver.class);
-
         final String vmDetails =
                 "{\n" +
-                        "  \"name\": \"athenz-client\",\n" +
-                        "  \"id\": \"/subscriptions/123456/resourceGroups/Athenz/providers/Microsoft.Compute/virtualMachines/athenz-client\",\n" +
-                        "  \"location\": \"westus2\",\n" +
-                        "  \"tags\": {\n" +
-                        "    \"athenz\": \"athenz.backend\"\n" +
-                        "  },\n" +
-                        "  \"identity\": {\n" +
-                        "    \"type\": \"SystemAssigned, UserAssigned\",\n" +
-                        "    \"principalId\": \"111111-2222-3333-4444-555555555\",\n" +
-                        "    \"tenantId\": \"222222-3333-4444-5555-66666666\"\n" +
-                        "  },\n" +
-                        "  \"properties\": {\n" +
-                        "    \"vmId\": \"2222-3333\"\n" +
-                        "  }\n" +
-                        "}";
+                "  \"name\": \"athenz-client\",\n" +
+                "  \"id\": \"/subscriptions/123456/resourceGroups/Athenz/providers/Microsoft.Compute/virtualMachines/athenz-client\",\n" +
+                "  \"location\": \"westus2\",\n" +
+                "  \"tags\": {\n" +
+                "    \"athenz\": \"athenz.backend\"\n" +
+                "  },\n" +
+                "  \"identity\": {\n" +
+                "    \"type\": \"SystemAssigned, UserAssigned\",\n" +
+                "    \"principalId\": \"111111-2222-3333-4444-555555555\",\n" +
+                "    \"tenantId\": \"222222-3333-4444-5555-66666666\"\n" +
+                "  },\n" +
+                "  \"properties\": {\n" +
+                "    \"vmId\": \"2222-3333\"\n" +
+                "  }\n" +
+                "}";
+        return setupHttpDriver(vmDetails);
+    }
+
+    private HttpDriver setupHttpDriver(String vmDetails) throws IOException {
+
+        HttpDriver httpDriver = Mockito.mock(HttpDriver.class);
 
         final String vmUri = "https://management.azure.com/subscriptions/1111-2222/resourceGroups/prod" +
                 "/providers/Microsoft.Compute/virtualMachines/athenz-client?api-version=2020-06-01";
@@ -269,17 +317,6 @@ public class InstanceAzureProviderTest {
         vmHeaders.put("Authorization", "Bearer access-token");
         Mockito.when(httpDriver.doGet(vmUri, vmHeaders)).thenReturn(vmDetails);
 
-        final String tokenDetails =
-                "{\n" +
-                        "  \"access_token\": \"access-token\"" +
-                        "}";
-
-        Map<String, String> tokenHeaders = new HashMap<>();
-        tokenHeaders.put("Metadata", "true");
-        final String tokenUri = "http://169.254.169.254/metadata/identity/oauth2/token" +
-                "?api-version=2020-06-01&resource=https://management.azure.com";
-        Mockito.when(httpDriver.doGet(tokenUri, tokenHeaders)).thenReturn(tokenDetails);
-
         return httpDriver;
     }
 
@@ -287,6 +324,7 @@ public class InstanceAzureProviderTest {
     public void testConfirmInstanceInvalidAttestationData() {
 
         InstanceAzureProvider provider = new InstanceAzureProvider();
+        setUpExternalCredentialsProvider(provider);
 
         InstanceConfirmation confirmation = new InstanceConfirmation();
         confirmation.setAttestationData("invalid-json");
@@ -294,7 +332,7 @@ public class InstanceAzureProviderTest {
         try {
             provider.confirmInstance(confirmation);
             fail();
-        } catch (ResourceException ex) {
+        } catch (ProviderResourceException ex) {
             assertTrue(ex.getMessage().contains("Unable to parse attestation data"));
         }
 
@@ -304,7 +342,10 @@ public class InstanceAzureProviderTest {
     @Test
     public void testConfirmInstanceAzureSubscriptionIssues() throws IOException {
 
+        setupProviderSettings(false);
+
         InstanceAzureProvider provider = new InstanceAzureProvider();
+        setUpExternalCredentialsProvider(provider);
         provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
 
         InstanceConfirmation confirmation = new InstanceConfirmation();
@@ -323,28 +364,32 @@ public class InstanceAzureProviderTest {
         try {
             provider.confirmInstance(confirmation);
             fail();
-        } catch (ResourceException ex) {
+        } catch (ProviderResourceException ex) {
             assertTrue(ex.getMessage().contains("Unable to extract Azure Subscription id"));
         }
 
-        // add the subscription but different than what's in the data object
+        // add the subscription but different from what's in the data object
 
         attributes.put(InstanceProvider.ZTS_INSTANCE_AZURE_SUBSCRIPTION, "1111-3333");
 
         try {
             provider.confirmInstance(confirmation);
             fail();
-        } catch (ResourceException ex) {
+        } catch (ProviderResourceException ex) {
             assertTrue(ex.getMessage().contains("Azure Subscription Id mismatch"));
         }
 
         provider.close();
+        clearProviderSettings();
     }
 
     @Test
     public void testConfirmInstanceSanDnsMismatch() throws IOException {
 
+        setupProviderSettings(false);
+
         InstanceAzureProvider provider = new InstanceAzureProvider();
+        setUpExternalCredentialsProvider(provider);
         provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
 
         InstanceConfirmation confirmation = new InstanceConfirmation();
@@ -366,23 +411,21 @@ public class InstanceAzureProviderTest {
         try {
             provider.confirmInstance(confirmation);
             fail();
-        } catch (ResourceException ex) {
+        } catch (ProviderResourceException ex) {
             assertTrue(ex.getMessage().contains("Unable to validate certificate request hostnames"));
         }
 
         provider.close();
+        clearProviderSettings();
     }
 
     @Test
     public void testConfirmInstanceInvalidAccessToken() throws IOException {
 
-        File configFile = new File("./src/test/resources/azure-openid.json");
-        File jwksUri = new File("./src/test/resources/azure-jwks.json");
-        createOpenIdConfigFile(configFile, jwksUri, false);
+        setupProviderSettings(false);
 
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI, "https://azure-zts");
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI, "file://" + configFile.getCanonicalPath());
         InstanceAzureProvider provider = new InstanceAzureProvider();
+        setUpExternalCredentialsProvider(provider);
         provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
 
         InstanceConfirmation confirmation = new InstanceConfirmation();
@@ -408,15 +451,12 @@ public class InstanceAzureProviderTest {
         try {
             provider.confirmInstance(confirmation);
             fail();
-        } catch (ResourceException ex) {
+        } catch (ProviderResourceException ex) {
             assertTrue(ex.getMessage().contains("Unable to verify instance identity credentials"));
         }
 
         provider.close();
-
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI);
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI);
-        removeOpenIdConfigFile(configFile, jwksUri);
+        clearProviderSettings();
     }
 
     @Test
@@ -424,11 +464,14 @@ public class InstanceAzureProviderTest {
 
         File configFile = new File("./src/test/resources/azure-openid.json");
         File jwksUri = new File("./src/test/resources/azure-jwks.json");
-        createOpenIdConfigFile(configFile, jwksUri, false);
+        createOpenIdConfigFile(configFile, jwksUri, true);
 
         System.setProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI, "https://azure-zts-nomatch");
         System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI, "file://" + configFile.getCanonicalPath());
+        System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_JWKS_URI, "file://" + jwksUri.getCanonicalPath());
+
         InstanceAzureProvider provider = new InstanceAzureProvider();
+        setUpExternalCredentialsProvider(provider);
         provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
 
         InstanceConfirmation confirmation = new InstanceConfirmation();
@@ -451,33 +494,24 @@ public class InstanceAzureProviderTest {
 
         confirmation.setAttestationData(provider.jsonMapper.writeValueAsString(data));
 
-        PublicKey publicKey = Crypto.loadPublicKey(ecPublicKey);
-        provider.signingKeyResolver.addPublicKey("eckey1", publicKey);
-
         try {
             provider.confirmInstance(confirmation);
             fail();
-        } catch (ResourceException ex) {
+        } catch (ProviderResourceException ex) {
             assertTrue(ex.getMessage().contains("Unable to verify instance identity credentials"));
         }
 
         provider.close();
-
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI);
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI);
-        removeOpenIdConfigFile(configFile, jwksUri);
+        clearProviderSettings();
     }
 
     @Test
     public void testConfirmInstanceUnableToFetchVMDetails() throws IOException {
 
-        File configFile = new File("./src/test/resources/azure-openid.json");
-        File jwksUri = new File("./src/test/resources/azure-jwks.json");
-        createOpenIdConfigFile(configFile, jwksUri, false);
+        setupProviderSettings(true);
 
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI, "https://azure-zts");
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI, "file://" + configFile.getCanonicalPath());
         InstanceAzureProvider provider = new InstanceAzureProvider();
+        setUpExternalCredentialsProvider(provider);
         provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
 
         InstanceConfirmation confirmation = new InstanceConfirmation();
@@ -499,63 +533,67 @@ public class InstanceAzureProviderTest {
         data.setToken(createAccessToken());
 
         confirmation.setAttestationData(provider.jsonMapper.writeValueAsString(data));
-
-        PublicKey publicKey = Crypto.loadPublicKey(ecPublicKey);
-        provider.signingKeyResolver.addPublicKey("eckey1", publicKey);
-        provider.accessToken = "Bearer access-token";
 
         // first with null http-driver
 
         try {
             provider.confirmInstance(confirmation);
             fail();
-        } catch (ResourceException ex) {
+        } catch (ProviderResourceException ex) {
             assertTrue(ex.getMessage().contains("Unable to verify instance identity credentials"));
         }
 
-        // then will null access tokens
+        // then without access token from the external credentials provider
 
         provider.httpDriver = Mockito.mock(HttpDriver.class);
-        provider.accessToken = null;
+        ExternalCredentialsProvider externalCredentialsProvider = Mockito.mock(ExternalCredentialsProvider.class);
+        ExternalCredentialsResponse externalCredentialsResponse = new ExternalCredentialsResponse();
+        externalCredentialsResponse.setAttributes(new HashMap<>());
+        Mockito.when(externalCredentialsProvider.getExternalCredentials(any(), any(), any())).thenReturn(externalCredentialsResponse);
+        provider.setExternalCredentialsProvider(externalCredentialsProvider);
         confirmation.setAttributes(attributes);
 
         try {
             provider.confirmInstance(confirmation);
             fail();
-        } catch (ResourceException ex) {
+        } catch (ProviderResourceException ex) {
+            assertTrue(ex.getMessage().contains("Unable to verify instance identity credentials"));
+        }
+
+        // then with null-responses
+        setUpExternalCredentialsProvider(provider);
+        confirmation.setAttributes(attributes);
+
+        try {
+            provider.confirmInstance(confirmation);
+            fail();
+        } catch (ProviderResourceException ex) {
             assertTrue(ex.getMessage().contains("Unable to verify instance identity credentials"));
         }
 
         // then with mock throwing an exception
 
         Mockito.when(provider.httpDriver.doGet(any(), any())).thenThrow(new IllegalArgumentException("bad client"));
-        provider.accessToken = "Bearer access-token";
         confirmation.setAttributes(attributes);
 
         try {
             provider.confirmInstance(confirmation);
             fail();
-        } catch (ResourceException ex) {
+        } catch (ProviderResourceException ex) {
             assertTrue(ex.getMessage().contains("Unable to verify instance identity credentials"));
         }
 
         provider.close();
-
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI);
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI);
-        removeOpenIdConfigFile(configFile, jwksUri);
+        clearProviderSettings();
     }
 
     @Test
     public void testConfirmInstanceInvalidVMDetails() throws IOException {
 
-        File configFile = new File("./src/test/resources/azure-openid.json");
-        File jwksUri = new File("./src/test/resources/azure-jwks.json");
-        createOpenIdConfigFile(configFile, jwksUri, false);
+        setupProviderSettings(true);
 
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI, "https://azure-zts");
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI, "file://" + configFile.getCanonicalPath());
         InstanceAzureProvider provider = new InstanceAzureProvider();
+        setUpExternalCredentialsProvider(provider);
         provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
 
         InstanceConfirmation confirmation = new InstanceConfirmation();
@@ -577,10 +615,6 @@ public class InstanceAzureProviderTest {
         data.setToken(createAccessToken());
 
         confirmation.setAttestationData(provider.jsonMapper.writeValueAsString(data));
-
-        PublicKey publicKey = Crypto.loadPublicKey(ecPublicKey);
-        provider.signingKeyResolver.addPublicKey("eckey1", publicKey);
-        provider.accessToken = "Bearer access-token";
 
         HttpDriver httpDriver = Mockito.mock(HttpDriver.class);
         Mockito.when(httpDriver.doGet(any(), any())).thenReturn("invalid-vmdetails");
@@ -589,27 +623,21 @@ public class InstanceAzureProviderTest {
         try {
             provider.confirmInstance(confirmation);
             fail();
-        } catch (ResourceException ex) {
+        } catch (ProviderResourceException ex) {
             assertTrue(ex.getMessage().contains("Unable to verify instance identity credentials"));
         }
 
         provider.close();
-
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI);
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI);
-        removeOpenIdConfigFile(configFile, jwksUri);
+        clearProviderSettings();
     }
 
     @Test
     public void testConfirmInstanceSubjectMismatch() throws IOException {
 
-        File configFile = new File("./src/test/resources/azure-openid.json");
-        File jwksUri = new File("./src/test/resources/azure-jwks.json");
-        createOpenIdConfigFile(configFile, jwksUri, false);
+        setupProviderSettings(true);
 
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI, "https://azure-zts");
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI, "file://" + configFile.getCanonicalPath());
         InstanceAzureProvider provider = new InstanceAzureProvider();
+        setUpExternalCredentialsProvider(provider);
         provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
 
         InstanceConfirmation confirmation = new InstanceConfirmation();
@@ -631,10 +659,6 @@ public class InstanceAzureProviderTest {
         data.setToken(createAccessToken());
 
         confirmation.setAttestationData(provider.jsonMapper.writeValueAsString(data));
-
-        PublicKey publicKey = Crypto.loadPublicKey(ecPublicKey);
-        provider.signingKeyResolver.addPublicKey("eckey1", publicKey);
-        provider.accessToken = "Bearer access-token";
 
         final String vmDetails =
                 "{\n" +
@@ -660,27 +684,21 @@ public class InstanceAzureProviderTest {
         try {
             provider.confirmInstance(confirmation);
             fail();
-        } catch (ResourceException ex) {
+        } catch (ProviderResourceException ex) {
             assertTrue(ex.getMessage().contains("Unable to verify instance identity credentials"));
         }
 
         provider.close();
-
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI);
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI);
-        removeOpenIdConfigFile(configFile, jwksUri);
+        clearProviderSettings();
     }
 
     @Test
     public void testConfirmInstanceServiceNameMismatch() throws IOException {
 
-        File configFile = new File("./src/test/resources/azure-openid.json");
-        File jwksUri = new File("./src/test/resources/azure-jwks.json");
-        createOpenIdConfigFile(configFile, jwksUri, false);
+        setupProviderSettings(true);
 
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI, "https://azure-zts");
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI, "file://" + configFile.getCanonicalPath());
         InstanceAzureProvider provider = new InstanceAzureProvider();
+        setUpExternalCredentialsProvider(provider);
         provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
 
         InstanceConfirmation confirmation = new InstanceConfirmation();
@@ -702,10 +720,6 @@ public class InstanceAzureProviderTest {
         data.setToken(createAccessToken());
 
         confirmation.setAttestationData(provider.jsonMapper.writeValueAsString(data));
-
-        PublicKey publicKey = Crypto.loadPublicKey(ecPublicKey);
-        provider.signingKeyResolver.addPublicKey("eckey1", publicKey);
-        provider.accessToken = "Bearer access-token";
 
         final String vmDetails =
                 "{\n" +
@@ -731,27 +745,21 @@ public class InstanceAzureProviderTest {
         try {
             provider.confirmInstance(confirmation);
             fail();
-        } catch (ResourceException ex) {
+        } catch (ProviderResourceException ex) {
             assertTrue(ex.getMessage().contains("Unable to verify instance identity credentials"));
         }
 
         provider.close();
-
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI);
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI);
-        removeOpenIdConfigFile(configFile, jwksUri);
+        clearProviderSettings();
     }
 
     @Test
     public void testConfirmInstanceVMIdMismatch() throws IOException {
 
-        File configFile = new File("./src/test/resources/azure-openid.json");
-        File jwksUri = new File("./src/test/resources/azure-jwks.json");
-        createOpenIdConfigFile(configFile, jwksUri, false);
+        setupProviderSettings(true);
 
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI, "https://azure-zts");
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI, "file://" + configFile.getCanonicalPath());
         InstanceAzureProvider provider = new InstanceAzureProvider();
+        setUpExternalCredentialsProvider(provider);
         provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
 
         InstanceConfirmation confirmation = new InstanceConfirmation();
@@ -773,10 +781,6 @@ public class InstanceAzureProviderTest {
         data.setToken(createAccessToken());
 
         confirmation.setAttestationData(provider.jsonMapper.writeValueAsString(data));
-
-        PublicKey publicKey = Crypto.loadPublicKey(ecPublicKey);
-        provider.signingKeyResolver.addPublicKey("eckey1", publicKey);
-        provider.accessToken = "Bearer access-token";
 
         final String vmDetails =
                 "{\n" +
@@ -802,27 +806,33 @@ public class InstanceAzureProviderTest {
         try {
             provider.confirmInstance(confirmation);
             fail();
-        } catch (ResourceException ex) {
+        } catch (ProviderResourceException ex) {
             assertTrue(ex.getMessage().contains("Unable to verify instance identity credentials"));
         }
 
         provider.close();
+        clearProviderSettings();
+    }
 
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI);
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI);
-        removeOpenIdConfigFile(configFile, jwksUri);
+    @Test
+    public void testConfirmInstanceWithoutCredentialsProvider() {
+        InstanceAzureProvider provider = new InstanceAzureProvider();
+        provider.setExternalCredentialsProvider(null);
+        try {
+            provider.confirmInstance(null);
+            fail();
+        } catch (ProviderResourceException ex) {
+            assertTrue(ex.getMessage().contains("External credentials provider must be configured for the Azure provider"));
+        }
     }
 
     @Test
     public void testConfirmInstanceProviderMismatch() throws IOException {
 
-        File configFile = new File("./src/test/resources/azure-openid.json");
-        File jwksUri = new File("./src/test/resources/azure-jwks.json");
-        createOpenIdConfigFile(configFile, jwksUri, false);
+        setupProviderSettings(true);
 
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI, "https://azure-zts");
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI, "file://" + configFile.getCanonicalPath());
         InstanceAzureProvider provider = new InstanceAzureProvider();
+        setUpExternalCredentialsProvider(provider);
         provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
 
         InstanceConfirmation confirmation = new InstanceConfirmation();
@@ -844,10 +854,6 @@ public class InstanceAzureProviderTest {
         data.setToken(createAccessToken());
 
         confirmation.setAttestationData(provider.jsonMapper.writeValueAsString(data));
-
-        PublicKey publicKey = Crypto.loadPublicKey(ecPublicKey);
-        provider.signingKeyResolver.addPublicKey("eckey1", publicKey);
-        provider.accessToken = "Bearer access-token";
 
         final String vmDetails =
                 "{\n" +
@@ -873,15 +879,12 @@ public class InstanceAzureProviderTest {
         try {
             provider.confirmInstance(confirmation);
             fail();
-        } catch (ResourceException ex) {
+        } catch (ProviderResourceException ex) {
             assertTrue(ex.getMessage().contains("Unable to verify instance identity credentials"));
         }
 
         provider.close();
-
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI);
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI);
-        removeOpenIdConfigFile(configFile, jwksUri);
+        clearProviderSettings();
     }
 
     private String createAccessToken() {
@@ -901,7 +904,7 @@ public class InstanceAzureProviderTest {
         // now get the signed token
 
         PrivateKey privateKey = Crypto.loadPrivateKey(ecPrivateKey);
-        return accessToken.getSignedToken(privateKey, "eckey1", SignatureAlgorithm.ES256);
+        return accessToken.getSignedToken(privateKey, "eckey1", "ES256");
     }
 
     private void removeOpenIdConfigFile(File configFile, File jwksUri) {
@@ -915,21 +918,31 @@ public class InstanceAzureProviderTest {
         }
     }
 
+    private void createEmptyConfigFile(File configFile) throws IOException {
+        final String fileContents = "{}";
+        Files.createDirectories(configFile.toPath().getParent());
+        Files.write(configFile.toPath(), fileContents.getBytes());
+    }
+
     private void createOpenIdConfigFile(File configFile, File jwksUri, boolean createJkws) throws IOException {
 
         final String fileContents = "{\n" +
                 "    \"jwks_uri\": \"file://" + jwksUri.getCanonicalPath() + "\"\n" +
                 "}";
+        Files.createDirectories(configFile.toPath().getParent());
         Files.write(configFile.toPath(), fileContents.getBytes());
 
         if (createJkws) {
             final String keyContents = "{\n" +
                     "    \"keys\": [\n" +
                     "        {\n" +
-                    "        \"kty\": \"RSA\",\n" +
-                    "        \"e\": \"AQAB\",\n" +
-                    "        \"kid\": \"c9986ee3-7b2a-4d20-b86a-0839856f2541\",\n" +
-                    "        \"n\": \"y3c3TEePZZPaxqNU2xV4ortsXrw1EXTNQj2QUgL8UOPaQS0lbHJtD1cbcCFnzfXRXTOGqh8l-XWTRIOlt4yU-mEhgR0_JKILTPwmS0fj3D1PT6IjZShuNyd4USVdcjfCRBRb9ExIptJyeTTUu0UujWNEcGOWAkUZcsonmiEz7bIMVkGy5uYnWGbsKP51Zf_PFMb96RcHeE0ZUitIB4YK1bgHLyAEBJIka5mRC_jWq_mlq3jiP5RaVWbzQiJbrjuYWd1Vps_xnrABx6_4Ft_M0AnSQN0SYjc_nWT1yGPpCwtWmWUU5NNHd-w6TdgOjdu00wownwblovtEYED-rncb913qfBM98kNHyj357BSzlvhiwEH5Ayo9DTnx1j9HuJGZXzymVypuQXLu_tkHMEt-c4kytKJNi6MLiauy9xtXGLXgOvZUM8V0Z27Z6CTfCzWZ0nwnEWDdH-NJyusL6pJgEGUBh6E9fdJInV7YOCF-P9_19imPHrZ0blTXK1TDfKS_pCLOXO_OmmH-p-UxQ77OpeP5wlt5Jem0ErSisl_Qxhh1OtJcLwFdA7uC7rOTMrSEGLO--5-CatsXj7BEK2l-3As8fJEkoWXd1-4KOUMfV_fnT_z6U8-bcsYn0nvWPl8XuMbwNWjqHYgqhl1RLA7M17HCydWCF50HI2XojtGgRN0\"\n" +
+                    "        \"kty\": \"EC\",\n" +
+                    "        \"kid\": \"eckey1\",\n" +
+                    "        \"alg\": \"ES256\",\n" +
+                    "        \"use\": \"sig\",\n" +
+                    "        \"crv\": \"P-256\",\n" +
+                    "        \"x\": \"AI0x6wEUk5T0hslaT83DNVy5r98XnG7HAjQynjCrcdCe\",\n" +
+                    "        \"y\": \"ATdV2ebpefqBli_SXZwvL3-7OiD3MTryGbR-zRSFZ_s=\"\n" +
                     "        }\n" +
                     "    ]\n" +
                     "}";
@@ -937,137 +950,23 @@ public class InstanceAzureProviderTest {
         }
     }
 
-    @Test
-    public void testInitializeFailedHttpClient() throws IOException {
+    private void setupProviderSettings(boolean bCreateJwksFile) throws IOException {
+        File configFile = new File("./src/test/resources/azure-openid.json");
+        File jwksUri = new File("./src/test/resources/azure-jwks.json");
+        createOpenIdConfigFile(configFile, jwksUri, bCreateJwksFile);
 
-        File configUri = new File("./src/test/resources/azure-openid-nouri.json");
-        System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI, "file://" + configUri.getCanonicalPath());
-        System.clearProperty(InstanceAzureProvider.AZURE_PROP_DNS_SUFFIX);
+        System.setProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI, "https://azure-zts");
+        System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI, "file://" + configFile.getCanonicalPath());
+        System.setProperty(InstanceAzureProvider.AZURE_PROP_OPENID_JWKS_URI, "file://" + jwksUri.getCanonicalPath());
+    }
 
-        SSLContext sslContext = Mockito.mock(SSLContext.class);
-        InstanceAzureProvider provider = new InstanceAzureProvider();
-        provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", sslContext, null);
+    private void clearProviderSettings() {
+        File configFile = new File("./src/test/resources/azure-openid.json");
+        File jwksUri = new File("./src/test/resources/azure-jwks.json");
+        removeOpenIdConfigFile(configFile, jwksUri);
 
-        assertNull(provider.httpDriver);
-
-        // without http driver we can't fetch our vm details
-
-        assertNull(provider.fetchVMDetails(null));
-        provider.close();
-
+        System.clearProperty(InstanceAzureProvider.AZURE_PROP_ZTS_RESOURCE_URI);
         System.clearProperty(InstanceAzureProvider.AZURE_PROP_OPENID_CONFIG_URI);
-    }
-
-    @Test
-    public void testFetchAccessTokenDataHttpFailure() throws IOException {
-
-        InstanceAzureProvider provider = new InstanceAzureProvider();
-        provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
-
-        HttpDriver httpDriver = Mockito.mock(HttpDriver.class);
-        Mockito.when(httpDriver.doGet(any(), any())).thenReturn(null);
-        provider.httpDriver = httpDriver;
-
-        try {
-            provider.fetchAccessToken();
-            fail();
-        } catch (ResourceException ex) {
-            assertTrue(ex.getMessage().contains("Unable to fetch access token"));
-        }
-        provider.close();
-    }
-
-    @Test
-    public void testFetchAccessTokenParseFailure() throws IOException {
-
-        InstanceAzureProvider provider = new InstanceAzureProvider();
-        provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
-
-        final String tokenDetails = "{\"token\":\"parse-failure";
-        HttpDriver httpDriver = Mockito.mock(HttpDriver.class);
-        Mockito.when(httpDriver.doGet(any(), any())).thenReturn(tokenDetails);
-        provider.httpDriver = httpDriver;
-
-        try {
-            provider.fetchAccessToken();
-            fail();
-        } catch (Exception ex) {
-            assertTrue(ex.getMessage().contains("Unable to parse access token response"));
-        }
-        provider.close();
-    }
-
-    @Test
-    public void testFetchAccessTokenDataNoToken() throws IOException {
-
-        InstanceAzureProvider provider = new InstanceAzureProvider();
-        provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
-
-        final String tokenDetails = "{\"token\":\"no-access-token\"}";
-        HttpDriver httpDriver = Mockito.mock(HttpDriver.class);
-        Mockito.when(httpDriver.doGet(any(), any())).thenReturn(tokenDetails);
-        provider.httpDriver = httpDriver;
-
-        try {
-            provider.fetchAccessToken();
-            fail();
-        } catch (ResourceException ex) {
-            assertTrue(ex.getMessage().contains("Empty access token returned"));
-        }
-        provider.close();
-    }
-
-    @Test
-    public void testFetchAccessToken() throws IOException {
-
-        InstanceAzureProvider provider = new InstanceAzureProvider();
-        provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
-
-        final String tokenDetails = "{\"access_token\":\"access-token\"}";
-        HttpDriver httpDriver = Mockito.mock(HttpDriver.class);
-        Mockito.when(httpDriver.doGet(any(), any())).thenReturn(tokenDetails);
-        provider.httpDriver = httpDriver;
-
-        provider.fetchAccessToken();
-        assertEquals(provider.accessToken, "Bearer access-token");
-        provider.close();
-    }
-
-    @Test
-    public void testAzureCredentialsUpdater() throws IOException {
-
-        InstanceAzureProvider provider = new InstanceAzureProvider();
-        provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
-
-        final String tokenDetails = "{\"access_token\":\"access-token\"}";
-        HttpDriver httpDriver = Mockito.mock(HttpDriver.class);
-        Mockito.when(httpDriver.doGet(any(), any())).thenReturn(tokenDetails);
-        provider.httpDriver = httpDriver;
-
-        InstanceAzureProvider.AzureCredentialsUpdater updater = provider.new AzureCredentialsUpdater();
-        updater.run();
-
-        assertEquals(provider.accessToken, "Bearer access-token");
-        provider.close();
-    }
-
-    @Test
-    public void testAzureCredentialsUpdaterFailure() throws IOException {
-
-        InstanceAzureProvider provider = new InstanceAzureProvider();
-        provider.initialize("provider", "com.yahoo.athenz.instance.provider.impl.InstanceAzureProvider", null, null);
-
-        final String tokenDetails = "{\"token\":\"no-access-token\"}";
-        HttpDriver httpDriver = Mockito.mock(HttpDriver.class);
-        Mockito.when(httpDriver.doGet(any(), any())).thenReturn(tokenDetails);
-        provider.httpDriver = httpDriver;
-
-        // there should be no exceptions
-
-        InstanceAzureProvider.AzureCredentialsUpdater updater = provider.new AzureCredentialsUpdater();
-        updater.run();
-
-        assertNull(provider.accessToken);
-        provider.close();
+        System.clearProperty(InstanceAzureProvider.AZURE_PROP_OPENID_JWKS_URI);
     }
 }

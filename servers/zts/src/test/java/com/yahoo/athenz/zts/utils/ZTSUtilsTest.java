@@ -15,12 +15,6 @@
  */
 package com.yahoo.athenz.zts.utils;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertTrue;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,6 +27,7 @@ import java.util.Date;
 import com.google.common.io.Resources;
 import com.yahoo.athenz.common.server.cert.Priority;
 import com.yahoo.athenz.common.server.util.ConfigProperties;
+import com.yahoo.athenz.zts.ResourceException;
 import com.yahoo.athenz.zts.cert.InstanceCertManager;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
@@ -47,6 +42,8 @@ import com.yahoo.athenz.zts.Identity;
 import com.yahoo.athenz.zts.ZTSConsts;
 
 import javax.net.ssl.SSLContext;
+
+import static org.testng.Assert.*;
 
 public class ZTSUtilsTest {
     
@@ -72,40 +69,40 @@ public class ZTSUtilsTest {
     
     @Test
     public void testRetrieveConfigSetting() {
-        
+
         System.setProperty("prop1", "1001");
-        assertEquals(1001, ConfigProperties.retrieveConfigSetting("prop1", 99));
-        assertEquals(99, ConfigProperties.retrieveConfigSetting("prop2", 99));
+        assertEquals(ConfigProperties.retrieveConfigSetting("prop1", 99), 1001);
+        assertEquals(ConfigProperties.retrieveConfigSetting("prop2", 99), 99);
 
         System.setProperty("prop1", "-101");
-        assertEquals(99, ConfigProperties.retrieveConfigSetting("prop1", 99));
+        assertEquals(ConfigProperties.retrieveConfigSetting("prop1", 99), 99);
 
         System.setProperty("prop1", "0");
-        assertEquals(99, ConfigProperties.retrieveConfigSetting("prop1", 99));
-        
+        assertEquals(ConfigProperties.retrieveConfigSetting("prop1", 99), 99);
+
         System.setProperty("prop1", "abc");
-        assertEquals(99, ConfigProperties.retrieveConfigSetting("prop1", 99));
+        assertEquals(ConfigProperties.retrieveConfigSetting("prop1", 99), 99);
     }
     
     @Test
     public void testCreateSSLContextObject() {
-        
-        System.setProperty(ZTSConsts.ZTS_PROP_KEYSTORE_PATH, "file:///tmp/keystore");
+
+        System.setProperty(ZTSConsts.ZTS_PROP_KEYSTORE_PATH, Resources.getResource("keystore.pkcs12").getFile());
         System.setProperty(ZTSConsts.ZTS_PROP_KEYSTORE_TYPE, "PKCS12");
         System.setProperty(ZTSConsts.ZTS_PROP_KEYSTORE_PASSWORD, "pass123");
-        System.setProperty(ZTSConsts.ZTS_PROP_TRUSTSTORE_PATH, "file:///tmp/truststore");
+        System.setProperty(ZTSConsts.ZTS_PROP_TRUSTSTORE_PATH, Resources.getResource("truststore.jks").getFile());
         System.setProperty(ZTSConsts.ZTS_PROP_TRUSTSTORE_TYPE, "PKCS12");
         System.setProperty(ZTSConsts.ZTS_PROP_TRUSTSTORE_PASSWORD, "pass123");
         System.setProperty(ZTSConsts.ZTS_PROP_KEYMANAGER_PASSWORD, "pass123");
         System.setProperty(ZTSConsts.ZTS_PROP_EXCLUDED_CIPHER_SUITES, ZTSUtils.ZTS_DEFAULT_EXCLUDED_CIPHER_SUITES);
         System.setProperty(ZTSConsts.ZTS_PROP_EXCLUDED_PROTOCOLS, ZTSUtils.ZTS_DEFAULT_EXCLUDED_PROTOCOLS);
         System.setProperty(ZTSConsts.ZTS_PROP_WANT_CLIENT_CERT, "true");
-        
+
         SslContextFactory.Client sslContextFactory = ZTSUtils.createSSLContextObject(null, null);
         assertNotNull(sslContextFactory);
-        assertEquals(sslContextFactory.getKeyStorePath(), "file:///tmp/keystore");
+        assertEquals(sslContextFactory.getKeyStorePath(), "file://" + Resources.getResource("keystore.pkcs12").getFile());
         assertEquals(sslContextFactory.getKeyStoreType(), "PKCS12");
-        assertEquals(sslContextFactory.getTrustStoreResource().toString(), "file:///tmp/truststore");
+        assertEquals(sslContextFactory.getTrustStoreResource().toString(), "file://" + Resources.getResource("truststore.jks").getFile());
         assertEquals(sslContextFactory.getTrustStoreType(), "PKCS12");
         assertEquals(sslContextFactory.getExcludeCipherSuites(), ZTSUtils.ZTS_DEFAULT_EXCLUDED_CIPHER_SUITES.split(","));
         assertEquals(sslContextFactory.getExcludeProtocols(), ZTSUtils.ZTS_DEFAULT_EXCLUDED_PROTOCOLS.split(","));
@@ -113,9 +110,9 @@ public class ZTSUtilsTest {
     
     @Test
     public void testCreateSSLContextObjectNoValues() {
-        
+
         SslContextFactory.Client sslContextFactory = ZTSUtils.createSSLContextObject(null, null);
-        
+
         assertNotNull(sslContextFactory);
         assertNull(sslContextFactory.getKeyStoreResource());
         // store type always defaults to PKCS12
@@ -127,8 +124,8 @@ public class ZTSUtilsTest {
     
     @Test
     public void testCreateSSLContextObjectNoKeyStore() {
-        
-        System.setProperty(ZTSConsts.ZTS_PROP_TRUSTSTORE_PATH, "file:///tmp/truststore");
+
+        System.setProperty(ZTSConsts.ZTS_PROP_TRUSTSTORE_PATH, Resources.getResource("truststore.jks").getFile());
         System.setProperty(ZTSConsts.ZTS_PROP_TRUSTSTORE_TYPE, "PKCS12");
         System.setProperty(ZTSConsts.ZTS_PROP_TRUSTSTORE_PASSWORD, "pass123");
         System.setProperty(ZTSConsts.ZTS_PROP_KEYMANAGER_PASSWORD, "pass123");
@@ -138,14 +135,14 @@ public class ZTSUtilsTest {
         assertNull(sslContextFactory.getKeyStoreResource());
         // store type always defaults to PKCS12
         assertEquals(sslContextFactory.getKeyStoreType(), "PKCS12");
-        assertEquals(sslContextFactory.getTrustStoreResource().toString(), "file:///tmp/truststore");
+        assertEquals(sslContextFactory.getTrustStoreResource().toString(), "file://" + Resources.getResource("truststore.jks").getFile());
         assertEquals(sslContextFactory.getTrustStoreType(), "PKCS12");
     }
     
     @Test
     public void testCreateSSLContextObjectNoTrustStore() {
-        
-        System.setProperty(ZTSConsts.ZTS_PROP_KEYSTORE_PATH, "file:///tmp/keystore");
+
+        System.setProperty(ZTSConsts.ZTS_PROP_KEYSTORE_PATH, Resources.getResource("keystore.pkcs12").getFile());
         System.setProperty(ZTSConsts.ZTS_PROP_KEYSTORE_TYPE, "PKCS12");
         System.setProperty(ZTSConsts.ZTS_PROP_KEYSTORE_PASSWORD, "pass123");
         System.setProperty(ZTSConsts.ZTS_PROP_EXCLUDED_CIPHER_SUITES, ZTSUtils.ZTS_DEFAULT_EXCLUDED_CIPHER_SUITES);
@@ -154,7 +151,7 @@ public class ZTSUtilsTest {
 
         SslContextFactory.Client sslContextFactory = ZTSUtils.createSSLContextObject(null, null);
         assertNotNull(sslContextFactory);
-        assertEquals(sslContextFactory.getKeyStorePath(), "file:///tmp/keystore");
+        assertEquals(sslContextFactory.getKeyStorePath(), "file://" + Resources.getResource("keystore.pkcs12").getFile());
         assertEquals(sslContextFactory.getKeyStoreType(), "PKCS12");
         assertNull(sslContextFactory.getTrustStoreResource());
         // store type always defaults to PKCS12
@@ -165,15 +162,16 @@ public class ZTSUtilsTest {
     
     @Test
     public void testGenerateIdentityFailure() throws IOException {
-        
+
         InstanceCertManager certManager = Mockito.mock(InstanceCertManager.class);
-        Mockito.when(certManager.generateX509Certificate(Mockito.any(), Mockito.any(),
-                Mockito.any(), Mockito.any(), Mockito.anyInt(), Mockito.any())).thenReturn(null);
-        
+        Mockito.when(certManager.generateX509Certificate(Mockito.any(), Mockito.any(), Mockito.any(),
+                Mockito.any(), Mockito.anyInt(), Mockito.any(), Mockito.any())).thenReturn(null);
+
         Path path = Paths.get("src/test/resources/valid.csr");
         String csr = new String(Files.readAllBytes(path));
-        
-        Identity identity = ZTSUtils.generateIdentity(certManager, "aws", "us-west-2", csr, "unknown.syncer", null, 0);
+
+        Identity identity = ZTSUtils.generateIdentity(certManager, "aws", "us-west-2", csr, "unknown.syncer",
+                null, 0, null);
         assertNull(identity);
     }
     
@@ -182,10 +180,10 @@ public class ZTSUtilsTest {
         Path path = Paths.get("src/test/resources/athenz.instanceid.csr");
         String csr = new String(Files.readAllBytes(path));
         PKCS10CertificationRequest certReq = Crypto.getPKCS10CertRequest(csr);
-        
+
         boolean result = ZTSUtils.validateCertReqInstanceId(certReq, "1001");
         assertTrue(result);
-        
+
         result = ZTSUtils.validateCertReqInstanceId(certReq, "10012");
         assertFalse(result);
     }
@@ -195,31 +193,33 @@ public class ZTSUtilsTest {
         Path path = Paths.get("src/test/resources/invalid_dns.csr");
         String csr = new String(Files.readAllBytes(path));
         PKCS10CertificationRequest certReq = Crypto.getPKCS10CertRequest(csr);
-        
+
         boolean result = ZTSUtils.validateCertReqInstanceId(certReq, "1001");
         assertFalse(result);
     }
     
     @Test
     public void testVerifyCertificateRequest() throws IOException {
-        
+
         Path path = Paths.get("src/test/resources/athenz.instanceid.csr");
         String csr = new String(Files.readAllBytes(path));
-        
+        ZTSUtils.ZTS_CERT_INSTANCE_ID_DNS_NAMES.add(".instanceid.athenz.ostk.athenz.cloud");
+
         PKCS10CertificationRequest certReq = Crypto.getPKCS10CertRequest(csr);
         boolean result = ZTSUtils.verifyCertificateRequest(certReq, "athenz", "production");
         assertTrue(result);
 
         result = ZTSUtils.verifyCertificateRequest(certReq, "athenz2", "production");
         assertFalse(result);
+        ZTSUtils.ZTS_CERT_INSTANCE_ID_DNS_NAMES.remove(".instanceid.athenz.ostk.athenz.cloud");
     }
     
     @Test
     public void testVerifyCertificateRequestMismatchDns() throws IOException {
-        
+
         Path path = Paths.get("src/test/resources/athenz.mismatch.cn.csr");
         String csr = new String(Files.readAllBytes(path));
-        
+
         PKCS10CertificationRequest certReq = Crypto.getPKCS10CertRequest(csr);
         boolean result = ZTSUtils.verifyCertificateRequest(certReq, "athenz2", "production");
         assertFalse(result);
@@ -227,48 +227,60 @@ public class ZTSUtilsTest {
     
     @Test
     public void testVerifyCertificateRequestNoCertRecord() throws IOException {
-        
+
         Path path = Paths.get("src/test/resources/athenz.instanceid.csr");
         String csr = new String(Files.readAllBytes(path));
-        
+        ZTSUtils.ZTS_CERT_INSTANCE_ID_DNS_NAMES.add(".instanceid.athenz.ostk.athenz.cloud");
+
         PKCS10CertificationRequest certReq = Crypto.getPKCS10CertRequest(csr);
         boolean result = ZTSUtils.verifyCertificateRequest(certReq, "athenz", "production");
         assertTrue(result);
-        
+
         result = ZTSUtils.verifyCertificateRequest(certReq, "athenz2", "production");
         assertFalse(result);
+        ZTSUtils.ZTS_CERT_INSTANCE_ID_DNS_NAMES.remove(".instanceid.athenz.ostk.athenz.cloud");
     }
     
     @Test
     public void testValidateCertReqDNSNames() throws IOException {
         Path path = Paths.get("src/test/resources/athenz.instanceid.csr");
         String csr = new String(Files.readAllBytes(path));
-        
+
         PKCS10CertificationRequest certReq = Crypto.getPKCS10CertRequest(csr);
+
+        // first without the expected instance id dns name
         boolean result = ZTSUtils.validateCertReqDNSNames(certReq, "athenz", "production");
+        assertFalse(result);
+
+        ZTSUtils.ZTS_CERT_INSTANCE_ID_DNS_NAMES.add(".instanceid.athenz.ostk.athenz.cloud");
+
+        // now it should be valid
+        result = ZTSUtils.validateCertReqDNSNames(certReq, "athenz", "production");
         assertTrue(result);
-        
+
         result = ZTSUtils.validateCertReqDNSNames(certReq, "athenz2", "production");
         assertFalse(result);
-        
+
         result = ZTSUtils.validateCertReqDNSNames(certReq, "athenz2", "productio2");
         assertFalse(result);
+        ZTSUtils.ZTS_CERT_INSTANCE_ID_DNS_NAMES.remove(".instanceid.athenz.ostk.athenz.cloud");
+
     }
     
     @Test
     public void testValidateCertReqDNSNamesNoDNS() throws IOException {
         Path path = Paths.get("src/test/resources/valid.csr");
         String csr = new String(Files.readAllBytes(path));
-        
+
         // no dns names so all are valid
-        
+
         PKCS10CertificationRequest certReq = Crypto.getPKCS10CertRequest(csr);
         boolean result = ZTSUtils.validateCertReqDNSNames(certReq, "athenz", "production");
         assertTrue(result);
-        
+
         result = ZTSUtils.validateCertReqDNSNames(certReq, "athenz2", "production");
         assertTrue(result);
-        
+
         result = ZTSUtils.validateCertReqDNSNames(certReq, "athenz2", "productio2");
         assertTrue(result);
     }
@@ -277,13 +289,13 @@ public class ZTSUtilsTest {
     public void testValidateCertReqDNSNamesUnknown() throws IOException {
         Path path = Paths.get("src/test/resources/invalid_dns.csr");
         String csr = new String(Files.readAllBytes(path));
-        
+
         // includes www.athenz.io as dns name so it should be rejected
-        
+
         PKCS10CertificationRequest certReq = Crypto.getPKCS10CertRequest(csr);
         boolean result = ZTSUtils.validateCertReqDNSNames(certReq, "athenz", "production");
         assertFalse(result);
-        
+
         result = ZTSUtils.validateCertReqDNSNames(certReq, "athenz", "production");
         assertFalse(result);
     }
@@ -292,7 +304,7 @@ public class ZTSUtilsTest {
     public void testValidateCertReqDNSNamesSubdomain() throws IOException {
         Path path = Paths.get("src/test/resources/subdomain.csr");
         String csr = new String(Files.readAllBytes(path));
-        
+
         PKCS10CertificationRequest certReq = Crypto.getPKCS10CertRequest(csr);
         boolean result = ZTSUtils.validateCertReqDNSNames(certReq, "athenz.domain", "production");
         assertTrue(result);
@@ -302,7 +314,7 @@ public class ZTSUtilsTest {
     public void testValidateCertReqDNSNamesSubdomainInvalid() throws IOException {
         Path path = Paths.get("src/test/resources/subdomain_invalid.csr");
         String csr = new String(Files.readAllBytes(path));
-        
+
         PKCS10CertificationRequest certReq = Crypto.getPKCS10CertRequest(csr);
         boolean result = ZTSUtils.validateCertReqDNSNames(certReq, "athenz.domain", "production");
         assertFalse(result);
@@ -310,23 +322,23 @@ public class ZTSUtilsTest {
     
     @Test
     public void testValidateCertReqCommonNameException() {
-        
+
         PKCS10CertificationRequest certReq = Mockito.mock(PKCS10CertificationRequest.class);
         Mockito.when(certReq.getSubject()).thenThrow(new CryptoException());
-        
+
         assertFalse(ZTSUtils.validateCertReqCommonName(certReq, "athenz.syncer"));
     }
     
     @Test
     public void testGetApplicationSecret() {
-        assertEquals(ZTSUtils.getApplicationSecret(null, "appname", "pass"), "pass");
-        
+        assertEquals(ZTSUtils.getApplicationSecret(null, "appname", "pass", null), "pass");
+
         PrivateKeyStore keyStore = Mockito.mock(PrivateKeyStore.class);
-        Mockito.when(keyStore.getSecret(null, "pass")).thenReturn("app234".toCharArray());
-        assertEquals(ZTSUtils.getSecret(keyStore, null, "pass"), "app234".toCharArray());
-        
-        Mockito.when(keyStore.getSecret("appname", "passname")).thenReturn("app123".toCharArray());
-        assertEquals(ZTSUtils.getSecret(keyStore, "appname", "passname"), "app123".toCharArray());
+        Mockito.when(keyStore.getSecret(null, null, "pass")).thenReturn("app234".toCharArray());
+        assertEquals(ZTSUtils.getSecret(keyStore, null, "pass", null), "app234".toCharArray());
+
+        Mockito.when(keyStore.getSecret("appname", null, "passname")).thenReturn("app123".toCharArray());
+        assertEquals(ZTSUtils.getSecret(keyStore, "appname", "passname", null), "app123".toCharArray());
     }
 
     @Test
@@ -584,10 +596,10 @@ public class ZTSUtilsTest {
 
     @Test
     public void testParseInt() {
-        assertEquals(0, ZTSUtils.parseInt(null, 0));
-        assertEquals(-1, ZTSUtils.parseInt("", -1));
-        assertEquals(100, ZTSUtils.parseInt("100", 1));
-        assertEquals(0, ZTSUtils.parseInt("abc", 0));
+        assertEquals(ZTSUtils.parseInt(null, 0), 0);
+        assertEquals(ZTSUtils.parseInt("", -1), -1);
+        assertEquals(ZTSUtils.parseInt("100", 1), 100);
+        assertEquals(ZTSUtils.parseInt("abc", 0), 0);
     }
 
     @Test
@@ -643,5 +655,352 @@ public class ZTSUtilsTest {
         assertTrue(ZTSUtils.valueEndsWith("test.athenz.cloud", Arrays.asList(".athenz2.cloud", "athenz.cloud")));
         assertFalse(ZTSUtils.valueEndsWith("test.athenz1.cloud", Collections.singletonList(".athenz2.cloud")));
         assertFalse(ZTSUtils.valueEndsWith("test.athenz1.cloud", Arrays.asList(".athenz2.cloud", "athenz.cloud")));
+    }
+
+    @Test
+    public void testConstructor() {
+        new ZTSUtils();
+    }
+
+    @Test
+    public void testGetRemainingExpiryTimeValid() {
+        // Test case: token expires in 3600 seconds (1 hour) from now
+        long currentTimeSeconds = System.currentTimeMillis() / 1000;
+        long expiryTime = currentTimeSeconds + 3600;
+
+        Integer remainingExpiry = ZTSUtils.getRemainingExpiryTime(expiryTime);
+        assertNotNull(remainingExpiry);
+        // Allow for small time difference due to test execution time
+        assertTrue(remainingExpiry >= 3599 && remainingExpiry <= 3600);
+    }
+
+    @Test
+    public void testGetRemainingExpiryTimeExpired() {
+        // Test case: token already expired (expiry time in the past)
+        long currentTimeSeconds = System.currentTimeMillis() / 1000;
+        long expiryTime = currentTimeSeconds - 1000; // expired 1000 seconds ago
+
+        try {
+            ZTSUtils.getRemainingExpiryTime(expiryTime);
+            fail();
+        } catch (ResourceException ex) {
+            assertEquals(ex.getCode(), ResourceException.BAD_REQUEST);
+        }
+    }
+
+    @Test
+    public void testGetRemainingExpiryTimeZero() {
+        // Test case: token expires exactly now (or within 1 second)
+        long expiryTime = System.currentTimeMillis() / 1000;
+
+        Integer remainingExpiry = ZTSUtils.getRemainingExpiryTime(expiryTime);
+        // Result could be null (if negative due to execution time) or 0
+        assertTrue(remainingExpiry == null || remainingExpiry == 0);
+    }
+
+    @Test
+    public void testGetRemainingExpiryTimeFarFuture() {
+        // Test case: token expiry is too far in the future, causing ArithmeticException
+        // Using a value that when subtracted from current time will exceed Integer.MAX_VALUE
+        long currentTimeSeconds = System.currentTimeMillis() / 1000;
+        long expiryTime = currentTimeSeconds + (long) Integer.MAX_VALUE + 1000L;
+
+        Integer remainingExpiry = ZTSUtils.getRemainingExpiryTime(expiryTime);
+        assertNull(remainingExpiry); // Should return null when ArithmeticException is caught
+    }
+
+    @Test
+    public void testGetRemainingExpiryTimeMaxIntValue() {
+        // Test case: remaining time is exactly Integer.MAX_VALUE
+        long currentTimeSeconds = System.currentTimeMillis() / 1000;
+        long expiryTime = currentTimeSeconds + Integer.MAX_VALUE;
+
+        Integer remainingExpiry = ZTSUtils.getRemainingExpiryTime(expiryTime);
+        assertNotNull(remainingExpiry);
+        // Allow for small time difference due to test execution time
+        assertTrue(remainingExpiry >= Integer.MAX_VALUE - 1);
+    }
+
+    @Test
+    public void testGetRemainingExpiryTimeSmallPositive() {
+        // Test case: token expires in 1 second
+        long currentTimeSeconds = System.currentTimeMillis() / 1000;
+        long expiryTime = currentTimeSeconds + 1;
+
+        Integer remainingExpiry = ZTSUtils.getRemainingExpiryTime(expiryTime);
+        assertNotNull(remainingExpiry);
+        assertTrue(remainingExpiry >= 0 && remainingExpiry <= 1);
+    }
+
+    @Test
+    public void testGetRemainingExpiryTimeTypicalUse() {
+        // Test case: typical JWT token expiry (e.g., 30 minutes from now)
+        long currentTimeSeconds = System.currentTimeMillis() / 1000;
+        long expiryTime = currentTimeSeconds + 1800; // 30 minutes
+
+        Integer remainingExpiry = ZTSUtils.getRemainingExpiryTime(expiryTime);
+        assertNotNull(remainingExpiry);
+        // Allow for small time difference due to test execution time
+        assertTrue(remainingExpiry >= 1799 && remainingExpiry <= 1800);
+    }
+
+    @Test
+    public void testIsSubsetEmptySubset() {
+        // Empty subset is a subset of any set
+        String[] subset = new String[0];
+        String[] superset = new String[]{"a", "b", "c"};
+        assertTrue(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetEmptySuperset() {
+        // Non-empty subset cannot be subset of empty superset
+        String[] subset = new String[]{"a"};
+        String[] superset = new String[0];
+        assertFalse(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetBothEmpty() {
+        // Empty subset is subset of empty superset
+        String[] subset = new String[0];
+        String[] superset = new String[0];
+        assertTrue(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetValidSubset() {
+        // Subset is actually a subset
+        String[] subset = new String[]{"a", "b"};
+        String[] superset = new String[]{"a", "b", "c", "d"};
+        assertTrue(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetNotSubset() {
+        // Subset contains element not in superset
+        String[] subset = new String[]{"a", "b", "e"};
+        String[] superset = new String[]{"a", "b", "c", "d"};
+        assertFalse(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetEqualSets() {
+        // Subset equals superset
+        String[] subset = new String[]{"a", "b", "c"};
+        String[] superset = new String[]{"a", "b", "c"};
+        assertTrue(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetSingleElement() {
+        // Single element subset
+        String[] subset = new String[]{"a"};
+        String[] superset = new String[]{"a", "b", "c"};
+        assertTrue(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetSingleElementNotInSuperset() {
+        // Single element not in superset
+        String[] subset = new String[]{"z"};
+        String[] superset = new String[]{"a", "b", "c"};
+        assertFalse(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetOrderIndependent() {
+        // Order should not matter
+        String[] subset = new String[]{"c", "a", "b"};
+        String[] superset = new String[]{"a", "b", "c", "d"};
+        assertTrue(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetSupersetOrderIndependent() {
+        // Superset order should not matter
+        String[] subset = new String[]{"a", "b"};
+        String[] superset = new String[]{"d", "c", "b", "a"};
+        assertTrue(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetDuplicatesInSubset() {
+        // Duplicates in subset should be handled correctly
+        String[] subset = new String[]{"a", "a", "b"};
+        String[] superset = new String[]{"a", "b", "c"};
+        assertTrue(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetDuplicatesInSuperset() {
+        // Duplicates in superset should be handled correctly
+        String[] subset = new String[]{"a", "b"};
+        String[] superset = new String[]{"a", "a", "b", "b", "c"};
+        assertTrue(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetCaseSensitive() {
+        // Strings are case-sensitive
+        String[] subset = new String[]{"A", "b"};
+        String[] superset = new String[]{"a", "b", "c"};
+        assertFalse(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetCaseSensitiveMatch() {
+        // Case-sensitive match
+        String[] subset = new String[]{"A", "B"};
+        String[] superset = new String[]{"A", "B", "C"};
+        assertTrue(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetLargeSets() {
+        // Test with larger sets
+        String[] subset = new String[]{"a", "c", "e", "g"};
+        String[] superset = new String[]{"a", "b", "c", "d", "e", "f", "g", "h"};
+        assertTrue(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetLargeSetsNotSubset() {
+        // Test with larger sets where subset is not valid
+        String[] subset = new String[]{"a", "c", "e", "z"};
+        String[] superset = new String[]{"a", "b", "c", "d", "e", "f", "g", "h"};
+        assertFalse(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetAllElementsMissing() {
+        // All elements of subset are missing from superset
+        String[] subset = new String[]{"x", "y", "z"};
+        String[] superset = new String[]{"a", "b", "c"};
+        assertFalse(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetPartialMatch() {
+        // Some elements match, some don't
+        String[] subset = new String[]{"a", "x", "b"};
+        String[] superset = new String[]{"a", "b", "c"};
+        assertFalse(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetWithEmptyStrings() {
+        // Test with empty strings
+        String[] subset = new String[]{"", "a"};
+        String[] superset = new String[]{"", "a", "b"};
+        assertTrue(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetWithEmptyStringNotInSuperset() {
+        // Empty string not in superset
+        String[] subset = new String[]{"", "a"};
+        String[] superset = new String[]{"a", "b"};
+        assertFalse(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetWithSpecialCharacters() {
+        // Test with special characters
+        String[] subset = new String[]{"a-b", "c_d"};
+        String[] superset = new String[]{"a-b", "c_d", "e.f"};
+        assertTrue(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetWithNumbers() {
+        // Test with numeric strings
+        String[] subset = new String[]{"1", "2"};
+        String[] superset = new String[]{"1", "2", "3", "4"};
+        assertTrue(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetWithWhitespace() {
+        // Test with whitespace
+        String[] subset = new String[]{"a b", "c"};
+        String[] superset = new String[]{"a b", "c", "d"};
+        assertTrue(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test(expectedExceptions = NullPointerException.class)
+    public void testIsSubsetNullSubset() {
+        // Null subset should throw NullPointerException
+        String[] subset = null;
+        String[] superset = new String[]{"a", "b", "c"};
+        ZTSUtils.isSubset(subset, superset);
+    }
+
+    @Test(expectedExceptions = NullPointerException.class)
+    public void testIsSubsetNullSuperset() {
+        // Null superset should throw NullPointerException
+        String[] subset = new String[]{"a", "b"};
+        String[] superset = null;
+        ZTSUtils.isSubset(subset, superset);
+    }
+
+    @Test(expectedExceptions = NullPointerException.class)
+    public void testIsSubsetBothNull() {
+        // Both null should throw NullPointerException
+        String[] subset = null;
+        String[] superset = null;
+        ZTSUtils.isSubset(subset, superset);
+    }
+
+    @Test
+    public void testIsSubsetNullElementsInSubset() {
+        // Null elements in subset array
+        String[] subset = new String[]{null, "a"};
+        String[] superset = new String[]{null, "a", "b"};
+        assertTrue(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testIsSubsetNullElementNotInSuperset() {
+        // Null element in subset but not in superset
+        String[] subset = new String[]{null, "a"};
+        String[] superset = new String[]{"a", "b"};
+        assertFalse(ZTSUtils.isSubset(subset, superset));
+    }
+
+    @Test
+    public void testValidationErrorMessage() {
+        assertEquals(ZTSUtils.validationErrorMessage("getdomain", "bad.domain!", "DomainName", "pattern mismatch"),
+                "getdomain: Invalid DomainName value: bad.domain! error: pattern mismatch");
+        assertEquals(ZTSUtils.validationErrorMessage("getdomain", 42, "Int32", "out of range"),
+                "getdomain: Invalid Int32 value: 42 error: out of range");
+        assertEquals(ZTSUtils.validationErrorMessage("getdomain", Boolean.TRUE, "Bool", "unexpected"),
+                "getdomain: Invalid Bool value: true error: unexpected");
+        // complex objects must not include the value
+        assertEquals(ZTSUtils.validationErrorMessage("postrolecert", new Identity(), "Identity", "missing field"),
+                "postrolecert: Invalid Identity error: missing field");
+    }
+
+    @Test
+    public void testSanitizeLogValue() {
+        assertEquals(ZTSUtils.sanitizeLogValue("athenz.api"), "athenz.api");
+        // control characters are replaced so log entries cannot be forged
+        assertEquals(ZTSUtils.sanitizeLogValue("bad\r\nforged log line\tvalue\u0000"), "bad??forged log line?value?");
+        // oversized values are truncated
+        String longValue = "a".repeat(ZTSUtils.MAX_LOG_VALUE_LENGTH + 100);
+        String sanitized = ZTSUtils.sanitizeLogValue(longValue);
+        assertEquals(sanitized.length(), ZTSUtils.MAX_LOG_VALUE_LENGTH + 3);
+        assertTrue(sanitized.endsWith("..."));
+        assertEquals(ZTSUtils.sanitizeLogValue("a".repeat(ZTSUtils.MAX_LOG_VALUE_LENGTH)).length(),
+                ZTSUtils.MAX_LOG_VALUE_LENGTH);
+    }
+
+    @Test
+    public void testValidationErrorMessageSanitized() {
+        assertEquals(ZTSUtils.validationErrorMessage("getdomain", "bad\ndomain", "DomainName", "pattern mismatch"),
+                "getdomain: Invalid DomainName value: bad?domain error: pattern mismatch");
+        String msg = ZTSUtils.validationErrorMessage("getdomain", "x".repeat(10000), "DomainName", "pattern mismatch");
+        assertTrue(msg.length() < 400, msg);
+        assertTrue(msg.contains("... error: pattern mismatch"), msg);
     }
 }

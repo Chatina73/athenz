@@ -4,6 +4,12 @@
 //Domain types
 include "Names.tdl";
 
+//The representation of the domain ownership object
+type ResourceDomainOwnership Struct {
+    SimpleName metaOwner (optional); //owner of the object's meta attribute
+    SimpleName objectOwner (optional); //owner of the object itself - checked for object deletion
+}
+
 //Set of metadata attributes that all domains may have and can be changed.
 type DomainMeta Struct {
     String description (optional); //a description of the domain
@@ -11,6 +17,7 @@ type DomainMeta Struct {
     Bool enabled (optional, default=true); //Future use only, currently not used
     Bool auditEnabled (optional, default=false); //Flag indicates whether or not domain modifications should be logged for SOX+Auditing. If true, the auditRef parameter must be supplied(not empty) for any API defining it.
     String account (optional); //associated aws account id (system attribute - uniqueness check - if enabled)
+    String awsAccountName (optional); //associated aws account name (system attribute)
     Int32 ypmId (optional); //associated product id (system attribute - uniqueness check - if enabled)
     String applicationId (optional); //associated application id
     String certDnsDomain (optional); //domain certificate dns domain (system attribute)
@@ -18,18 +25,31 @@ type DomainMeta Struct {
     Int32 tokenExpiryMins (optional); //tokens issued for this domain will have specified max timeout in mins
     Int32 serviceCertExpiryMins (optional); //service identity certs issued for this domain will have specified max timeout in mins
     Int32 roleCertExpiryMins (optional); //role certs issued for this domain will have specified max timeout in mins
-    SimpleName signAlgorithm (optional); //rsa or ec signing algorithm to be used for tokens
+    String signAlgorithm (optional, x_allowempty="true"); //rsa or ec signing algorithm to be used for tokens
     Int32 serviceExpiryDays (optional); //all services in the domain roles will have specified max expiry days
     Int32 groupExpiryDays (optional); //all groups in the domain roles will have specified max expiry days
     String userAuthorityFilter (optional); //membership filtered based on user authority configured attributes
     String azureSubscription (optional); //associated azure subscription id (system attribute - uniqueness check - if enabled)
+    String azureTenant (optional); //associated azure tenant id (system attribute)
+    String azureClient (optional); //associated azure client id (system attribute)
     String gcpProject (optional); //associated gcp project id (system attribute - uniqueness check - if enabled)
     String gcpProjectNumber (optional); //associated gcp project number (system attribute)
-    Map<CompoundName,TagValueList> tags (optional); //key-value pair tags, tag might contain multiple values
+    Map<TagKey,TagValueList> tags (optional); //key-value pair tags, tag might contain multiple values
     String businessService (optional, x_allowempty="true"); //associated business service with domain
     Int32 memberPurgeExpiryDays (optional); //purge role/group members with expiry date configured days in the past
     String productId (optional); //associated product id (system attribute - uniqueness check - if enabled)
     Int32 featureFlags (optional); //features enabled per domain (system attribute)
+    Map<SimpleName,String> contacts (optional); //list of domain contacts (PE-Owner, Product-Owner, etc), each type can have a single value
+    String environment (optional, x_allowempty="true"); //domain environment e.g. production, staging, etc
+    ResourceDomainOwnership resourceOwnership (optional); //ownership information for the domain (read-only attribute)
+    String x509CertSignerKeyId (optional, x_allowempty="true"); //requested x509 cert signer key id (system attribute)
+    String sshCertSignerKeyId (optional, x_allowempty="true"); //requested ssh cert signer key id (system attribute)
+    String slackChannel (optional, x_allowempty="true"); //slack channel for any notifications in this domain
+    String onCall (optional, x_allowempty="true"); //oncall team name/id for any incidents in this domain
+    Bool autoDeleteTenantAssumeRoleAssertions (optional, default=false); // Indicates whether to automatically delete assertions for a tenant's assume role
+    Bool clientIdSelfUpdate (optional, default=false); // Indicates whether client ID self-update is enabled for services in this domain
+    String externalMemberValidator (optional, x_allowempty="true"); //class name responsible for validating external members
+    String costCenter (optional, x_allowempty="true"); //cost center for this domain for any chargebacks
 }
 
 //A domain is an independent partition of users, roles, and resources.
@@ -66,4 +86,5 @@ type DomainOptions Struct {
     Bool enforceUniqueAWSAccounts; //enforce domains are associated with unique aws accounts
     Bool enforceUniqueAzureSubscriptions; //enforce domains are associated with unique azure subscriptions
     Bool enforceUniqueGCPProjects; //enforce domains are associated with unique gcp projects
+    Bool allowMultipleAWSAccounts; //allow a domain's account field to contain multiple comma-separated aws accounts
 }

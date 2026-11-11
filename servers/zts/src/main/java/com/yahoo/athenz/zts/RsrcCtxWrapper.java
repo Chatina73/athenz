@@ -22,36 +22,47 @@ import com.yahoo.athenz.common.ServerCommonConsts;
 import com.yahoo.athenz.common.messaging.DomainChangeMessage;
 import com.yahoo.athenz.common.server.rest.Http;
 import com.yahoo.athenz.common.metrics.Metric;
+import com.yahoo.athenz.common.server.rest.ServerResourceContext;
+import com.yahoo.athenz.common.server.ServerResourceException;
+import com.yahoo.athenz.zts.utils.ZTSUtils;
 import jakarta.servlet.ServletContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+
+import java.security.cert.X509Certificate;
 import java.util.List;
 
 public class RsrcCtxWrapper implements ResourceContext {
 
     private static final Logger LOG = LoggerFactory.getLogger(RsrcCtxWrapper.class);
 
-    com.yahoo.athenz.common.server.rest.ResourceContext ctx;
+    ServerResourceContext ctx;
     boolean optionalAuth;
     Metric metric;
-    private Object timerMetric;
-    private String apiName;
+    private final Object timerMetric;
+    private final String apiName;
+    private final Authority userAuthority;
+    private final String userDomain;
+    private boolean principalValidated = false;
 
     public RsrcCtxWrapper(ServletContext servletContext, HttpServletRequest request, HttpServletResponse response,
                           Http.AuthorityList authList, boolean optionalAuth, Authorizer authorizer,
-                          Metric metric, Object timerMetric, String apiName) {
+                          Metric metric, Object timerMetric, String apiName,
+                          Authority userAuthority, String userDomain) {
         this.optionalAuth = optionalAuth;
         this.metric = metric;
         this.timerMetric = timerMetric;
         this.apiName = apiName.toLowerCase();
-        ctx = new com.yahoo.athenz.common.server.rest.ResourceContext(servletContext, request, response,
+        this.userAuthority = userAuthority;
+        this.userDomain = userDomain;
+        ctx = new ServerResourceContext(servletContext, request, response,
                 authList, authorizer);
     }
 
-    public com.yahoo.athenz.common.server.rest.ResourceContext context() {
+    public ServerResourceContext context() {
         return ctx;
     }
 
@@ -104,20 +115,36 @@ public class RsrcCtxWrapper implements ResourceContext {
             final Principal principal = principal();
             if (principal != null && principal.getMtlsRestricted()) {
                 LOG.error("authenticate: certificate is mTLS restricted");
-                throw new com.yahoo.athenz.common.server.rest.ResourceException(com.yahoo.athenz.common.server.rest.ResourceException.UNAUTHORIZED, "certificate is mTLS restricted");
+                throw new ServerResourceException(ServerResourceException.UNAUTHORIZED, "certificate is mTLS restricted");
             }
-        } catch (com.yahoo.athenz.common.server.rest.ResourceException restExc) {
+            validateUserPrincipal(principal);
+        } catch (ServerResourceException restExc) {
             throwZtsException(restExc);
         }
     }
-    
+
     @Override
     public void authorize(String action, String resource, String trustedDomain) {
         try {
             ctx.authorize(action, resource, trustedDomain);
-        } catch (com.yahoo.athenz.common.server.rest.ResourceException restExc) {
+            validateUserPrincipal(principal());
+        } catch (ServerResourceException restExc) {
             logPrincipal();
             throwZtsException(restExc);
+        }
+    }
+
+    void validateUserPrincipal(final Principal principal) throws ServerResourceException {
+        if (principalValidated || principal == null || userAuthority == null || userDomain == null) {
+            return;
+        }
+        principalValidated = true;
+        if (!userDomain.equals(principal.getDomain())) {
+            return;
+        }
+        if (userAuthority.getUserType(principal.getFullName()) != Authority.UserType.USER_ACTIVE) {
+            LOG.error("validateUserPrincipal: user {} is not valid", principal.getFullName());
+            throw new ServerResourceException(ServerResourceException.UNAUTHORIZED, "user is not valid");
         }
     }
 
@@ -141,11 +168,21 @@ public class RsrcCtxWrapper implements ResourceContext {
         if (principalName == null) {
             principalName = principal.getFullName();
         }
-        logPrincipal(principalName);
-        logAuthorityId(principal.getAuthority());
+        if (ctx.request() != null) {
+            logPrincipal(principalName);
+            logAuthorityId(principal.getAuthority());
+            logCertificateSerialNumber(principal.getX509Certificate());
+        }
         return principalName;
     }
-    
+
+    public void logCertificateSerialNumber(X509Certificate x509Cert) {
+        if (x509Cert == null) {
+            return;
+        }
+        ctx.request().setAttribute(ServerCommonConsts.REQUEST_X509_SERIAL, x509Cert.getSerialNumber().toString());
+    }
+
     public void logPrincipal(final String principal) {
         if (principal == null) {
             return;
@@ -165,7 +202,7 @@ public class RsrcCtxWrapper implements ResourceContext {
         return (principal == null) ? null : principal.getDomain();
     }
 
-    public void throwZtsException(com.yahoo.athenz.common.server.rest.ResourceException restExc) {
+    public void throwZtsException(ServerResourceException restExc) {
 
         metric.increment("authfailure");
 
@@ -176,15 +213,10 @@ public class RsrcCtxWrapper implements ResourceContext {
 
         // now throw a ZTS exception based on the rest exception
 
-        String msg = null;
-        Object data = restExc.getData();
-        if (data instanceof String) {
-            msg = (String) data;
-        }
-        if (msg == null) {
-            msg = restExc.getMessage();
-        }
-        throw new com.yahoo.athenz.zts.ResourceException(restExc.getCode(),
-                new ResourceError().code(restExc.getCode()).message(msg));
+        throw ZTSUtils.error(restExc);
+    }
+
+    public void setPrincipal(Principal principal) {
+        ctx.setPrincipal(principal);
     }
 }

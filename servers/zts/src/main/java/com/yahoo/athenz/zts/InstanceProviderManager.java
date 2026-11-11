@@ -22,13 +22,17 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.yahoo.athenz.auth.Authorizer;
 import com.yahoo.athenz.auth.ServerPrivateKey;
 import com.yahoo.athenz.common.server.dns.HostnameResolver;
+import com.yahoo.athenz.instance.provider.ProviderResourceException;
+import com.yahoo.athenz.zts.utils.ZTSUtils;
 import org.eclipse.jetty.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yahoo.athenz.auth.KeyStore;
+import com.yahoo.athenz.auth.PrivateKeyStore;
 import com.yahoo.athenz.instance.provider.InstanceProvider;
 import com.yahoo.athenz.instance.provider.impl.InstanceHttpProvider;
 import com.yahoo.athenz.zts.cache.DataCache;
@@ -51,6 +55,8 @@ public class InstanceProviderManager {
     private final SSLContext athenzServerSSLContext;
     private final SSLContext athenzClientSSLContext;
     private final ServerPrivateKey serverPrivateKey;
+    private final ZTSHandler ztsHandler;
+    private final Authorizer authorizer;
     List<String> providerEndpoints = Collections.emptyList();
 
     enum ProviderScheme {
@@ -60,13 +66,15 @@ public class InstanceProviderManager {
     }
     
     public InstanceProviderManager(DataStore dataStore, SSLContext athenzServerSSLContext, SSLContext athenzClientSSLContext,
-                                   ServerPrivateKey serverPrivateKey, KeyStore keyStore) {
+            ServerPrivateKey serverPrivateKey, KeyStore keyStore, Authorizer authorizer, ZTSHandler ztsHandler) {
         
         this.dataStore = dataStore;
         this.keyStore = keyStore;
         this.athenzServerSSLContext = athenzServerSSLContext;
         this.athenzClientSSLContext = athenzClientSSLContext;
         this.serverPrivateKey = serverPrivateKey;
+        this.authorizer = authorizer;
+        this.ztsHandler = ztsHandler;
 
         providerMap = new ConcurrentHashMap<>();
         
@@ -78,7 +86,7 @@ public class InstanceProviderManager {
         }
     }
     
-    InstanceProvider getProvider(String provider, HostnameResolver hostnameResolver) {
+    InstanceProvider getProvider(String provider, HostnameResolver hostnameResolver, PrivateKeyStore privateKeyStore) {
         int idx = provider.lastIndexOf('.');
         if (idx == -1) {
             LOGGER.error("Invalid provider service name: {}", provider);
@@ -134,17 +142,24 @@ public class InstanceProviderManager {
         // if the uri has athenz.client as the authenticated user then
         // we're going to use our client ssl context otherwise we'll
         // default to our server ssl context
+
         boolean useClientSSLContext = ATHENZ_CLIENT_USER.equals(uri.getUserInfo());
 
         ProviderScheme schemeType = getProviderEndpointScheme(uri);
         switch (schemeType) {
         case HTTPS:
             instanceProvider = new InstanceHttpProvider();
-            instanceProvider.initialize(provider, getProviderEndpoint(uri, useClientSSLContext, providerEndpoint),
-                    getSSLContext(useClientSSLContext), keyStore);
+            try {
+                instanceProvider.initialize(provider, getProviderEndpoint(uri, useClientSSLContext, providerEndpoint),
+                        getSSLContext(useClientSSLContext), keyStore);
+            } catch (ProviderResourceException ex) {
+                LOGGER.error("Unable to initialize provider {}: {}", provider, ex.getMessage());
+                return null;
+            }
             break;
         case CLASS:
-            instanceProvider = getClassProvider(uri.getHost(), provider, getSSLContext(useClientSSLContext), hostnameResolver);
+            instanceProvider = getClassProvider(uri.getHost(), provider, getSSLContext(useClientSSLContext),
+                hostnameResolver, privateKeyStore);
             break;
         default:
             break;
@@ -153,7 +168,9 @@ public class InstanceProviderManager {
         return instanceProvider;
     }
 
-    InstanceProvider getClassProvider(String className, String providerName, SSLContext context, HostnameResolver hostnameResolver) {
+    InstanceProvider getClassProvider(String className, String providerName, SSLContext context, HostnameResolver hostnameResolver,
+            PrivateKeyStore privateKeyStore) {
+
         final String classKey = className + "-" + providerName;
         InstanceProvider provider = providerMap.get(classKey);
         if (provider != null) {
@@ -166,10 +183,24 @@ public class InstanceProviderManager {
             LOGGER.error("Unable to get new instance for provider {}", className, ex);
             return null;
         }
-        provider.initialize(providerName, className, context, keyStore);
+
         provider.setHostnameResolver(hostnameResolver);
+        provider.setRolesProvider(dataStore);
+        provider.setExternalCredentialsProvider(new InstanceExternalCredentialsProvider(providerName, ztsHandler));
+        provider.setAuthorizer(authorizer);
+        provider.setPubKeysProvider(dataStore);
+        provider.setPrivateKeyStore(privateKeyStore);
         if (ZTS_PROVIDER.equals(providerName)) {
             provider.setPrivateKey(serverPrivateKey.getKey(), serverPrivateKey.getId(), serverPrivateKey.getAlgorithm());
+        }
+
+        // initialize provider after setting all the fields so that the initialize code can use them
+
+        try {
+            provider.initialize(providerName, className, context, keyStore);
+        } catch (ProviderResourceException ex) {
+            LOGGER.error("Unable to initialize class provider {}: {}", providerName, ex.getMessage());
+            return null;
         }
 
         providerMap.put(classKey, provider);
@@ -219,14 +250,7 @@ public class InstanceProviderManager {
         if (providerEndpoints.isEmpty()) {
             return true;
         }
-        
-        for (String endpoint : providerEndpoints) {
-            if (host.endsWith(endpoint)) {
-                return true;
-            }
-        }
-        
-        return false;
+        return ZTSUtils.valueEndsWith(host, providerEndpoints);
     }
     
     ProviderScheme getProviderEndpointScheme(URI uri) {

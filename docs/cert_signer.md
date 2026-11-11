@@ -2,10 +2,12 @@
 --------------------
 
 * [Cert Signer Interfaces](#cert-signer-interfaces)
+    * [Provider Attributes](#provider-attributes)
 * [Configuration](#configuration)
 * [Provided Implementations](#provided-implementations)
     * [Self Cert Signer](#self-cert-signer)
     * [HTTP Cert Signer](#http-cert-signer)
+    * [Java Crypki (opt-in)](#java-crypki-opt-in)
 
 
 Athenz supports service authentication with X.509 certificates. 
@@ -37,6 +39,13 @@ This class implements six methods listed below:
       otherwise specified usage type: server or client) and `expiryTime` 
       which specifies requested certificate expiration time in minutes
       and returns a X509 Certificate in PEM format
+  * generateX509Certificate(CertSignerParameters): This method receives the same
+      values as the method above in a single `CertSignerParameters` object, along with
+      any attributes the instance provider marked for the signer (see
+      [Provider Attributes](#provider-attributes)). ZTS always calls this method.
+      The default implementation ignores the attributes and calls the method above,
+      so existing signers work without changes. Signers that want the
+      attributes override this method.
   * getCACertificate(): This method is to retrieve the CA certificate in PEM format that will be
       returned along with the x509 certificate back to the client.
   * generateSSHCertificate(): This method is to generate a SSH Certificate based on the given request.
@@ -49,6 +58,55 @@ This class implements six methods listed below:
 During server startup, ZTS servers will load the configured cert signer factory
 class and invoke the create method. Then it will use the CertSigner object returned
 to issue X509 certificates to requesting services.
+
+### Provider Attributes
+-----------------------
+
+An instance provider can pass key/value attributes it has validated to the
+cert signer, for example so the signer can encode workload identity context
+in a custom certificate extension. During instance register and refresh, the
+provider adds entries prefixed with `certSignerAttr:` to the attributes in the
+`InstanceConfirmation` object it returns:
+
+```
+certSignerAttr:<name> = <value>
+```
+
+ZTS removes these entries from the attributes, strips the prefix, and passes
+them to the signer in `CertSignerParameters.getAttributes()`. They are not
+returned to the client in the `InstanceIdentity` response. Attributes without
+the prefix are never forwarded to the signer. The attributes map is empty for
+role, user and external member certificates.
+
+Java providers can use the helper
+`InstanceUtils.setCertSignerAttribute(confirmation, name, value)`, which adds
+the prefix and ignores empty names and values. Remote (HTTP) providers include
+the prefixed keys in the `attributes` field of their JSON response.
+
+Guidelines for providers:
+
+* Only emit values derived from verified evidence (e.g. a signed instance
+  document or a token whose signature was verified), and only after all
+  validation has passed. Never copy client-supplied data.
+* Emit the attributes from both `confirmInstance` and `refreshInstance`.
+  Otherwise refreshed certificates won't include them.
+* Values are strings. Encode multi-valued data yourself (e.g. comma-separated)
+  and decode it in the signer.
+* Keep the set small, since the signer may include every attribute in every
+  certificate issued for that provider.
+
+The AWS providers (`InstanceAWSProvider`, `InstanceAWSECSProvider` and
+`InstanceAWSLambdaProvider`) set the following attributes (names are available as
+constants in `InstanceProvider`):
+
+| Attribute           | Value                                                    | Source                                                                                                                                      |
+|---------------------|----------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| `awsRuntimeAccount` | AWS account id where the workload is running             | Signed instance identity document, account matched by the STS `GetCallerIdentity` ARN, or the `aws_account` claim of the web identity token |
+| `awsRuntimeRegion`  | AWS region where the workload is running                 | Signed instance identity document or the `source_region` claim of the web identity token                                                    |
+
+An attribute is omitted when the attestation data doesn't provide a verified
+value. For example, the region isn't available when a Lambda function or an ECS
+task authenticates with STS credentials only.
 
 ## Configuration
 ----------------
@@ -115,3 +173,62 @@ using the following system properties:
   This setting specifies the number of times the request
   should be retried if it's not completed with the requested
   timeout value. We are setting it to 3.
+
+### Java Crypki (opt-in)
+------------------------
+
+Class: com.yahoo.athenz.zts.cert.impl.crypki.JavaCrypkiCertSignerFactory
+
+In-process KMS/HSM signing. Selecting this factory enables the feature.
+Existing `HttpCertSigner` deployments are not changed.
+
+```
+athenz.zts.cert_signer_factory_class=com.yahoo.athenz.zts.cert.impl.crypki.JavaCrypkiCertSignerFactory
+athenz.zts.java_crypki_factory_class=io.athenz.server.aws.common.cert.impl.AwsKmsCrypkiSignerFactory
+```
+
+Backend factory classes:
+
+* `io.athenz.server.aws.common.cert.impl.AwsKmsCrypkiSignerFactory`
+* `io.athenz.server.aws.common.cert.impl.AwsCloudHsmCrypkiSignerFactory`
+* `io.athenz.server.gcp.common.cert.impl.GcpKmsCrypkiSignerFactory`
+
+KMS settings:
+
+* `athenz.crypki.kms.key_id` — default signer key (AWS alias/UUID, or a GCP CryptoKeyVersion resource)
+* `athenz.crypki.kms.ca_cert_path` — default CA PEM
+* `athenz.crypki.kms.ca_cert_map_path` — optional JSON map for per-tenant CAs
+* `athenz.crypki.kms.signing_algorithm` — default `SHA256withRSA`
+
+CloudHSM settings:
+
+* `athenz.crypki.hsm.module_path` — PKCS#11 module (default `/opt/cloudhsm/lib/libcloudhsm_pkcs11.so`)
+* `athenz.crypki.hsm.slot`
+* `athenz.crypki.hsm.key_label` — default HSM label (`athenz-crypki-ca`)
+* `athenz.crypki.hsm.pin_path` — CloudHSM PIN file (`username:password`)
+* `athenz.crypki.hsm.ca_cert_path` — default CA PEM
+* `athenz.crypki.hsm.ca_cert_map_path` — optional JSON map for per-tenant CAs
+
+Instance-register/refresh `x509CertSignerKeyId` is a SimpleName
+(`tenant-a-ca`). Domain/service metadata stores the same field as String.
+Put that name in the map and, for AWS KMS, either use alias `alias/tenant-a-ca`
+or set the map value to `{ "keyId": "alias/...", "caCertPath": "..." }`.
+For CloudHSM the Athenz id is the PKCS#11 label unless `keyId` is set.
+GCP KMS map entries must use the object form and set `keyId` to a full
+CryptoKeyVersion resource
+(`projects/.../cryptoKeys/{key}/cryptoKeyVersions/{version}`); a
+path-only entry or a CryptoKey name is rejected by the GCP APIs.
+Each tenant needs its own KMS key or HSM label. Pin that id on the
+tenant domain or service (`x509CertSignerKeyId`). ZTS prefers service
+metadata, then domain metadata, and only then the request field.
+`athenz.zts.svc_cert_signer_key_id_list` is a global allowlist of
+request ids, not a per-tenant bind. If a domain or service has no
+signer set, a caller can pick another listed tenant id and mint under
+that CA. Do not treat the allowlist as isolation.
+
+If `athenz.zts.x509_ca_cert_fname` is set, ZTS returns that global CA
+bundle and does not ask the signer for the tenant CA. Leave it unset for
+per-tenant issuance, or list each tenant id in
+`athenz.zts.x509_ca_cert_keyid_fname` (`key-id:bundle-path,...`).
+ZTS also caches each signer CA from `getCACertificate` until restart, so
+replace a tenant CA PEM and restart ZTS together.

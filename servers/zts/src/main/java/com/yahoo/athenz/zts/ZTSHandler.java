@@ -14,7 +14,7 @@ import jakarta.servlet.http.HttpServletResponse;
 //
 public interface ZTSHandler { 
     ResourceAccess getResourceAccess(ResourceContext context, String action, String resource, String domain, String checkPrincipal);
-    ResourceAccess getResourceAccessExt(ResourceContext context, String action, String resource, String domain, String checkPrincipal);
+    ResourceAccess getResourceAccessExt(ResourceContext context, String action, String resource, String domain, String checkPrincipal, Boolean caseSensitive);
     ServiceIdentity getServiceIdentity(ResourceContext context, String domainName, String serviceName);
     ServiceIdentityList getServiceIdentityList(ResourceContext context, String domainName);
     PublicKeyEntry getPublicKeyEntry(ResourceContext context, String domainName, String serviceName, String keyId);
@@ -37,9 +37,10 @@ public interface ZTSHandler {
     Response postSSHCertRequest(ResourceContext context, SSHCertRequest certRequest);
     OpenIDConfig getOpenIDConfig(ResourceContext context);
     OAuthConfig getOAuthConfig(ResourceContext context);
-    JWKList getJWKList(ResourceContext context, Boolean rfc);
+    JWKList getJWKList(ResourceContext context, Boolean rfc, String service);
     AccessTokenResponse postAccessTokenRequest(ResourceContext context, String request);
-    Response getOIDCResponse(ResourceContext context, String responseType, String clientId, String redirectUri, String scope, String state, String nonce, String keyType, Boolean fullArn, Integer expiryTime, String output, Boolean roleInAudClaim);
+    Response getOIDCResponse(ResourceContext context, String responseType, String clientId, String redirectUri, String scope, String state, String nonce, String keyType, Boolean fullArn, Integer expiryTime, String output, Boolean roleInAudClaim, Boolean allScopePresent);
+    IntrospectResponse postIntrospectRequest(ResourceContext context, String request);
     RoleCertificate postRoleCertificateRequestExt(ResourceContext context, RoleCertificateRequest req);
     RoleAccess getRolesRequireRoleCert(ResourceContext context, String principal);
     Workloads getWorkloadsByService(ResourceContext context, String domainName, String serviceName);
@@ -47,6 +48,8 @@ public interface ZTSHandler {
     TransportRules getTransportRules(ResourceContext context, String domainName, String serviceName);
     Info getInfo(ResourceContext context);
     ExternalCredentialsResponse postExternalCredentialsRequest(ResourceContext context, String provider, String domainName, ExternalCredentialsRequest request);
+    UserCertificate postUserCertificateRequest(ResourceContext context, UserCertificateRequest req);
+    ExternalMemberCertificate postExternalMemberCertificateRequest(ResourceContext context, ExternalMemberCertificateRequest req);
     Schema getRdlSchema(ResourceContext context);
     ResourceContext newResourceContext(ServletContext servletContext, HttpServletRequest request, HttpServletResponse response, String apiName);
     void recordMetrics(ResourceContext ctx, int httpStatus);

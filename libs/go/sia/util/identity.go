@@ -22,11 +22,22 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"github.com/AthenZ/athenz/clients/go/zts"
 	"log"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/AthenZ/athenz/clients/go/zts"
+	"github.com/AthenZ/athenz/libs/go/sia/spiffe"
+)
+
+const (
+	SiaYieldMapperX509CertPemKey       = "cert_pem"
+	SiaYieldMapperPvtPemKey            = "key_pem"
+	SiaYieldMapperCertSignerPemKey     = "ca_pem"
+	SiaYieldMapperIssueTimeKey         = "time"
+	SiaYieldMapperIsRoleCertificateKey = "is_role_certificate"
 )
 
 // SiaCertData response of GetAthenzIdentity()
@@ -48,7 +59,7 @@ type CsrSubjectFields struct {
 	OrganizationUnit string
 }
 
-func GenerateSecretJsonData(athenzDomain, athenzService string, siaCertData *SiaCertData) ([]byte, error) {
+func GenerateSecretJsonData(athenzDomain, athenzService string, siaCertData *SiaCertData, isRoleCertificate bool) ([]byte, error) {
 
 	siaYield := make(map[string]string)
 	siaYield[athenzDomain+"."+athenzService+".cert.pem"] = siaCertData.X509CertificatePem
@@ -57,11 +68,57 @@ func GenerateSecretJsonData(athenzDomain, athenzService string, siaCertData *Sia
 
 	// Add the current time to the JSON.
 	siaYield["time"] = strconv.FormatInt(time.Now().Unix(), 10)
+	if isRoleCertificate {
+		siaYield[SiaYieldMapperIsRoleCertificateKey] = "true"
+	}
+
+	return json.MarshalIndent(siaYield, "", "  ")
+}
+
+// GenerateCustomSecretJsonData get SiaCertData data as string in json format with custom field names.
+// It supports only 4 json fields 'cert_pem', 'key_pem', 'ca_pem' and 'time', similar to `GenerateSecretJsonData`.
+// Out of 4 fields 'cert_pem' and 'key_pem' are mandatory, and resulted json will contain  X509CertificateSignerPem
+// and timestamp only if the corresponding json field names are set.
+// sample `jsonFieldMapper` map: [{"cert_pem": "certPem"}, {"key_pem": "keyPem"}]
+func GenerateCustomSecretJsonData(siaCertData *SiaCertData, jsonFieldMapper map[string]string, isRoleCertificate bool) ([]byte, error) {
+	if nil == jsonFieldMapper {
+		return nil, fmt.Errorf("json keys mapper is misssing, required atleast certificate and private key fields")
+	}
+	x509CertPemKey, okx509 := jsonFieldMapper[SiaYieldMapperX509CertPemKey]
+	pvtPemKey, okPem := jsonFieldMapper[SiaYieldMapperPvtPemKey]
+
+	if !okx509 || !okPem || "" == strings.TrimSpace(x509CertPemKey) || "" == strings.TrimSpace(pvtPemKey) {
+		return nil, fmt.Errorf("x509 certificate pem and private pem keys are mandatory")
+	}
+
+	certSignerPemKey, okCA := jsonFieldMapper[SiaYieldMapperCertSignerPemKey]
+	issueTimeKey, okTime := jsonFieldMapper[SiaYieldMapperIssueTimeKey]
+	siaYield := make(map[string]string)
+	siaYield[strings.TrimSpace(x509CertPemKey)] = siaCertData.X509CertificatePem
+	siaYield[strings.TrimSpace(pvtPemKey)] = siaCertData.PrivateKeyPem
+
+	if okCA {
+		siaYield[strings.TrimSpace(certSignerPemKey)] = siaCertData.X509CertificateSignerPem
+	}
+	if okTime {
+		// Add the current time to the JSON.
+		siaYield[strings.TrimSpace(issueTimeKey)] = strconv.FormatInt(time.Now().Unix(), 10)
+	}
+	if isRoleCertificate {
+		siaYield[SiaYieldMapperIsRoleCertificateKey] = "true"
+	}
 
 	return json.MarshalIndent(siaYield, "", "  ")
 }
 
 func RegisterIdentity(athenzDomain, athenzService, athenzProvider, ztsUrl, instanceId, attestationData, spiffeTrustDomain string, sanDNSDomains []string, csrSubjectFields CsrSubjectFields, instanceIdSanDNS bool, privateKey *rsa.PrivateKey) (*SiaCertData, error) {
+	return RegisterIdentityWithSpiffeFormatter(athenzDomain, athenzService, athenzProvider, ztsUrl, instanceId, attestationData, spiffeTrustDomain, sanDNSDomains, csrSubjectFields, instanceIdSanDNS, privateKey, nil)
+}
+
+func RegisterIdentityWithSpiffeFormatter(athenzDomain, athenzService, athenzProvider, ztsUrl, instanceId, attestationData, spiffeTrustDomain string, sanDNSDomains []string, csrSubjectFields CsrSubjectFields, instanceIdSanDNS bool, privateKey *rsa.PrivateKey, spiffeFormatter spiffe.URIFormatter) (*SiaCertData, error) {
+	if spiffeFormatter == nil {
+		spiffeFormatter = spiffe.GetDefaultFormatter()
+	}
 
 	var csrDetails CertReqDetails
 	csrDetails.CommonName = fmt.Sprintf("%s.%s", athenzDomain, athenzService)
@@ -81,7 +138,8 @@ func RegisterIdentity(athenzDomain, athenzService, athenzProvider, ztsUrl, insta
 	}
 	// add our uri fields. spiffe uri must be the first entry
 	csrDetails.URIs = []*url.URL{}
-	csrDetails.URIs = AppendUri(csrDetails.URIs, GetSvcSpiffeUri(spiffeTrustDomain, "default", athenzDomain, athenzService))
+	spiffeURI := spiffeFormatter.FormatServiceURI(spiffeTrustDomain, "default", athenzDomain, athenzService, instanceId)
+	csrDetails.URIs = AppendUri(csrDetails.URIs, spiffeURI)
 	csrDetails.URIs = AppendUri(csrDetails.URIs, SanURIInstanceId(athenzProvider, instanceId))
 
 	csr, err := GenerateX509CSR(privateKey, csrDetails)

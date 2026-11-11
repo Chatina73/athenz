@@ -131,6 +131,7 @@ export default class RuleTable extends React.Component {
                     _csrf={this.props._csrf}
                     pageFeatureFlag={this.props.pageFeatureFlag}
                     api={this.api}
+                    showError={this.props.showError}
                 />
             );
         });
@@ -203,6 +204,7 @@ export default class RuleTable extends React.Component {
                             {inbound ? 'Source Port' : 'Destination Port'}
                         </TableHeadStyled>
                         <TableHeadStyled align={left}>Layer</TableHeadStyled>
+                        <TableHeadStyled align={left}>Scope</TableHeadStyled>
                         <TableHeadStyled align={center}>
                             Enforcement State
                         </TableHeadStyled>

@@ -16,16 +16,17 @@
 
 package com.yahoo.athenz.instance.provider.impl;
 
+import com.yahoo.athenz.auth.Authorizer;
 import com.yahoo.athenz.auth.token.IdToken;
 import com.yahoo.athenz.auth.token.jwts.JwtsHelper;
 import com.yahoo.athenz.auth.util.Crypto;
+import com.yahoo.athenz.instance.provider.AttrValidator;
 import com.yahoo.athenz.instance.provider.InstanceConfirmation;
 import com.yahoo.athenz.instance.provider.InstanceProvider;
-import com.yahoo.athenz.instance.provider.ResourceException;
-import io.jsonwebtoken.SignatureAlgorithm;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
+import javax.net.ssl.SSLContext;
 import java.io.File;
 import java.io.IOException;
 import java.security.PrivateKey;
@@ -51,7 +52,9 @@ public class DefaultGCPGoogleKubernetesEngineValidatorTest {
         System.setProperty(GCP_PROP_DNS_SUFFIX, "gcp.athenz.cloud");
         System.setProperty(GCP_PROP_GKE_DNS_SUFFIX, "gke.athenz.cloud");
         DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
-        validator.initialize();
+        SSLContext sslContext = Mockito.mock(SSLContext.class);
+        Authorizer authorizer = Mockito.mock(Authorizer.class);
+        validator.initialize(sslContext, authorizer);
         System.clearProperty(GCP_PROP_DNS_SUFFIX);
         System.clearProperty(GCP_PROP_GKE_DNS_SUFFIX);
     }
@@ -67,7 +70,25 @@ public class DefaultGCPGoogleKubernetesEngineValidatorTest {
             confirmation.getAttributes().put(InstanceProvider.ZTS_INSTANCE_GCP_PROJECT, "not-my-project");
             String issuer = validator.validateIssuer(confirmation, attestationData, new StringBuilder());
             assertNull(issuer);
-        } catch (ResourceException re){
+        } catch (Exception re){
+            fail();
+        }
+    }
+
+    @Test
+    public void testValidateIssuerProjectPrefixMismatch() {
+        DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
+        try {
+            IdTokenAttestationData attestationData = new IdTokenAttestationData();
+            attestationData.setIdentityToken(createToken());
+            InstanceConfirmation confirmation = new InstanceConfirmation();
+            confirmation.setAttributes(new HashMap<>());
+            confirmation.getAttributes().put(InstanceProvider.ZTS_INSTANCE_GCP_PROJECT, "my-proj");
+            StringBuilder errMsg = new StringBuilder();
+            String issuer = validator.validateIssuer(confirmation, attestationData, errMsg);
+            assertNull(issuer);
+            assertTrue(errMsg.toString().contains("Issuer is not present in the GCP project associated with the domain"));
+        } catch (Exception re){
             fail();
         }
     }
@@ -81,13 +102,35 @@ public class DefaultGCPGoogleKubernetesEngineValidatorTest {
             long now = System.currentTimeMillis() / 1000;
             sampleToken.setExpiryTime(now + 3600);
             sampleToken.setIssueTime(now);
-            String testToken = sampleToken.getSignedToken(privateKey, "eckey1", SignatureAlgorithm.ES256);
+            String testToken = sampleToken.getSignedToken(privateKey, "eckey1", "ES256");
             InstanceConfirmation confirmation = new InstanceConfirmation();
             IdTokenAttestationData attestationData = new IdTokenAttestationData();
             attestationData.setIdentityToken(testToken);
             String issuer = validator.validateIssuer(confirmation, attestationData, new StringBuilder());
             assertNull(issuer);
-        } catch (ResourceException re){
+        } catch (Exception re){
+            fail();
+        }
+    }
+
+    @Test
+    public void testValidateIssuerNoLaunchAuthorization() {
+        DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
+        Authorizer authorizer = Mockito.mock(Authorizer.class);
+        validator.authorizer = authorizer;
+        when(authorizer.access(any(), any(), any(), any())).thenReturn(false);
+        try {
+            String testToken = IdTokenTestsHelper.createToken();
+            InstanceConfirmation confirmation = new InstanceConfirmation();
+            confirmation.setAttributes(new HashMap<>());
+            confirmation.getAttributes().put(InstanceProvider.ZTS_INSTANCE_GCP_PROJECT, "my-project");
+            confirmation.getAttributes().put(InstanceProvider.ZTS_INSTANCE_CLOUD, "gcp");
+            IdTokenAttestationData attestationData = new IdTokenAttestationData();
+            attestationData.setIdentityToken(testToken);
+            String issuer = validator.validateIssuer(confirmation, attestationData, new StringBuilder());
+            assertNull(issuer);
+            validator.authorizer = null;
+        } catch (Exception re){
             fail();
         }
     }
@@ -95,6 +138,9 @@ public class DefaultGCPGoogleKubernetesEngineValidatorTest {
     @Test
     public void testValidateIssuerOkay() {
         DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
+        Authorizer authorizer = Mockito.mock(Authorizer.class);
+        validator.authorizer = authorizer;
+        when(authorizer.access(any(), any(), any(), any())).thenReturn(true);
         try {
             String testToken = IdTokenTestsHelper.createToken();
             InstanceConfirmation confirmation = new InstanceConfirmation();
@@ -105,8 +151,62 @@ public class DefaultGCPGoogleKubernetesEngineValidatorTest {
             attestationData.setIdentityToken(testToken);
             String issuer = validator.validateIssuer(confirmation, attestationData, new StringBuilder());
             assertEquals(issuer, "https://container.googleapis.com/v1/projects/my-project/zones/us-east1-a/clusters/my-cluster");
+            validator.authorizer = null;
+        } catch (Exception re){
+            fail();
+        }
+    }
 
-        } catch (ResourceException re){
+    @Test
+    public void testValidateIssuerMultiTenancy() {
+        DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
+        Authorizer authorizer = Mockito.mock(Authorizer.class);
+        when(authorizer.access(any(), any(), any(), any())).thenReturn(true);
+        validator.authorizer = authorizer;
+        AttrValidator attrValidator = Mockito.mock(AttrValidator.class);
+        when(attrValidator.confirm(any())).thenReturn(true);
+        validator.attrValidator = attrValidator;
+
+        try {
+            String testToken = IdTokenTestsHelper.createToken();
+            InstanceConfirmation confirmation = new InstanceConfirmation();
+            confirmation.setAttributes(new HashMap<>());
+            confirmation.getAttributes().put(InstanceProvider.ZTS_INSTANCE_GCP_PROJECT, "my-other-project");
+            confirmation.getAttributes().put(InstanceProvider.ZTS_INSTANCE_CLOUD, "gcp");
+            IdTokenAttestationData attestationData = new IdTokenAttestationData();
+            attestationData.setIdentityToken(testToken);
+            String issuer = validator.validateIssuer(confirmation, attestationData, new StringBuilder());
+            assertEquals(issuer, "https://container.googleapis.com/v1/projects/my-project/zones/us-east1-a/clusters/my-cluster");
+            validator.authorizer = null;
+            validator.attrValidator = null;
+        } catch (Exception re){
+            fail();
+        }
+    }
+
+    @Test
+    public void testValidateIssuerMultiTenancyFail() {
+        DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
+        Authorizer authorizer = Mockito.mock(Authorizer.class);
+        when(authorizer.access(any(), any(), any(), any())).thenReturn(true);
+        validator.authorizer = authorizer;
+        AttrValidator attrValidator = Mockito.mock(AttrValidator.class);
+        when(attrValidator.confirm(any())).thenReturn(false);
+        validator.attrValidator = attrValidator;
+
+        try {
+            String testToken = IdTokenTestsHelper.createToken();
+            InstanceConfirmation confirmation = new InstanceConfirmation();
+            confirmation.setAttributes(new HashMap<>());
+            confirmation.getAttributes().put(InstanceProvider.ZTS_INSTANCE_GCP_PROJECT, "my-other-project");
+            confirmation.getAttributes().put(InstanceProvider.ZTS_INSTANCE_CLOUD, "gcp");
+            IdTokenAttestationData attestationData = new IdTokenAttestationData();
+            attestationData.setIdentityToken(testToken);
+            String issuer = validator.validateIssuer(confirmation, attestationData, new StringBuilder());
+            assertNull(issuer);
+            validator.authorizer = null;
+            validator.attrValidator = null;
+        } catch (Exception re){
             fail();
         }
     }
@@ -137,29 +237,13 @@ public class DefaultGCPGoogleKubernetesEngineValidatorTest {
         when(validator.jwtsHelper.extractJwksUri(any(), any())).thenReturn("");
         try {
             assertNull(validator.getSigningKeyResolverForIssuer("dummy", new StringBuilder()));
-        } catch (ResourceException ex) {
+        } catch (Exception re){
             fail();
         }
         removeOpenIdConfigFile(configFile, jwksUri);
         validator.jwtsHelper = new JwtsHelper();
     }
-    @Test
-    public void testGetSigningKeyResolverNoPubKeys() throws IOException {
-        DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
-        validator.issuersMap.clear();
-        File configFile = new File("./src/test/resources/codesigning-openid.json");
-        File jwksUri = new File("./src/test/resources/codesigning-jwks.json");
-        createOpenIdConfigFile(configFile, jwksUri, true);
-        validator.jwtsHelper = Mockito.mock(JwtsHelper.class);
-        when(validator.jwtsHelper.extractJwksUri(any(), any())).thenReturn("file://" + configFile.getCanonicalPath());
-        try {
-            assertNull(validator.getSigningKeyResolverForIssuer("dummy", new StringBuilder()));
-        } catch(ResourceException re) {
-            fail();
-        }
-        removeOpenIdConfigFile(configFile, jwksUri);
-        validator.jwtsHelper = new JwtsHelper();
-    }
+
     @Test
     public void testValidateIdToken() throws IOException {
         DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
@@ -175,9 +259,29 @@ public class DefaultGCPGoogleKubernetesEngineValidatorTest {
         IdTokenAttestationData attestationData = new IdTokenAttestationData();
         attestationData.setIdentityToken(testToken);
 
-        IdToken idToken = validator.validateIdToken("https://container.googleapis.com/v1/projects/my-project/zones/us-east1-a/clusters/my-cluster", attestationData, new StringBuilder());
+        IdToken idToken = validator.validateIdToken("https://container.googleapis.com/v1/projects/my-project/zones/us-east1-a/clusters/my-cluster",
+                attestationData, new StringBuilder());
         assertNotNull(idToken);
         removeOpenIdConfigFile(configFile, jwksUri);
+        validator.jwtsHelper = new JwtsHelper();
+    }
+
+    @Test
+    public void testValidateIdTokenSigningKeyResolverNull() {
+        DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
+        validator.issuersMap.clear();
+        validator.jwtsHelper = Mockito.mock(JwtsHelper.class);
+        when(validator.jwtsHelper.extractJwksUri(any(), any())).thenReturn("");
+
+        String testToken = IdTokenTestsHelper.createToken();
+        IdTokenAttestationData attestationData = new IdTokenAttestationData();
+        attestationData.setIdentityToken(testToken);
+
+        StringBuilder errMsg = new StringBuilder();
+        IdToken idToken = validator.validateIdToken("https://container.googleapis.com/v1/projects/my-project/zones/us-east1-a/clusters/my-cluster",
+                attestationData, errMsg);
+        assertNull(idToken);
+        assertTrue(errMsg.toString().contains("id_token issuer does not have valid jwks uri"));
         validator.jwtsHelper = new JwtsHelper();
     }
 
@@ -185,9 +289,7 @@ public class DefaultGCPGoogleKubernetesEngineValidatorTest {
     public void testValidateIdTokenException() throws IOException {
         DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
         validator.issuersMap.clear();
-        File configFile = new File("./src/test/resources/codesigning-openid.json");
-        File jwksUri = new File("./src/test/resources/codesigning-jwks.json");
-        createOpenIdConfigFile(configFile, jwksUri, true);
+        File jwksUri = new File("./src/test/resources/jwt_jwks_empty.json");
         validator.jwtsHelper = Mockito.mock(JwtsHelper.class);
         when(validator.jwtsHelper.extractJwksUri(any(), any())).thenReturn("file://" + jwksUri.getCanonicalPath());
 
@@ -195,9 +297,9 @@ public class DefaultGCPGoogleKubernetesEngineValidatorTest {
         IdTokenAttestationData attestationData = new IdTokenAttestationData();
         attestationData.setIdentityToken(testToken);
 
-        IdToken idToken =validator.validateIdToken("https://container.googleapis.com/v1/projects/my-project/zones/us-east1-a/clusters/my-cluster", attestationData, new StringBuilder());
+        IdToken idToken =validator.validateIdToken("https://container.googleapis.com/v1/projects/my-project/zones/us-east1-a/clusters/my-cluster",
+                attestationData, new StringBuilder());
         assertNull(idToken);
-        removeOpenIdConfigFile(configFile, jwksUri);
         validator.jwtsHelper = new JwtsHelper();
     }
 
@@ -224,7 +326,9 @@ public class DefaultGCPGoogleKubernetesEngineValidatorTest {
     public void testValidateAttestationDataBadAudience() throws IOException {
         DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
         validator.issuersMap.clear();
-        validator.initialize();
+        SSLContext sslContext = Mockito.mock(SSLContext.class);
+        Authorizer authorizer = Mockito.mock(Authorizer.class);
+        validator.initialize(sslContext, authorizer);
         File configFile = new File("./src/test/resources/codesigning-openid.json");
         File jwksUri = new File("./src/test/resources/codesigning-jwks.json");
         PublicKey publicKey = Crypto.loadPublicKey(ecPublicKey);
@@ -245,7 +349,9 @@ public class DefaultGCPGoogleKubernetesEngineValidatorTest {
     public void testValidateSubjectNoMatch() {
         DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
         validator.issuersMap.clear();
-        validator.initialize();
+        SSLContext sslContext = Mockito.mock(SSLContext.class);
+        Authorizer authorizer = Mockito.mock(Authorizer.class);
+        validator.initialize(sslContext, authorizer);
         InstanceConfirmation confirmation = new InstanceConfirmation();
         confirmation.setDomain("my-domain");
         confirmation.setService("my-service");
@@ -258,10 +364,13 @@ public class DefaultGCPGoogleKubernetesEngineValidatorTest {
     public void testValidateSubject() {
         DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
         validator.issuersMap.clear();
-        validator.initialize();
+        SSLContext sslContext = Mockito.mock(SSLContext.class);
+        Authorizer authorizer = Mockito.mock(Authorizer.class);
+        validator.initialize(sslContext, authorizer);
         InstanceConfirmation confirmation = new InstanceConfirmation();
         confirmation.setDomain("my-domain");
         confirmation.setService("my-service");
+        confirmation.setAttributes(new HashMap<>());
         IdToken idToken = new IdToken();
         idToken.setSubject("system:serviceaccount:myns:my-domain.my-service");
         assertTrue(validator.validateSubject(confirmation, idToken, new StringBuilder()));
@@ -271,7 +380,9 @@ public class DefaultGCPGoogleKubernetesEngineValidatorTest {
     public void testValidateSanDNSEntries() {
         System.setProperty(InstanceGCPProvider.GCP_PROP_DNS_SUFFIX, "gcp.athenz.cloud");
         DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
-        validator.initialize();
+        SSLContext sslContext = Mockito.mock(SSLContext.class);
+        Authorizer authorizer = Mockito.mock(Authorizer.class);
+        validator.initialize(sslContext, authorizer);
         InstanceConfirmation instanceConfirmation = new InstanceConfirmation();
         instanceConfirmation.setDomain("my-domain");
         instanceConfirmation.setService("my-service");
@@ -284,10 +395,31 @@ public class DefaultGCPGoogleKubernetesEngineValidatorTest {
     }
 
     @Test
+    public void testValidateSanDNSEntriesSpiffeSvidNoDns() {
+        // SPIFFE SVIDs (Istio ambient workload identity) carry no DNS SANs - identity is
+        // validated upstream by ZTS via the URI SAN alone, so DNS validation must be skipped
+        DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
+        SSLContext sslContext = Mockito.mock(SSLContext.class);
+        Authorizer authorizer = Mockito.mock(Authorizer.class);
+        validator.initialize(sslContext, authorizer);
+        InstanceConfirmation instanceConfirmation = new InstanceConfirmation();
+        instanceConfirmation.setDomain("calypso.nonprod");
+        instanceConfirmation.setService("curl");
+        instanceConfirmation.setAttributes(new HashMap<>());
+        instanceConfirmation.getAttributes().put(ZTS_INSTANCE_GCP_PROJECT, "my-project");
+        instanceConfirmation.getAttributes().put(ZTS_INSTANCE_SAN_URI,
+                "spiffe://athenz.cloud/ns/calypso-nonprod/sa/calypso.nonprod.curl");
+
+        assertTrue(validator.validateSanDNSEntries(instanceConfirmation, new StringBuilder()));
+    }
+
+    @Test
     public void testValidateSanDNSEntriesNoAccount() {
         System.setProperty(InstanceGCPProvider.GCP_PROP_DNS_SUFFIX, "gcp.athenz.cloud");
         DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
-        validator.initialize();
+        SSLContext sslContext = Mockito.mock(SSLContext.class);
+        Authorizer authorizer = Mockito.mock(Authorizer.class);
+        validator.initialize(sslContext, authorizer);
         InstanceConfirmation instanceConfirmation = new InstanceConfirmation();
         instanceConfirmation.setDomain("my-domain");
         instanceConfirmation.setService("my-service");
@@ -302,7 +434,9 @@ public class DefaultGCPGoogleKubernetesEngineValidatorTest {
     public void testValidateSanDNSEntriesIncorrectEntries() {
         System.setProperty(InstanceGCPProvider.GCP_PROP_DNS_SUFFIX, "gcp.athenz.cloud");
         DefaultGCPGoogleKubernetesEngineValidator validator = DefaultGCPGoogleKubernetesEngineValidator.getInstance();
-        validator.initialize();
+        SSLContext sslContext = Mockito.mock(SSLContext.class);
+        Authorizer authorizer = Mockito.mock(Authorizer.class);
+        validator.initialize(sslContext, authorizer);
         InstanceConfirmation instanceConfirmation = new InstanceConfirmation();
         instanceConfirmation.setDomain("my-domain");
         instanceConfirmation.setService("my-service");
@@ -314,4 +448,25 @@ public class DefaultGCPGoogleKubernetesEngineValidatorTest {
         assertFalse(validator.validateSanDNSEntries(instanceConfirmation, new StringBuilder()));
     }
 
+    @Test
+    public void testNewAttrValidator() {
+        System.setProperty(DefaultGCPGoogleKubernetesEngineValidator.ZTS_PROP_K8S_PROVIDER_GCP_ATTR_VALIDATOR_FACTORY_CLASS, "com.yahoo.athenz.instance.provider.impl.MockAttrValidatorFactory");
+        AttrValidator attrValidator = DefaultGCPGoogleKubernetesEngineValidator.newAttrValidator(null);
+        assertNotNull(attrValidator);
+        assertTrue(attrValidator.confirm(null));
+        System.clearProperty(DefaultGCPGoogleKubernetesEngineValidator.ZTS_PROP_K8S_PROVIDER_GCP_ATTR_VALIDATOR_FACTORY_CLASS);
+    }
+
+    @Test
+    public void testNewAttrValidatorFail() {
+        System.setProperty(DefaultGCPGoogleKubernetesEngineValidator.ZTS_PROP_K8S_PROVIDER_GCP_ATTR_VALIDATOR_FACTORY_CLASS, "NoClass");
+        try {
+            DefaultGCPGoogleKubernetesEngineValidator.newAttrValidator(null);
+            fail();
+        } catch (Exception ignored) {
+        }
+        finally {
+            System.clearProperty(DefaultGCPGoogleKubernetesEngineValidator.ZTS_PROP_K8S_PROVIDER_GCP_ATTR_VALIDATOR_FACTORY_CLASS);
+        }
+    }
 }

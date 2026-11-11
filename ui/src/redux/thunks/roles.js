@@ -20,8 +20,10 @@ import {
     addRoleToStore,
     deleteRoleFromStore,
     loadRoles,
+    loadRolesToReview,
     marksRoleInStoreAsNeedRefresh,
     returnRoles,
+    returnRolesToReview,
     reviewRoleToStore,
 } from '../actions/roles';
 import {
@@ -29,7 +31,11 @@ import {
     getRoleApiCall,
     getRolesApiCall,
 } from './utils/roles';
-import { thunkSelectRole, thunkSelectRoles } from '../selectors/roles';
+import {
+    thunkSelectRole,
+    thunkSelectRoles,
+    selectUserReviewRoles,
+} from '../selectors/roles';
 import {
     buildErrorForDoesntExistCase,
     buildErrorForDuplicateCase,
@@ -42,6 +48,11 @@ import {
     addMemberToStore,
     deleteMemberFromStore,
 } from '../actions/collections';
+import {
+    loadingFailed,
+    loadingInProcess,
+    loadingSuccess,
+} from '../actions/loading';
 
 export const addRole =
     (roleName, auditRef, role, _csrf, overrideIfExists = false) =>
@@ -108,22 +119,29 @@ export const marksRoleAsNeedRefresh =
         dispatch(marksRoleInStoreAsNeedRefresh(domainName, roleName));
     };
 
-export const getRole = (domainName, roleName) => async (dispatch, getState) => {
-    roleName = roleName.toLowerCase();
-    await dispatch(getRoles(domainName));
-    let role = thunkSelectRole(getState(), domainName, roleName);
-    // auditLog is a unique filed which the backend returns only in getRole api call
-    if (role.auditLog && !role.needRefresh) {
-        dispatch(returnRoles());
-    } else {
-        try {
-            await getRoleApiCall(domainName, roleName, dispatch);
-            return Promise.resolve();
-        } catch (e) {
-            return Promise.reject(e);
+export const getRole =
+    (domainName, roleName, showLoader = true, force = false) =>
+    async (dispatch, getState) => {
+        roleName = roleName.toLowerCase();
+        await dispatch(getRoles(domainName));
+        let role = thunkSelectRole(getState(), domainName, roleName);
+        // auditLog is a unique filed which the backend returns only in getRole api call
+        if (!force && role.auditLog && !role.needRefresh) {
+            dispatch(returnRoles());
+        } else {
+            try {
+                await getRoleApiCall(
+                    domainName,
+                    roleName,
+                    dispatch,
+                    showLoader
+                );
+                return Promise.resolve();
+            } catch (e) {
+                return Promise.reject(e);
+            }
         }
-    }
-};
+    };
 
 export const addMemberToRoles =
     (domainName, checkedRoles, member, justification, _csrf) =>
@@ -169,34 +187,36 @@ export const addMemberToRoles =
         }
     };
 
-export const getRoles = (domainName) => async (dispatch, getState) => {
-    if (getState().roles.expiry) {
-        if (getState().roles.domainName !== domainName) {
-            dispatch(storeRoles(getState().roles));
-            if (
-                getState().domains[domainName] &&
-                getState().domains[domainName].roles &&
-                !isExpired(getState().domains[domainName].roles.expiry)
-            ) {
-                dispatch(
-                    loadRoles(
-                        getState().domains[domainName].roles.roles,
-                        domainName,
-                        getState().domains[domainName].roles.expiry
-                    )
-                );
-            } else {
+export const getRoles =
+    (domainName, force = false) =>
+    async (dispatch, getState) => {
+        if (!force && getState().roles.expiry) {
+            if (getState().roles.domainName !== domainName) {
+                dispatch(storeRoles(getState().roles));
+                if (
+                    getState().domains[domainName] &&
+                    getState().domains[domainName].roles &&
+                    !isExpired(getState().domains[domainName].roles.expiry)
+                ) {
+                    dispatch(
+                        loadRoles(
+                            getState().domains[domainName].roles.roles,
+                            domainName,
+                            getState().domains[domainName].roles.expiry
+                        )
+                    );
+                } else {
+                    await getRolesApiCall(domainName, dispatch);
+                }
+            } else if (isExpired(getState().roles.expiry)) {
                 await getRolesApiCall(domainName, dispatch);
+            } else {
+                dispatch(returnRoles());
             }
-        } else if (isExpired(getState().roles.expiry)) {
-            await getRolesApiCall(domainName, dispatch);
         } else {
-            dispatch(returnRoles());
+            await getRolesApiCall(domainName, dispatch);
         }
-    } else {
-        await getRolesApiCall(domainName, dispatch);
-    }
-};
+    };
 
 export const reviewRole =
     (domainName, role, justification, _csrf) => async (dispatch, getState) => {
@@ -218,6 +238,16 @@ export const reviewRole =
             reviewedRole.rolePendingMembers = pendingMembers;
 
             dispatch(reviewRoleToStore(reviewedRole.name, reviewedRole));
+            let rolesToReview = selectUserReviewRoles(getState());
+            rolesToReview = rolesToReview.filter(
+                (r) => r.domainName + ':role.' + r.name !== reviewedRole.name
+            );
+            if (
+                rolesToReview.length !==
+                selectUserReviewRoles(getState()).length
+            ) {
+                dispatch(loadRolesToReview(rolesToReview));
+            }
             dispatch(marksRoleAsNeedRefresh(domainName, role.name));
             return Promise.resolve();
         } catch (error) {
@@ -256,3 +286,21 @@ export const getRoleHistory =
             return Promise.reject(error);
         }
     };
+
+export const getReviewRoles = () => async (dispatch, getState) => {
+    try {
+        if (!getState().roles.rolesToReview) {
+            dispatch(loadingInProcess('getReviewRoles'));
+            const reviewRoles = await API().getReviewRoles();
+            dispatch(loadRolesToReview(reviewRoles));
+            dispatch(loadingSuccess('getReviewRoles'));
+        } else {
+            dispatch(returnRolesToReview());
+        }
+    } catch (error) {
+        // if error, set rolesToReview to empty array
+        dispatch(loadRolesToReview([]));
+        dispatch(loadingFailed('getReviewRoles'));
+        throw error;
+    }
+};

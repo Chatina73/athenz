@@ -18,6 +18,8 @@ package com.yahoo.athenz.zts.cert;
 import com.yahoo.athenz.auth.AuthorityConsts;
 import com.yahoo.athenz.auth.util.Crypto;
 import com.yahoo.athenz.auth.util.CryptoException;
+import com.yahoo.athenz.common.server.cert.CertificateDataValidator;
+import com.yahoo.athenz.common.server.spiffe.SpiffeUriManager;
 import com.yahoo.athenz.common.utils.X509CertUtils;
 import com.yahoo.athenz.zts.ZTSConsts;
 import com.yahoo.athenz.zts.utils.ZTSUtils;
@@ -32,17 +34,16 @@ public class X509RoleCertRequest extends X509CertRequest {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(X509RoleCertRequest.class);
 
-    private static final String SPIFFE_ROLE_AGENT    = "ra";
-
     protected String reqRoleName;
     protected String reqRoleDomain;
     protected String rolePrincipal;
 
-    public X509RoleCertRequest(String csr) throws CryptoException {
+    public X509RoleCertRequest(String csr, SpiffeUriManager spiffeUriManager,
+            CertificateDataValidator certificateDataValidator) throws CryptoException {
 
         // parse the csr request
 
-        super(csr);
+        super(csr, spiffeUriManager, certificateDataValidator);
 
         // make sure the CN is a valid role name
 
@@ -81,7 +82,8 @@ public class X509RoleCertRequest extends X509CertRequest {
             return false;
         }
 
-        // we must only have a single spiffe uri in the list
+        // we need to iterate through the list of URIs and look for the proxy user uri
+        // we'll validate that there is only a single proxy user uri
 
         String proxyUserUri = null;
         for (String uri : uris) {
@@ -104,7 +106,7 @@ public class X509RoleCertRequest extends X509CertRequest {
         }
 
         final String uriCheck = ZTSConsts.ZTS_CERT_PROXY_USER_URI + proxyUser;
-        if (!proxyUserUri.equals(uriCheck)) {
+        if (!proxyUserUri.equalsIgnoreCase(uriCheck)) {
             LOGGER.error("ProxyUserURI mismatch: {} vs {}", proxyUserUri, uriCheck);
             return false;
         }
@@ -126,7 +128,7 @@ public class X509RoleCertRequest extends X509CertRequest {
         if (!StringUtil.isEmpty(rolePrincipal)) {
 
             if (!principal.equalsIgnoreCase(rolePrincipal)) {
-                LOGGER.error("validateRolePrincipal: role principal mismatch {} vs {}", principal, rolePrincipal);
+                LOGGER.error("role principal mismatch {} vs {}", principal, rolePrincipal);
                 return false;
             }
 
@@ -151,27 +153,43 @@ public class X509RoleCertRequest extends X509CertRequest {
         // and we must have only a single value specified
 
         if (emails.size() != 1) {
-            LOGGER.error("validateRoleCertificateRequest: csr has incorrect number of emails: {}",
-                    emails.size());
+            LOGGER.error("csr has incorrect number of emails: {}", emails.size());
             return false;
         }
 
         final String email = emails.get(0);
         final String emailPrefix = principal + "@";
         if (!email.startsWith(emailPrefix) || !ZTSUtils.valueEndsWith(email, ZTSUtils.ZTS_CERT_DNS_SUFFIX)) {
-            LOGGER.error("validateRoleCertificateRequest: fail to validate email {} format {}*{}",
-                    email, emailPrefix, ZTSUtils.ZTS_CERT_DNS_SUFFIX);
+            LOGGER.error("unable to validate email {} format {}*{}", email, emailPrefix, ZTSUtils.ZTS_CERT_DNS_SUFFIX);
             return false;
         }
 
         return true;
     }
 
-    public boolean validate(final String principal, final String proxyUser, Set<String> validCertSubjectOrgValues) {
+    public boolean validate(final String principal, final String proxyUser, final X509Certificate cert,
+            final Set<String> validCertSubjectOrgValues, final boolean validateRoleCertDnsNames,
+            final boolean validateCertUriSchemes) {
+
+        // validate and report any invalid URI schemes in the request
+        // if we're configured not to reject the request, we'll just
+        // log the invalid values so the system admin can follow up with
+        // respective users before enabling the feature
+
+        if (!validateSanUriSchemes(validateCertUriSchemes)) {
+            return false;
+        }
 
         // now let's check if we have a valid role principal
 
         if (!validateRolePrincipal(principal)) {
+            return false;
+        }
+
+        // validate that the dnsSuffix used in the dnsName attribute has
+            // been authorized to be used by the given provider
+
+        if (!validateDnsNames(principal, cert, validateRoleCertDnsNames)) {
             return false;
         }
 
@@ -190,6 +208,72 @@ public class X509RoleCertRequest extends X509CertRequest {
         // validate spiffe uri if one is provided
 
         return validateSpiffeURI(reqRoleDomain, reqRoleName);
+    }
+
+    private boolean serviceIdentityDnsNameMatch(final String prefix, final String dnsName) {
+
+        // the suffix values already start with a dot so we don't need to add it here
+
+        for (String suffix : ZTSUtils.ZTS_CERT_DNS_SUFFIX) {
+            if (dnsName.equals(prefix + suffix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    boolean validateDnsNames(final String principal, final X509Certificate principalCert, final boolean validateRoleCertDnsNames) {
+
+        // if no dns names in the CSR then we're ok
+
+        if (dnsNames.isEmpty()) {
+            return true;
+        }
+
+        int idx = principal.lastIndexOf(AuthorityConsts.ATHENZ_PRINCIPAL_DELIMITER_CHAR);
+        if (idx == -1) {
+            LOGGER.error("unable to validate dns names - invalid principal: {}", principal);
+            return false;
+        }
+        final String domain = principal.substring(0, idx);
+        final String service = principal.substring(idx + 1);
+
+        Set<String> principalCertDnsNames = (principalCert != null) ?
+            new HashSet<>(Crypto.extractX509CertDnsNames(principalCert)) : Collections.emptySet();
+
+        // the dns names in the role certificate can inherit any of the dns names in
+        // the principal certificate or they must be in the format of
+        // <service>.<domain-with-dashes>.<provider-dns-suffix>
+
+        final String prefix = service + "." + domain.replace('.', '-');
+        for (String dnsName : dnsNames) {
+
+            // if the dns name is in the principal certificate, then we're good
+            // and we can continue with the next dns name
+
+            if (principalCertDnsNames.contains(dnsName)) {
+                continue;
+            }
+
+            if (serviceIdentityDnsNameMatch(prefix, dnsName)) {
+                continue;
+            }
+
+            // if we have a certificate data validator, then we'll use it to validate the dns name
+
+            if (certificateDataValidator != null && certificateDataValidator.validateRoleCertSanDnsName(
+                    reqRoleDomain, reqRoleName, principal, dnsName, ZTSUtils.ZTS_CERT_DNS_SUFFIX)) {
+                continue;
+            }
+
+            LOGGER.error("Role Certificate sanDNS Validation - invalid entry: {}, principal: {}",
+                dnsName, principal);
+            if (validateRoleCertDnsNames) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public boolean validateIPAddress(X509Certificate cert, final String ip) {
@@ -212,29 +296,34 @@ public class X509RoleCertRequest extends X509CertRequest {
             // validation based on the connection ip
 
             if (!certIPs.isEmpty()) {
-                return certIPs.containsAll(ipAddresses);
+                if (!certIPs.containsAll(ipAddresses)) {
+                    LOGGER.error("unable to validate certificate IP addresses: '{}' against CSR IP addresses: '{}'",
+                            certIPs, ipAddresses);
+                    return false;
+                }
+                return true;
             }
         }
 
-        return validateIPAddress(ip);
+        if (!validateIPAddress(ip)) {
+            LOGGER.error("unable to validate connection IP address: '{}' against CSR IP addresses: '{}'",
+                    ip, ipAddresses);
+            return false;
+        }
+
+        return true;
     }
 
     public boolean validateSpiffeURI(final String domainName, final String roleName) {
 
-        // the expected format are: spiffe://<domain>/ra/<role-name>
-        //  e.g. spiffe://sports/ra/hockey-writers
+        // validate the spiffe uri according to our configured validators
 
         if (spiffeUri == null) {
             return true;
         }
 
-        final String reqUri = "spiffe://" + domainName + "/" + SPIFFE_ROLE_AGENT + "/" + roleName;
-        boolean uriVerified = reqUri.equalsIgnoreCase(spiffeUri);
-
-        if (!uriVerified) {
-            LOGGER.error("validateSpiffeURI: spiffe uri mismatch: {}/{}", spiffeUri, reqUri);
-        }
-
-        return uriVerified;
+        return spiffeUriManager.validateRoleCertUri(spiffeUri, domainName, roleName);
     }
 }
+
+

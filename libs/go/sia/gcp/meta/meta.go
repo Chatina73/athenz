@@ -24,66 +24,103 @@ import (
 	"time"
 )
 
-// GetData makes a http call to the local metadata end point and returns the metadata document as bytes
+// GetData makes a http call to the local metadata end point and returns the metadata document as bytes.
+// If the request fails with a transient error, it retries up to 10 times with a 1 second delay.
 func GetData(base, path string) ([]byte, error) {
 	headers := make(map[string]string)
 	headers["Metadata-Flavor"] = "Google"
-	return processHttpRequest(base, path, "GET", headers)
+	var data []byte
+	var lastErr error
+	for i := range 10 {
+		var statusCode int
+		data, statusCode, lastErr = processHttpRequest(base, path, "GET", headers)
+		if lastErr == nil {
+			return data, nil
+		}
+		if !isTransientError(statusCode) {
+			log.Printf("Error fetching metadata %s/%s: %v", base, path, lastErr)
+			return nil, lastErr
+		}
+		log.Printf("Transient error fetching metadata %s/%s (attempt %d/10): %v", base, path, i+1, lastErr)
+		if i < 9 {
+			time.Sleep(time.Second * time.Duration(i+1))
+		}
+	}
+	return nil, lastErr
 }
 
-func processHttpRequest(base, path, method string, headers map[string]string) ([]byte, error) {
+func isTransientError(statusCode int) bool {
+	if statusCode == 0 {
+		return true
+	}
+	return statusCode == http.StatusTooManyRequests ||
+		statusCode == http.StatusInternalServerError ||
+		statusCode == http.StatusBadGateway ||
+		statusCode == http.StatusServiceUnavailable ||
+		statusCode == http.StatusGatewayTimeout
+}
+
+func processHttpRequest(base, path, method string, headers map[string]string) ([]byte, int, error) {
 	c := &http.Client{}
 	c.Timeout = 5 * time.Second
 	req, err := http.NewRequest(method, base+path, nil)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	if headers != nil {
-		for key, value := range headers {
-			req.Header.Set(key, value)
-		}
+	for key, value := range headers {
+		req.Header.Set(key, value)
 	}
 	res, err := c.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	body, err := io.ReadAll(res.Body)
 	_ = res.Body.Close()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if res.StatusCode == 200 {
-		return body, nil
+		return body, res.StatusCode, nil
 	}
-	return nil, fmt.Errorf("cannot get metadata, url: %q, headers: %v status code is %d", base+path, headers, res.StatusCode)
+	return nil, res.StatusCode, fmt.Errorf("cannot get metadata, url: %q, headers: %v status code is %d", base+path, headers, res.StatusCode)
 }
 
-// GetRegion get current region from identity document
-func GetRegion(metaEndPoint string) string {
+// GetRegion get current region from metadata server
+func GetRegion(metaEndPoint string) (string, error) {
 	var region string
-	region = getRegionFromMeta(metaEndPoint)
-	if region == "" {
-		log.Println("No region information available. Defaulting to us-west1")
-		region = "us-west1"
+	zone, err := GetZone(metaEndPoint)
+	if err != nil {
+		return "", err
 	}
-	return region
+	if idx := strings.LastIndex(zone, "-"); idx > 0 {
+		region = zone[:idx]
+		return region, nil
+	}
+	return "", fmt.Errorf("unable to derive region from zone: %s", zone)
 }
 
-func getRegionFromMeta(metaEndPoint string) string {
-	var region string
-	log.Println("Trying to determine region from metadata server ...")
+// GetZone get current zone from metadata server
+func GetZone(metaEndPoint string) (string, error) {
+	zone, err := getZoneFromMeta(metaEndPoint)
+	if err != nil {
+		return "", err
+	}
+	return zone, nil
+}
+
+func getZoneFromMeta(metaEndPoint string) (string, error) {
+	var zone string
+	log.Println("Trying to determine zone from metadata server ...")
 	fullOutput, err := GetData(metaEndPoint, "/computeMetadata/v1/instance/zone")
 	if err == nil {
 		if idx := strings.LastIndex(string(fullOutput), "/"); idx > 0 {
-			zone := string(fullOutput[idx+1:])
-			if idx := strings.LastIndex(zone, "-"); idx > 0 {
-				region = zone[:idx]
-			}
+			zone = string(fullOutput[idx+1:])
 		}
 	}
-	return region
+	return zone, err
 }
 
+// GetDomain get domain from metadata server
 func GetDomain(metaEndpoint string) (string, error) {
 	domainBytes, err := GetData(metaEndpoint, "/computeMetadata/v1/project/attributes/athenz-domain")
 	if err != nil {
@@ -92,6 +129,7 @@ func GetDomain(metaEndpoint string) (string, error) {
 	return string(domainBytes), nil
 }
 
+// GetProject get project from metadata server
 func GetProject(metaEndpoint string) (string, error) {
 	projectBytes, err := GetData(metaEndpoint, "/computeMetadata/v1/project/project-id")
 	if err != nil {
@@ -100,18 +138,35 @@ func GetProject(metaEndpoint string) (string, error) {
 	return string(projectBytes), nil
 }
 
+// GetService get service from metadata server
 func GetService(metaEndpoint string) (string, error) {
+	service, _, err := getGCPService(metaEndpoint)
+	return service, err
+}
+
+// GetServiceAccountInfo get service account info from metadata server
+func GetServiceAccountInfo(metaEndpoint string) (string, string, error) {
+	serviceName, servicePostfix, err := getGCPService(metaEndpoint)
+	if err == nil {
+		return serviceName, string(servicePostfix), nil
+	}
+	return "", "", err
+}
+
+func getGCPService(metaEndpoint string) (string, []byte, error) {
 	serviceBytes, err := GetData(metaEndpoint, "/computeMetadata/v1/instance/service-accounts/default/email")
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if idx := strings.Index(string(serviceBytes), "@"); idx > 0 {
 		service := string(serviceBytes[:idx])
-		return service, nil
+		servicePostfix := serviceBytes[idx:]
+		return service, servicePostfix, nil
 	}
-	return "", fmt.Errorf("unable to derive service name from metadata")
+	return "", nil, fmt.Errorf("unable to derive service name from metadata")
 }
 
+// GetProfile get profile from metadata server
 func GetProfile(metaEndpoint string) (string, error) {
 	profileBytes, err := GetData(metaEndpoint, "/computeMetadata/v1/instance/attributes/accessProfile")
 	if err != nil {
@@ -120,6 +175,16 @@ func GetProfile(metaEndpoint string) (string, error) {
 	return string(profileBytes), nil
 }
 
+// GetInstanceAttributeValue get instance attribute value from metadata server
+func GetInstanceAttributeValue(metaEndpoint, key string) (string, error) {
+	tagBytes, err := GetData(metaEndpoint, "/computeMetadata/v1/instance/attributes/"+key)
+	if err != nil {
+		return "", err
+	}
+	return string(tagBytes), nil
+}
+
+// GetInstanceId get instance id from metadata server
 func GetInstanceId(metaEndpoint string) (string, error) {
 	instanceIdBytes, err := GetData(metaEndpoint, "/computeMetadata/v1/instance/id")
 	if err != nil {
@@ -127,6 +192,8 @@ func GetInstanceId(metaEndpoint string) (string, error) {
 	}
 	return string(instanceIdBytes), nil
 }
+
+// GetInstancePrivateIp get instance private ip from metadata server
 func GetInstancePrivateIp(metaEndpoint string) (string, error) {
 	instanceIdBytes, err := GetData(metaEndpoint, "/computeMetadata/v1/instance/network-interfaces/0/ip")
 	if err != nil {
@@ -134,6 +201,8 @@ func GetInstancePrivateIp(metaEndpoint string) (string, error) {
 	}
 	return string(instanceIdBytes), nil
 }
+
+// GetInstancePublicIp get instance public ip from metadata server
 func GetInstancePublicIp(metaEndpoint string) (string, error) {
 	pubIpBytes, err := GetData(metaEndpoint, "/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip")
 	if err != nil {
@@ -141,6 +210,8 @@ func GetInstancePublicIp(metaEndpoint string) (string, error) {
 	}
 	return string(pubIpBytes), nil
 }
+
+// GetInstanceName get instance name from metadata server
 func GetInstanceName(metaEndpoint string) (string, error) {
 	nameBytes, err := GetData(metaEndpoint, "/computeMetadata/v1/instance/name")
 	if err != nil {

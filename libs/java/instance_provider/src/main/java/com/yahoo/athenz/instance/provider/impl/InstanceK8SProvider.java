@@ -15,6 +15,7 @@
  */
 package com.yahoo.athenz.instance.provider.impl;
 
+import com.yahoo.athenz.auth.Authorizer;
 import com.yahoo.athenz.auth.KeyStore;
 import com.yahoo.athenz.instance.provider.*;
 import com.yahoo.rdl.JSON;
@@ -33,22 +34,27 @@ public class InstanceK8SProvider implements InstanceProvider {
     static final String ZTS_PROP_K8S_CERT_VALIDITY = "athenz.zts.k8s_cert_validity";
     static final String ZTS_PROP_K8S_PROVIDER_DISTRIBUTION_VALIDATOR_FACTORY_CLASS = "athenz.zts.k8s_provider_distribution_validator_factory_class";
     long certValidityTime;
-
     KubernetesDistributionValidatorFactory kubernetesDistributionValidatorFactory;
-
     Map<String, KubernetesDistributionValidator> kubernetesDistributionValidatorMap;
+    Authorizer authorizer = null;
+
     @Override
     public Scheme getProviderScheme() {
         return Scheme.CLASS;
     }
 
-    public ResourceException error(String message) {
-        return error(ResourceException.FORBIDDEN, message);
+    @Override
+    public void setAuthorizer(Authorizer authorizer) {
+        this.authorizer = authorizer;
     }
 
-    public ResourceException error(int errorCode, String message) {
+    public ProviderResourceException error(String message) {
+        return error(ProviderResourceException.FORBIDDEN, message);
+    }
+
+    public ProviderResourceException error(int errorCode, String message) {
         LOGGER.error(message);
-        return new ResourceException(errorCode, message);
+        return new ProviderResourceException(errorCode, message);
     }
 
     @Override
@@ -59,7 +65,7 @@ public class InstanceK8SProvider implements InstanceProvider {
         if (kubernetesDistributionValidatorFactory != null) {
             kubernetesDistributionValidatorFactory.initialize();
             kubernetesDistributionValidatorMap = kubernetesDistributionValidatorFactory.getSupportedDistributions();
-            kubernetesDistributionValidatorMap.forEach((key, value) -> value.initialize());
+            kubernetesDistributionValidatorMap.forEach((key, value) -> value.initialize(sslContext, authorizer));
         }
     }
 
@@ -79,7 +85,7 @@ public class InstanceK8SProvider implements InstanceProvider {
     }
 
     @Override
-    public InstanceConfirmation confirmInstance(InstanceConfirmation confirmation) {
+    public InstanceConfirmation confirmInstance(InstanceConfirmation confirmation) throws ProviderResourceException {
         IdTokenAttestationData attestationData = JSON.fromString(confirmation.getAttestationData(),
                 IdTokenAttestationData.class);
 
@@ -103,12 +109,31 @@ public class InstanceK8SProvider implements InstanceProvider {
 
         // now that we have verified the issuer, lets validate the id_token signature in attestationData
         if (!kubernetesDistributionValidator.validateAttestationData(confirmation, attestationData, issuer, errMsg)) {
-            throw error("id_token in the attestation data is invalid.");
+            throw error("id_token in the attestation data is invalid. Additional details=" + errMsg);
         }
 
-        // next validate the san dns entries in the certificate request
-        if (!kubernetesDistributionValidator.validateSanDNSEntries(confirmation, errMsg)) {
-            throw error("Unable to validate certificate request hostnames");
+        LOGGER.debug("confirmInstance: domain={} service={} issuer={} attestationSubject={}",
+                confirmation.getDomain(), confirmation.getService(), issuer,
+                instanceAttributes.get(InstanceProvider.ZTS_INSTANCE_ATTESTATION_DATA_SUBJECT));
+
+        // if the request includes a spiffe uri then its namespace component becomes part
+        // of the issued identity, so we must verify it against the namespace of the service
+        // account that our validated id_token was issued for. the namespace in the uri is
+        // otherwise only matched against the namespace value given in the request, which
+        // is not attested
+
+        if (!validateSpiffeUriNamespace(instanceAttributes)) {
+            throw error("namespace mismatch between attestation id_token and spiffe uri");
+        }
+
+        // skip DNS validation for SPIFFE SVIDs with no DNS SANs
+        final String sanDns = instanceAttributes.get(InstanceProvider.ZTS_INSTANCE_SAN_DNS);
+        final String sanUri = instanceAttributes.get(InstanceProvider.ZTS_INSTANCE_SAN_URI);
+        boolean spiffeSvidWithNoDns = StringUtil.isEmpty(sanDns) &&
+                sanUri != null && sanUri.startsWith("spiffe://");
+
+        if (!spiffeSvidWithNoDns && !kubernetesDistributionValidator.validateSanDNSEntries(confirmation, errMsg)) {
+            throw error("Unable to validate certificate request hostnames. Additional details=" + errMsg);
         }
 
         Map<String, String> attributes = new HashMap<>();
@@ -119,8 +144,34 @@ public class InstanceK8SProvider implements InstanceProvider {
         return confirmation;
     }
 
+    /**
+     * Verify that the namespace in the request's spiffe uri matches the namespace from the
+     * subject of the validated id_token. Requests without a spiffe uri carry no namespace
+     * in their identity, so there is nothing to verify in that case.
+     * @param instanceAttributes attributes from the confirmation request
+     * @return true if the namespaces match or the request has no spiffe uri, false otherwise
+     */
+    boolean validateSpiffeUriNamespace(final Map<String, String> instanceAttributes) {
+
+        final String spiffeNamespace = InstanceUtils.getNamespaceFromSpiffeUri(
+                instanceAttributes.get(InstanceProvider.ZTS_INSTANCE_SAN_URI));
+        if (spiffeNamespace == null) {
+            return true;
+        }
+
+        final String tokenNamespace = InstanceUtils.getNamespaceFromIdTokenSubject(
+                instanceAttributes.get(InstanceProvider.ZTS_INSTANCE_ATTESTATION_DATA_SUBJECT));
+
+        if (!spiffeNamespace.equals(tokenNamespace)) {
+            LOGGER.error("validateSpiffeUriNamespace: namespace mismatch: spiffe-uri={} id_token={}",
+                    spiffeNamespace, tokenNamespace);
+            return false;
+        }
+        return true;
+    }
+
     @Override
-    public InstanceConfirmation refreshInstance(InstanceConfirmation confirmation) {
+    public InstanceConfirmation refreshInstance(InstanceConfirmation confirmation) throws ProviderResourceException {
         // we do not allow refresh of K8S certificates
         throw error("Generic K8S X.509 Certificates cannot be refreshed");
     }

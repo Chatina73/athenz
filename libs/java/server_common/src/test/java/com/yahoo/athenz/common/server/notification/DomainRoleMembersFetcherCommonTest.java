@@ -16,6 +16,7 @@
 
 package com.yahoo.athenz.common.server.notification;
 
+import com.yahoo.athenz.common.server.db.RolesProvider;
 import com.yahoo.athenz.zms.Role;
 import com.yahoo.athenz.zms.RoleMember;
 import com.yahoo.rdl.Timestamp;
@@ -24,10 +25,11 @@ import org.testng.annotations.Test;
 import java.util.*;
 
 import static com.yahoo.athenz.common.ServerCommonConsts.USER_DOMAIN_PREFIX;
-import static org.testng.AssertJUnit.assertEquals;
-import static org.testng.AssertJUnit.assertTrue;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 public class DomainRoleMembersFetcherCommonTest {
+
     @Test
     public void testGetDomainRoleMembers() {
         DomainRoleMembersFetcherCommon fetcherCommon = new DomainRoleMembersFetcherCommon(USER_DOMAIN_PREFIX);
@@ -56,15 +58,121 @@ public class DomainRoleMembersFetcherCommonTest {
         rolesList.add(role3);
 
         Set<String> receivedMembers = fetcherCommon.getDomainRoleMembers("role1", rolesList);
-        assertEquals(2, receivedMembers.size());
+        assertEquals(receivedMembers.size(), 2);
         assertTrue(receivedMembers.contains("user.unexpiredUser"));
         assertTrue(receivedMembers.contains("user.noExpiration"));
 
         receivedMembers = fetcherCommon.getDomainRoleMembers("role2", rolesList);
-        assertEquals(new HashSet<>(), receivedMembers);
+        assertEquals(receivedMembers, new HashSet<>());
 
         receivedMembers = fetcherCommon.getDomainRoleMembers("roleDoesntExist", rolesList);
-        assertEquals(new HashSet<>(), receivedMembers);
+        assertEquals(receivedMembers, new HashSet<>());
+
+        // if the role list is empty we get an empty set
+
+        assertEquals(fetcherCommon.getDomainRoleMembers("role1", null), new HashSet<>());
     }
 
+    @Test
+    public void testGetDomainRoleMembersFromRole() {
+        DomainRoleMembersFetcherCommon fetcherCommon = new DomainRoleMembersFetcherCommon(USER_DOMAIN_PREFIX);
+
+        long currentTimeInMillis = System.currentTimeMillis();
+        Timestamp futureTimeStamp =  Timestamp.fromMillis(currentTimeInMillis + 100000);
+        Timestamp pastTimeStamp =  Timestamp.fromMillis(currentTimeInMillis - 100000);
+
+        Role role1 = new Role();
+        role1.setName("role1");
+        RoleMember roleMember1 = new RoleMember().setMemberName("user.unexpiredUser").setExpiration(futureTimeStamp);
+        RoleMember roleMember2 = new RoleMember().setMemberName("user.expiredUser").setExpiration(pastTimeStamp);
+        RoleMember roleMember3 = new RoleMember().setMemberName("user.noExpiration");
+        RoleMember roleMember4 = new RoleMember().setMemberName("notProperUsername");
+        List<RoleMember> role1MemberList = new ArrayList<>(Arrays.asList(roleMember1, roleMember2, roleMember3, roleMember4));
+        role1.setRoleMembers(role1MemberList);
+
+        Set<String> receivedMembers = fetcherCommon.getDomainRoleMembers(role1);
+        assertEquals(receivedMembers.size(), 2);
+        assertTrue(receivedMembers.contains("user.unexpiredUser"));
+        assertTrue(receivedMembers.contains("user.noExpiration"));
+    }
+
+    @Test
+    public void testDomainRoleMembersFetcherNullProvider() {
+        DomainRoleMembersFetcher fetcher = new DomainRoleMembersFetcher(null, USER_DOMAIN_PREFIX);
+        assertEquals(fetcher.getDomainRoleMembers("domain", "role"), new HashSet<>());
+    }
+
+    @Test
+    public void testDomainRoleMembersFetcherRole() {
+
+        Role role1 = new Role();
+        role1.setName("role1");
+        List<RoleMember> role1MemberList = Collections.singletonList(new RoleMember().setMemberName("user.user1"));
+        role1.setRoleMembers(role1MemberList);
+
+        RolesProvider provider = new RolesProvider() {
+            @Override
+            public List<Role> getRolesByDomain(String domainName) {
+                return null;
+            }
+            @Override
+            public Role getRole(String domainName, String roleName, Boolean auditLog, Boolean expand, Boolean pending) {
+                return role1;
+            }
+        };
+
+        DomainRoleMembersFetcher fetcher = new DomainRoleMembersFetcher(provider, USER_DOMAIN_PREFIX);
+        Set<String> users = fetcher.getDomainRoleMembers("domain1", "role1");
+        assertEquals(users.size(), 1);
+        assertTrue(users.contains("user.user1"));
+    }
+
+    @Test
+    public void testDomainRoleMembersFetcherNotImpl() {
+
+        Role role1 = new Role();
+        role1.setName("domain1:role.role1");
+        List<RoleMember> role1MemberList = Collections.singletonList(new RoleMember().setMemberName("user.user1"));
+        role1.setRoleMembers(role1MemberList);
+
+        List<Role> rolesList = new ArrayList<>();
+        rolesList.add(role1);
+
+        RolesProvider provider = domainName -> rolesList;
+
+        DomainRoleMembersFetcher fetcher = new DomainRoleMembersFetcher(provider, USER_DOMAIN_PREFIX);
+        Set<String> users = fetcher.getDomainRoleMembers("domain1", "role1");
+        assertEquals(users.size(), 1);
+        assertTrue(users.contains("user.user1"));
+
+        users = fetcher.getDomainRoleMembers("domain1", "domain1:role.role1");
+        assertEquals(users.size(), 1);
+        assertTrue(users.contains("user.user1"));
+    }
+
+    @Test
+    public void testDomainRoleMembersFetcherExc() {
+
+        Role role1 = new Role();
+        role1.setName("role1");
+        List<RoleMember> role1MemberList = Collections.singletonList(new RoleMember().setMemberName("user.user1"));
+        role1.setRoleMembers(role1MemberList);
+
+        List<Role> rolesList = new ArrayList<>();
+        rolesList.add(role1);
+
+        RolesProvider provider = new RolesProvider() {
+            @Override
+            public List<Role> getRolesByDomain(String domainName) {
+                return rolesList;
+            }
+            @Override
+            public Role getRole(String domainName, String roleName, Boolean auditLog, Boolean expand, Boolean pending) {
+                throw new IllegalArgumentException("Invalid request");
+            }
+        };
+
+        DomainRoleMembersFetcher fetcher = new DomainRoleMembersFetcher(provider, USER_DOMAIN_PREFIX);
+        assertEquals(fetcher.getDomainRoleMembers("domain1", "role1"), new HashSet<>());
+    }
 }

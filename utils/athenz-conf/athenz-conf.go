@@ -20,6 +20,7 @@ import (
 	"golang.org/x/net/proxy"
 
 	"github.com/AthenZ/athenz/clients/go/zms"
+	"github.com/AthenZ/athenz/libs/go/tls/config"
 )
 
 var (
@@ -93,7 +94,7 @@ func getAuthNToken(identity, authorizedServices, zmsURL string, tr *http.Transpo
 		return ntoken, nil
 	}
 
-	fmt.Fprintf(os.Stderr, "Enter password for "+user+": ")
+	fmt.Fprintf(os.Stderr, "Enter password for %s: ", user)
 	pass, err := terminal.ReadPassword(syscall.Stdin)
 	if err != nil {
 		return "", err
@@ -109,12 +110,12 @@ func getAuthNToken(identity, authorizedServices, zmsURL string, tr *http.Transpo
 	var authHeader = "Authorization"
 	var authCreds = "Basic " + str
 	zmsClient := zms.ZMSClient{
-		URL:         zmsURL,
-		Transport:   tr,
-		CredsHeader: &authHeader,
-		CredsToken:  &authCreds,
-		Timeout:     timeout,
+		URL:          zmsURL,
+		Transport:    tr,
+		CredsHeaders: make(map[string]string),
+		Timeout:      timeout,
 	}
+	zmsClient.AddCredentials(authHeader, authCreds)
 	tok, err := zmsClient.GetUserToken(zms.SimpleName(user), authorizedServices, nil)
 	if err != nil {
 		return "", fmt.Errorf("Cannot get user token for user: %s error: %v", user, err)
@@ -344,7 +345,7 @@ func GetTLSConfigFromFiles(certFile, keyFile, caCertFile *string) (*tls.Config, 
 }
 
 func GetTLSConfig(certPem, keyPem, caCertPem []byte) (*tls.Config, error) {
-	config := &tls.Config{}
+	config := config.ClientTLSConfig()
 	if keyPem != nil {
 		clientCert, err := tls.X509KeyPair(certPem, keyPem)
 		if err != nil {

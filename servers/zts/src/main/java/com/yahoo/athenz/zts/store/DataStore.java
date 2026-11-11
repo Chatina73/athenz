@@ -20,16 +20,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.yahoo.athenz.auth.AuthorityConsts;
+import com.yahoo.athenz.auth.KeyStore;
 import com.yahoo.athenz.auth.util.StringUtils;
 import com.yahoo.athenz.common.metrics.Metric;
 import com.yahoo.athenz.common.server.db.RolesProvider;
+import com.yahoo.athenz.common.server.key.PubKeysProvider;
 import com.yahoo.athenz.common.server.store.ChangeLogStore;
 import com.yahoo.athenz.common.server.util.ConfigProperties;
 import com.yahoo.athenz.common.server.util.AuthzHelper;
+import com.yahoo.athenz.common.server.util.ResourceUtils;
 import com.yahoo.athenz.common.utils.SignUtils;
 import com.yahoo.athenz.zms.*;
+import com.yahoo.athenz.zms.PublicKeyEntry;
+import com.yahoo.athenz.zms.ServiceIdentity;
 import com.yahoo.athenz.zts.*;
-import com.yahoo.athenz.zts.ResourceException;
 import com.yahoo.rdl.*;
 import com.yahoo.athenz.auth.util.Crypto;
 import com.yahoo.athenz.common.config.AthenzConfig;
@@ -57,29 +61,38 @@ import java.util.stream.Collectors;
 import org.bouncycastle.asn1.x9.ECNamedCurveTable;
 import org.bouncycastle.asn1.x9.X9ECParameters;
 import org.bouncycastle.jcajce.provider.asymmetric.util.EC5Util;
+import org.eclipse.jetty.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.crypto.SecretKey;
 
 import static com.yahoo.athenz.common.ServerCommonConsts.ATHENZ_SYS_DOMAIN;
 import static com.yahoo.athenz.common.ServerCommonConsts.PROP_ATHENZ_CONF;
 import static com.yahoo.athenz.zts.ZTSConsts.ZTS_ISSUE_ROLE_CERT_TAG;
 
-public class DataStore implements DataCacheProvider, RolesProvider {
+public class DataStore implements DataCacheProvider, RolesProvider, PubKeysProvider, KeyStore {
 
     ChangeLogStore changeLogStore;
     private CloudStore cloudStore;
     protected final Metric metric;
     private final Cache<String, DataCache> cacheStore;
     final Cache<String, PublicKey> zmsPublicKeyCache;
+    final Cache<String, PublicKey> svcPublicKeyCache;
+    final Cache<String, String> svcCredsCache;
     final Cache<String, List<GroupMember>> groupMemberCache;
     final Cache<String, List<GroupMember>> principalGroupCache;
     final RequireRoleCertCache requireRoleCertCache;
     final Map<String, List<String>> hostCache;
     final Map<String, String> publicKeyCache;
+    final JWKList zmsJWKList;
+    final JWKList zmsJWKListStrictRFC;
     final JWKList ztsJWKList;
     final JWKList ztsJWKListStrictRFC;
     private final ObjectMapper jsonMapper;
     private final Base64.Decoder base64Decoder;
+    protected SecretKey serviceCredsEncryptionKey = null;
+    protected String serviceCredsEncryptionAlgorithm = null;
 
     long updDomainRefreshTime;
     long delDomainRefreshTime;
@@ -127,11 +140,15 @@ public class DataStore implements DataCacheProvider, RolesProvider {
 
         requireRoleCertCache = new RequireRoleCertCache();
 
+        zmsJWKList = new JWKList();
+        zmsJWKListStrictRFC = new JWKList();
         ztsJWKList = new JWKList();
         ztsJWKListStrictRFC = new JWKList();
 
         hostCache = new HashMap<>();
         publicKeyCache = new HashMap<>();
+        svcPublicKeyCache = CacheBuilder.newBuilder().concurrencyLevel(25).build();
+        svcCredsCache = CacheBuilder.newBuilder().concurrencyLevel(25).build();
 
         // our configured values are going to be in seconds, so we need
         // to convert our input in seconds to milliseconds
@@ -576,11 +593,24 @@ public class DataStore implements DataCacheProvider, RolesProvider {
     }
 
     String generateServiceKeyName(String domain, String service, String keyId) {
+        if (domain != null) {
+            domain = domain.toLowerCase();
+        }
+        if (service != null) {
+            service = service.toLowerCase();
+        }
+        if (keyId != null) {
+            keyId = keyId.toLowerCase();
+        }
         return domain + "." + service + "_" + keyId;
     }
 
     public JWKList getZtsJWKList(Boolean rfc) {
         return rfc == Boolean.TRUE ? ztsJWKListStrictRFC : ztsJWKList;
+    }
+
+    public JWKList getZmsJWKList(Boolean rfc) {
+        return rfc == Boolean.TRUE ? zmsJWKListStrictRFC : zmsJWKList;
     }
 
     boolean loadAthenzPublicKeys() {
@@ -610,40 +640,57 @@ public class DataStore implements DataCacheProvider, RolesProvider {
                 LOGGER.error("No valid public ZMS keys in conf file: {}", confFileName);
                 return false;
             }
+            loadZmsJwk(zmsPublicKeys);
+
             final ArrayList<com.yahoo.athenz.zms.PublicKeyEntry> ztsPublicKeys = conf.getZtsPublicKeys();
             if (ztsPublicKeys == null) {
                 LOGGER.error("Conf file {} has no ZTS Public keys", confFileName);
                 return false;
             }
-            final List<JWK> jwkList = new ArrayList<>();
-            final List<JWK> jwkListStrictRFC = new ArrayList<>();
-            for (com.yahoo.athenz.zms.PublicKeyEntry publicKey : ztsPublicKeys) {
-                final String id = publicKey.getId();
-                final String key = publicKey.getKey();
-                if (key == null || id == null) {
-                    LOGGER.error("Missing required zts public key attributes: {}/{}", id, key);
-                    continue;
-                }
-                final JWK jwk = getJWK(key, id, false);
-                if (jwk != null) {
-                    jwkList.add(jwk);
-                }
-                final JWK jwkRfc = getJWK(key, id, true);
-                if (jwkRfc != null) {
-                    jwkListStrictRFC.add(jwkRfc);
-                }
-            }
-            if (jwkList.isEmpty() || jwkListStrictRFC.isEmpty()) {
+            if (!loadZtsJwk(ztsPublicKeys)) {
                 LOGGER.error("No valid public ZTS keys in conf file: {}", confFileName);
                 return false;
             }
-            ztsJWKList.setKeys(jwkList);
-            ztsJWKListStrictRFC.setKeys(jwkListStrictRFC);
         } catch (IOException ex) {
             LOGGER.error("Unable to parse conf file {}, error: {}", confFileName, ex.getMessage());
             return false;
         }
         return true;
+    }
+
+    boolean loadJwk(ArrayList<com.yahoo.athenz.zms.PublicKeyEntry> keys, JWKList jwkList, JWKList jwkListStrictRFC) {
+        final List<JWK> tmpJwkList = new ArrayList<>();
+        final List<JWK> tmpJwkListStrictRFC = new ArrayList<>();
+        for (com.yahoo.athenz.zms.PublicKeyEntry publicKey : keys) {
+            final String id = publicKey.getId();
+            final String key = publicKey.getKey();
+            if (key == null || id == null) {
+                LOGGER.error("Missing required public key attributes: {}/{}", id, key);
+                continue;
+            }
+            final JWK jwk = getJWK(key, id, false);
+            if (jwk != null) {
+                tmpJwkList.add(jwk);
+            }
+            final JWK jwkRfc = getJWK(key, id, true);
+            if (jwkRfc != null) {
+                tmpJwkListStrictRFC.add(jwkRfc);
+            }
+        }
+        if (tmpJwkList.isEmpty() || tmpJwkListStrictRFC.isEmpty()) {
+            return false;
+        }
+        jwkList.setKeys(tmpJwkList);
+        jwkListStrictRFC.setKeys(tmpJwkListStrictRFC);
+        return true;
+    }
+
+    boolean loadZmsJwk(ArrayList<com.yahoo.athenz.zms.PublicKeyEntry> keys) {
+        return loadJwk(keys, zmsJWKList, zmsJWKListStrictRFC);
+    }
+
+    boolean loadZtsJwk(ArrayList<com.yahoo.athenz.zms.PublicKeyEntry> keys) {
+        return loadJwk(keys, ztsJWKList, ztsJWKListStrictRFC);
     }
 
     @SuppressWarnings("rawtypes")
@@ -897,22 +944,27 @@ public class DataStore implements DataCacheProvider, RolesProvider {
         }
 
         // Determine which roles have been deleted and should be removed from cache
-        final Set<String> validRoles = (roles != null) ? roles.stream().map(Role::getName).collect(Collectors.toSet()) : new HashSet<>();
+        // first we're going to extract our original roles. if we don't have
+        // any, then there is nothing to process, so we can return away
 
-        List<Role> deletedRoles = null;
         DataCache dataCache = getCacheStore().getIfPresent(domainData.getName());
-        if (dataCache != null) {
-            deletedRoles = dataCache.getDomainData().getRoles();
-            if (deletedRoles != null && !validRoles.isEmpty()) {
-                deletedRoles.removeIf(item -> validRoles.contains(item.getName()));
-            }
+        if (dataCache == null) {
+            return;
+        }
+        List<Role> originalRoles = dataCache.getDomainData().getRoles();
+        if (originalRoles == null || originalRoles.isEmpty()) {
+            return;
         }
 
-        // Process our deleted roles
+        // get the set of role names in the original and updated domains to
+        // compare and see which ones have been deleted
 
-        if (deletedRoles != null) {
-            for (Role deletedRole : deletedRoles) {
-                requireRoleCertCache.processRoleCacheDelete(deletedRole);
+        final Set<String> newRoleNames = (roles != null) ?
+                roles.stream().map(Role::getName).collect(Collectors.toSet()) : new HashSet<>();
+
+        for (Role originalRole : originalRoles) {
+            if (!newRoleNames.contains(originalRole.getName())) {
+                requireRoleCertCache.processRoleCacheDelete(originalRole);
             }
         }
     }
@@ -1325,7 +1377,9 @@ public class DataStore implements DataCacheProvider, RolesProvider {
         }
 
         List<Role> deletedRoles = dataCache.getDomainData().getRoles();
-
+        if (deletedRoles == null) {
+            return;
+        }
         for (Role role : deletedRoles) {
             requireRoleCertCache.processRoleCacheDelete(role);
         }
@@ -1408,6 +1462,7 @@ public class DataStore implements DataCacheProvider, RolesProvider {
 
         for (Map.Entry<String, String> entry : publicKeyMap.entrySet()) {
             publicKeyCache.remove(entry.getKey());
+            svcPublicKeyCache.invalidate(entry.getKey());
         }
     }
 
@@ -1444,7 +1499,7 @@ public class DataStore implements DataCacheProvider, RolesProvider {
 
         if (getCloudStore() != null) {
             getCloudStore().updateAwsAccount(name, dataCache.getDomainData().getAccount());
-            getCloudStore().updateAzureSubscription(name, dataCache.getDomainData().getAzureSubscription());
+            getCloudStore().updateAzureSubscription(name, dataCache.getDomainData().getAzureSubscription(), dataCache.getDomainData().getAzureTenant(), dataCache.getDomainData().getAzureClient());
             getCloudStore().updateGCPProject(name, dataCache.getDomainData().getGcpProject(), dataCache.getDomainData().getGcpProjectNumber());
         }
 
@@ -1625,6 +1680,20 @@ public class DataStore implements DataCacheProvider, RolesProvider {
 
     public List<GroupMember> getGroupMembers(final String groupName) {
         return groupMemberCache.getIfPresent(groupName);
+    }
+
+    public Set<String> getRolesForPrincipal(String domainName, String principal) {
+
+        DataCache data = getDataCache(domainName);
+        if (data == null) {
+            return Collections.emptySet();
+        }
+
+        // process our request and retrieve the roles for the principal
+
+        Set<String> roles = new HashSet<>();
+        getAccessibleRoles(data, domainName, principal, null, false, roles, false);
+        return roles;
     }
 
     // API
@@ -1843,18 +1912,68 @@ public class DataStore implements DataCacheProvider, RolesProvider {
                 requestedRoleList, accessibleRoles, keepFullName);
     }
 
-    // API
-    public String getPublicKey(String domain, String service, String keyId) {
 
-        String publicKeyName = generateServiceKeyName(domain, service, keyId);
+    public PublicKey getServicePublicKey(final String domain, final String service, final String keyId) {
+
+        // if our public key is in our cache then we'll just return it right away
+
+        final String publicKeyName = generateServiceKeyName(domain, service, keyId);
+        PublicKey publicKey = svcPublicKeyCache.getIfPresent(publicKeyName);
+        if (publicKey != null) {
+            return publicKey;
+        }
+
+        // extract the public key from the pem cache
+
+        final String pemKey = getPemPublicKey(publicKeyName);
+        if (pemKey == null) {
+            return null;
+        }
+
+        // convert the pem key to public key object
+
+        try {
+            publicKey = Crypto.loadPublicKey(pemKey);
+            if (publicKey != null) {
+                svcPublicKeyCache.put(publicKeyName, publicKey);
+            }
+            return publicKey;
+        } catch (Exception ex) {
+            LOGGER.error("Unable to load public key: {} for service: {} in domain: {}",
+                    keyId, service, domain);
+            return null;
+        }
+    }
+
+    public String getServiceClientId(final String domainName, final String serviceName) {
+
+        // get the domain object from our cache
+
+        DataCache dataCache = getCacheStore().getIfPresent(domainName);
+        if (dataCache == null) {
+            return null;
+        }
+        return dataCache.getServiceIdentityClientId(serviceName);
+    }
+
+    public String getPemPublicKey(final String publicKeyName) {
+
         String publicKey;
-
         try {
             pkeyRLock.lock();
             publicKey = publicKeyCache.get(publicKeyName);
         } finally {
             pkeyRLock.unlock();
         }
+
+        return publicKey;
+    }
+
+    // API
+    public String getPublicKey(String domain, String service, String keyId) {
+
+        final String publicKeyName = generateServiceKeyName(domain, service, keyId);
+        final String publicKey = getPemPublicKey(publicKeyName);
 
         if (publicKey == null && LOGGER.isDebugEnabled()) {
             LOGGER.debug("Public key: {} not available", publicKeyName);
@@ -1886,6 +2005,50 @@ public class DataStore implements DataCacheProvider, RolesProvider {
         return result;
     }
 
+    /**
+     * implements KeyStore getServiceSecret
+     * @return service's secret
+     */
+    @Override
+    public byte[] getServiceSecret(String domainName, String serviceName) {
+
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("getServiceSecret: service={}.{}", domainName, serviceName);
+        }
+
+        // if encryption is not enabled or the domain/service values are null
+        // then we'll return right away
+
+        if (serviceCredsEncryptionKey == null || serviceName == null || domainName == null) {
+            return null;
+        }
+
+        // for consistent handling of all requests, we're going to convert
+        // all incoming object values into lower case (e.g. domain, role,
+        // policy, service, etc name)
+
+        domainName = domainName.toLowerCase();
+
+        // get the domain object from our cache
+
+        DataCache dataCache = getCacheStore().getIfPresent(domainName);
+        if (dataCache == null) {
+            return null;
+        }
+
+        // if we have no credentials for the service, we'll return right away
+
+        final String svcCreds = dataCache.getServiceIdentityCreds(
+                ResourceUtils.serviceResourceName(domainName, serviceName.toLowerCase()));
+        if (StringUtil.isEmpty(svcCreds)) {
+            return null;
+        }
+
+        // decrypt the credentials and return to the caller
+
+        return Crypto.decryptWithIVIncluded(serviceCredsEncryptionAlgorithm, svcCreds, serviceCredsEncryptionKey, 16);
+    }
+
     public CloudStore getCloudStore() {
         return cloudStore;
     }
@@ -1899,6 +2062,10 @@ public class DataStore implements DataCacheProvider, RolesProvider {
 
     public Cache<String, DataCache> getCacheStore() {
         return cacheStore;
+    }
+
+    public boolean isJwsDomainSupport() {
+        return jwsDomainSupport;
     }
 
     public Map<String, String> getPublicKeyCache() {
@@ -1915,8 +2082,62 @@ public class DataStore implements DataCacheProvider, RolesProvider {
         return domainData.getRoles();
     }
 
+    @Override
+    public Role getRole(String domainName, String roleName, Boolean auditLog, Boolean expand, Boolean pending) {
+
+        // we do not support audit log, expand, and pending flags in the data store
+        // so we'll return unsupported exception if any of those flags are set
+
+        if (auditLog == Boolean.TRUE || expand == Boolean.TRUE || pending == Boolean.TRUE) {
+            throw new UnsupportedOperationException("audit log, expand, and pending flags are not supported in the zts data store");
+        }
+
+        // get the domain data from the cache
+
+        DomainData domainData = getDomainData(domainName);
+        if (domainData == null) {
+            return null;
+        }
+
+        List<Role> roles = domainData.getRoles();
+        if (roles == null || roles.isEmpty()) {
+            return null;
+        }
+
+        final String roleFqn = ResourceUtils.roleResourceName(domainName, roleName);
+        return roles.stream()
+            .filter(role -> role.getName().equals(roleFqn))
+            .findFirst()
+            .orElse(null);
+    }
+
+    @Override
+    public List<PublicKeyEntry> getPubKeysByService(String domain, String service) {
+        DomainData domainData = getDomainData(domain);
+        if (domainData == null) {
+            LOGGER.error("domainData can not be null, domain: {}, service: {}", domain, service);
+            return new ArrayList<>();
+        }
+
+        String serviceFqn = domain + "." + service;
+
+        for (ServiceIdentity serviceIdentity: domainData.getServices()) {
+            if (serviceIdentity.getName().equalsIgnoreCase(serviceFqn)) {
+                return serviceIdentity.getPublicKeys();
+            }
+        }
+
+        LOGGER.error("pub keys not found for domain: {}, service: {}", domain, service);
+        return new ArrayList<>();
+    }
+
     public List<String> getRolesRequireRoleCert(String principal) {
         return requireRoleCertCache.getRolesRequireRoleCert(principal);
+    }
+
+    public void setServiceCredentialsKey(SecretKey serviceCredsEncryptionKey, String serviceCredsEncryptionAlgorithm) {
+        this.serviceCredsEncryptionKey = serviceCredsEncryptionKey;
+        this.serviceCredsEncryptionAlgorithm = serviceCredsEncryptionAlgorithm;
     }
 
     class DataUpdater implements Runnable {

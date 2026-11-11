@@ -43,8 +43,8 @@ const makeCssInputDropdown = (props) => css`
 `;
 
 const fadeIn = keyframes`
-  from { opacity: 0 }
-  to { opacity: 1 }
+    from { opacity: 0 }
+    to { opacity: 1 }
 `;
 
 const cssMenuDropdown = (props) => css`
@@ -107,6 +107,14 @@ const widthMod = {
     },
 };
 
+function isBoldFont(inputValue, selectedDropdownValue) {
+    return !!(
+        inputValue &&
+        selectedDropdownValue &&
+        inputValue === selectedDropdownValue
+    );
+}
+
 /**
  * This dropdown component has three distinct usage modes:
  *
@@ -153,11 +161,6 @@ class InputDropdown extends React.Component {
 
         return this.props.options.filter((o) => o.name.search(regexp) > -1);
     };
-
-    /**
-     * Used by Downshift to determine string value of an item
-     */
-    itemToString = (i) => (i === null ? '' : i.name);
 
     /**
      * If `asyncSearchFunc` is defined, then this function is called upon
@@ -211,6 +214,7 @@ class InputDropdown extends React.Component {
                 <React.Fragment>
                     {showClose && (
                         <Icon
+                            dataWdio={'clear-input'}
                             icon={'close-circle'}
                             className='clear-selection'
                             color={colors.grey500}
@@ -345,8 +349,26 @@ class InputDropdown extends React.Component {
                 <Downshift
                     initialSelectedItem={defaultSelectedItem}
                     inputValue={this.props.value}
-                    itemToString={this.itemToString}
-                    onChange={(selected) => this.props.onChange(selected)}
+                    itemToString={this.props.itemToString}
+                    onSelect={(selected) => this.props.onChange(selected)} // onSelect seem to trigger more consistently than onChange
+                    {...(this.props.onInputValueChange !== undefined && {
+                        onInputValueChange: (evt) =>
+                            this.props.onInputValueChange(evt),
+                    })}
+                    defaultHighlightedIndex={0}
+                    stateReducer={(state, changes) => {
+                        // keep input changes when user clicks outside input
+                        if (
+                            changes.type &&
+                            (changes.type ===
+                                Downshift.stateChangeTypes.mouseUp ||
+                                changes.type ===
+                                    Downshift.stateChangeTypes.blurInput)
+                        ) {
+                            changes.inputValue = state.inputValue;
+                        }
+                        return changes;
+                    }}
                 >
                     {({
                         clearSelection,
@@ -396,6 +418,10 @@ class InputDropdown extends React.Component {
                                             onChange: this.onInputChange,
                                             onClick: toggleMenu,
                                             onFocus: this.props.onFocus,
+                                            isBold: isBoldFont(
+                                                inputValue,
+                                                this.props.selectedDropdownValue
+                                            ),
                                         })}
                                     />
                                 )}
@@ -520,6 +546,8 @@ InputDropdown.propTypes = {
     onChange: PropTypes.func.isRequired,
     /** Handler for `<input>` onFocus event */
     onFocus: PropTypes.func,
+    /** The itemToString function for getting the string value from one of the options */
+    itemToString: PropTypes.func,
 };
 
 InputDropdown.defaultProps = {
@@ -531,6 +559,10 @@ InputDropdown.defaultProps = {
     noanim: false,
     noclear: false,
     noOptionsMessage: 'No items found',
+    /**
+     * Used by Downshift to determine string value of an item
+     */
+    itemToString: (i) => (i === null ? '' : i.name),
 };
 
 export default InputDropdown;

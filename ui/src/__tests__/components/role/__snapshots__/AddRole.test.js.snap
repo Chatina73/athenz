@@ -20,9 +20,6 @@ exports[`AddRole should open add model with justification input 1`] = `
   -webkit-box-align: flex-start;
   -ms-flex-align: flex-start;
   align-items: flex-start;
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
   display: flex;
   -webkit-box-flex-flow: row nowrap;
   -webkit-flex-flow: row nowrap;
@@ -86,9 +83,6 @@ exports[`AddRole should open add model with justification input 1`] = `
   box-sizing: border-box;
   color: #303030;
   cursor: initial;
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
   display: flex;
   font-family: Helvetica,Arial,sans-serif;
   font-size: 14px;
@@ -116,9 +110,6 @@ exports[`AddRole should open add model with justification input 1`] = `
   box-sizing: border-box;
   color: #3697f2;
   cursor: pointer;
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
   display: flex;
   font-family: Helvetica,Arial,sans-serif;
   font-size: 14px;
@@ -146,9 +137,6 @@ exports[`AddRole should open add model with justification input 1`] = `
 
 .emotion-21 {
   box-sizing: border-box;
-  display: -webkit-inline-box;
-  display: -webkit-inline-flex;
-  display: -ms-inline-flexbox;
   display: inline-flex;
   -webkit-box-flex-flow: row nowrap;
   -webkit-flex-flow: row nowrap;
@@ -246,125 +234,24 @@ exports[`AddRole should open add model with justification input 1`] = `
 }
 
 .emotion-31 {
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
   display: flex;
 }
 
-.emotion-41 {
-  -webkit-flex: 1 1;
-  -ms-flex: 1 1;
-  flex: 1 1;
-  margin-right: 10px;
-}
-
-.emotion-41>div input {
+.emotion-33 {
   position: relative;
-  font: 300 14px HelveticaNeue-Reg,Helvetica,Arial,sans-serif;
-  background-color: rgba(53, 112, 244, 0.05);
-  box-shadow: none;
-  color: rgb(48, 48, 48);
-  min-width: 50px;
-  text-align: left;
-  border-width: 2px;
-  border-style: solid;
-  border-color: transparent;
-  border-image: initial;
-  border-radius: 2px;
-  -webkit-flex: 1 0 auto;
-  -ms-flex: 1 0 auto;
-  flex: 1 0 auto;
-  margin: 0;
-  margin-right: 10px;
-  margin-top: 5px;
-  outline: none;
-  padding: 0.6em 12px;
-  -webkit-transition: background-color 0.2s ease-in-out 0s,color 0.2s ease-in-out 0s,border 0.2s ease-in-out 0s;
-  transition: background-color 0.2s ease-in-out 0s,color 0.2s ease-in-out 0s,border 0.2s ease-in-out 0s;
-  width: 77%;
+  width: 100%;
 }
 
-.emotion-43 {
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
-  display: flex;
+.emotion-33 input {
+  cursor: inherit;
 }
 
-.emotion-45 {
-  margin-left: -7px;
-  margin-top: 10px!important;
+.emotion-34 {
+  width: 100%;
 }
 
-.emotion-47 {
-  fill: #188fff;
-  cursor: pointer;
-  vertical-align: text-bottom;
-}
-
-.emotion-60 {
-  margin-left: 10px;
-}
-
-.emotion-62 {
-  border: none;
-  border-radius: 2px;
-  box-shadow: 0 0 0 1px transparent inset,0 0 0 0 #d5d5d5 inset;
+.emotion-36 {
   box-sizing: border-box;
-  cursor: pointer;
-  display: inline-block;
-  font-family: Helvetica,Arial,sans-serif;
-  font-weight: 300;
-  font-size: 12px;
-  line-height: 1;
-  margin: 5px;
-  min-width: 70px;
-  outline: 0;
-  padding: 8px 18px;
-  text-align: center;
-  text-shadow: none;
-  text-transform: none;
-  -webkit-transition: all 0.2s ease-in;
-  transition: all 0.2s ease-in;
-  vertical-align: baseline;
-  white-space: nowrap;
-  background: transparent;
-  box-shadow: 0 0 0 1px #3697f2 inset;
-  color: #3697f2;
-}
-
-.emotion-62:first-of-type {
-  margin-left: 0;
-}
-
-.emotion-62:disabled {
-  background: rgba(48,48,48,0.1);
-  color: rgba(48,48,48,0.2);
-  cursor: not-allowed;
-}
-
-.emotion-62:disabled {
-  box-shadow: 0 0 0 1px rgba(48,48,48,0.1) inset;
-}
-
-.emotion-62:hover:not(:disabled) {
-  background: #d7e2fd;
-}
-
-.emotion-63 {
-  width: 125px;
-}
-
-.emotion-70 {
-  width: 65%;
-}
-
-.emotion-79 {
-  box-sizing: border-box;
-  display: -webkit-inline-box;
-  display: -webkit-inline-flex;
-  display: -ms-inline-flexbox;
   display: inline-flex;
   -webkit-box-flex-flow: row nowrap;
   -webkit-flex-flow: row nowrap;
@@ -374,10 +261,10 @@ exports[`AddRole should open add model with justification input 1`] = `
   font-size: 14px;
   font-weight: 300;
   position: relative;
-  width: 250px;
+  width: 100%;
 }
 
-.emotion-79 input {
+.emotion-36 input {
   -webkit-appearance: none;
   -moz-appearance: none;
   -ms-appearance: none;
@@ -403,42 +290,42 @@ exports[`AddRole should open add model with justification input 1`] = `
   width: 100%;
 }
 
-.emotion-79.animated input {
+.emotion-36.animated input {
   -webkit-transition: background-color 0.2s ease-in-out,color 0.2s ease-in-out,border 0.2s ease-in-out;
   transition: background-color 0.2s ease-in-out,color 0.2s ease-in-out,border 0.2s ease-in-out;
 }
 
-.emotion-79 input::-webkit-input-placeholder {
+.emotion-36 input::-webkit-input-placeholder {
   color: rgba(48,48,48,0.6);
 }
 
-.emotion-79 input::-moz-placeholder {
+.emotion-36 input::-moz-placeholder {
   color: rgba(48,48,48,0.6);
 }
 
-.emotion-79 input:-ms-input-placeholder {
+.emotion-36 input:-ms-input-placeholder {
   color: rgba(48,48,48,0.6);
 }
 
-.emotion-79 input::placeholder {
+.emotion-36 input::placeholder {
   color: rgba(48,48,48,0.6);
 }
 
-.emotion-79 input.focused,
-.emotion-79 input:active,
-.emotion-79 input:focus {
+.emotion-36 input.focused,
+.emotion-36 input:active,
+.emotion-36 input:focus {
   background: rgba(53,112,244,0.05);
   border-bottom: 2px solid #3570f4;
   color: #303030;
 }
 
-.emotion-79 input:invalid {
+.emotion-36 input:invalid {
   background: rgba(53,112,244,0.05);
   border-bottom: 2px solid #d01111;
   color: #303030;
 }
 
-.emotion-79 .message {
+.emotion-36 .message {
   font-size: 12px;
   left: 0;
   line-height: 1.8;
@@ -446,18 +333,242 @@ exports[`AddRole should open add model with justification input 1`] = `
   top: 2.571rem;
 }
 
-.emotion-79.error input,
-.emotion-79.error input.focused,
-.emotion-79.error input:active,
-.emotion-79.error input:focus {
+.emotion-36.error input,
+.emotion-36.error input.focused,
+.emotion-36.error input:active,
+.emotion-36.error input:focus {
   border-bottom: 2px solid #d01111;
 }
 
-.emotion-79.error .message {
+.emotion-36.error .message {
   color: #d01111;
 }
 
-.emotion-85 {
+.emotion-36 input {
+  padding-right: 36px;
+}
+
+.emotion-36 .input-icon {
+  -webkit-align-items: center;
+  -webkit-box-align: center;
+  -ms-flex-align: center;
+  align-items: center;
+  display: flex;
+  height: 36px;
+  position: absolute;
+  right: 6px;
+  z-index: 1;
+}
+
+.emotion-36 .input-icon[onclick] {
+  cursor: pointer;
+  -webkit-transition: opacity 0.2s ease-in-out;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.emotion-36 .input-icon[onclick]:hover {
+  opacity: 0.7;
+}
+
+.emotion-42 {
+  -webkit-flex: 1 1;
+  -ms-flex: 1 1;
+  flex: 1 1;
+  margin-right: 10px;
+}
+
+.emotion-42>div input {
+  position: relative;
+  font: 300 14px HelveticaNeue-Reg,Helvetica,Arial,sans-serif;
+  background-color: rgba(53, 112, 244, 0.05);
+  box-shadow: none;
+  color: rgb(48, 48, 48);
+  min-width: 50px;
+  text-align: left;
+  border-width: 2px;
+  border-style: solid;
+  border-color: transparent;
+  border-image: initial;
+  border-radius: 2px;
+  -webkit-flex: 1 0 auto;
+  -ms-flex: 1 0 auto;
+  flex: 1 0 auto;
+  margin: 0;
+  margin-right: 10px;
+  margin-top: 5px;
+  outline: none;
+  padding: 0.6em 12px;
+  -webkit-transition: background-color 0.2s ease-in-out 0s,color 0.2s ease-in-out 0s,border 0.2s ease-in-out 0s;
+  transition: background-color 0.2s ease-in-out 0s,color 0.2s ease-in-out 0s,border 0.2s ease-in-out 0s;
+  width: 77%;
+}
+
+.emotion-44 {
+  display: flex;
+}
+
+.emotion-46 {
+  margin-left: -7px;
+  margin-top: 10px!important;
+}
+
+.emotion-48 {
+  fill: #188fff;
+  cursor: pointer;
+  vertical-align: text-bottom;
+}
+
+.emotion-61 {
+  margin-left: 10px;
+}
+
+.emotion-63 {
+  border: none;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px #3697f2 inset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: inline-block;
+  font-family: Helvetica,Arial,sans-serif;
+  font-weight: 300;
+  font-size: 12px;
+  line-height: 1;
+  margin: 5px;
+  min-width: 70px;
+  outline: 0;
+  padding: 8px 18px;
+  text-align: center;
+  text-shadow: none;
+  text-transform: none;
+  -webkit-transition: all 0.2s ease-in;
+  transition: all 0.2s ease-in;
+  vertical-align: baseline;
+  white-space: nowrap;
+  background: transparent;
+  color: #3697f2;
+}
+
+.emotion-63:first-of-type {
+  margin-left: 0;
+}
+
+.emotion-63:disabled {
+  background: rgba(48,48,48,0.1);
+  color: rgba(48,48,48,0.2);
+  cursor: not-allowed;
+}
+
+.emotion-63:disabled {
+  box-shadow: 0 0 0 1px rgba(48,48,48,0.1) inset;
+}
+
+.emotion-63:hover:not(:disabled) {
+  background: #d7e2fd;
+}
+
+.emotion-64 {
+  width: 125px;
+}
+
+.emotion-71 {
+  width: 65%;
+}
+
+.emotion-80 {
+  box-sizing: border-box;
+  display: inline-flex;
+  -webkit-box-flex-flow: row nowrap;
+  -webkit-flex-flow: row nowrap;
+  -ms-flex-flow: row nowrap;
+  flex-flow: row nowrap;
+  font-family: Helvetica,Arial,sans-serif;
+  font-size: 14px;
+  font-weight: 300;
+  position: relative;
+  width: 250px;
+}
+
+.emotion-80 input {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  -ms-appearance: none;
+  appearance: none;
+  background: rgba(53,112,244,0.05);
+  border-top: 2px solid transparent;
+  border-bottom: 2px solid transparent;
+  border-right: transparent;
+  border-left: transparent;
+  border-radius: 2px;
+  box-shadow: none;
+  box-sizing: border-box;
+  color: #303030;
+  -webkit-flex: 1 0 auto;
+  -ms-flex: 1 0 auto;
+  flex: 1 0 auto;
+  font: inherit;
+  height: 36px;
+  margin: 0;
+  outline: none;
+  padding: 0 1rem;
+  text-align: left;
+  width: 100%;
+}
+
+.emotion-80.animated input {
+  -webkit-transition: background-color 0.2s ease-in-out,color 0.2s ease-in-out,border 0.2s ease-in-out;
+  transition: background-color 0.2s ease-in-out,color 0.2s ease-in-out,border 0.2s ease-in-out;
+}
+
+.emotion-80 input::-webkit-input-placeholder {
+  color: rgba(48,48,48,0.6);
+}
+
+.emotion-80 input::-moz-placeholder {
+  color: rgba(48,48,48,0.6);
+}
+
+.emotion-80 input:-ms-input-placeholder {
+  color: rgba(48,48,48,0.6);
+}
+
+.emotion-80 input::placeholder {
+  color: rgba(48,48,48,0.6);
+}
+
+.emotion-80 input.focused,
+.emotion-80 input:active,
+.emotion-80 input:focus {
+  background: rgba(53,112,244,0.05);
+  border-bottom: 2px solid #3570f4;
+  color: #303030;
+}
+
+.emotion-80 input:invalid {
+  background: rgba(53,112,244,0.05);
+  border-bottom: 2px solid #d01111;
+  color: #303030;
+}
+
+.emotion-80 .message {
+  font-size: 12px;
+  left: 0;
+  line-height: 1.8;
+  position: absolute;
+  top: 2.571rem;
+}
+
+.emotion-80.error input,
+.emotion-80.error input.focused,
+.emotion-80.error input:active,
+.emotion-80.error input:focus {
+  border-bottom: 2px solid #d01111;
+}
+
+.emotion-80.error .message {
+  color: #d01111;
+}
+
+.emotion-86 {
   -webkit-flex: 1 1;
   -ms-flex: 1 1;
   flex: 1 1;
@@ -542,19 +653,37 @@ exports[`AddRole should open add model with justification input 1`] = `
           class="emotion-31 emotion-32"
         >
           <div
-            class="emotion-21 denali-input emotion-22 emotion-23"
-            data-testid="input-wrapper"
+            aria-expanded="false"
+            aria-haspopup="listbox"
+            aria-labelledby="downshift-2-label"
+            class="emotion-33 denali-input-dropdown emotion-34 emotion-35"
+            data-testid="input-dropdown"
+            role="combobox"
           >
-            <input
-              autocomplete="off"
-              data-testid="input-node"
-              placeholder="user.<userid> or <domain>.<service> or <domain>:group.<group>"
-              value=""
-            />
             <div
-              class="message"
-              data-testid="message"
-            />
+              class="emotion-36 denali-input"
+              data-testid="input-wrapper"
+            >
+              <input
+                aria-autocomplete="list"
+                aria-labelledby="downshift-2-label"
+                autocomplete="off"
+                autocorrect="off"
+                data-testid="input-node"
+                id="downshift-2-input"
+                name="member-name"
+                placeholder="user.<userid> or <domain>.<service> or <domain>:group.<group>"
+                spellcheck="false"
+                value=""
+              />
+              <div
+                class="input-icon"
+              />
+              <div
+                class="message"
+                data-testid="message"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -566,10 +695,10 @@ exports[`AddRole should open add model with justification input 1`] = `
         class="emotion-6 denali-input-label emotion-7 emotion-8"
       />
       <div
-        class="emotion-41 emotion-42"
+        class="emotion-42 emotion-43"
       >
         <div
-          class="fp-addrole emotion-43 emotion-44"
+          class="fp-addrole emotion-44 emotion-45"
         >
           <input
             class="flatpickr-input"
@@ -581,18 +710,20 @@ exports[`AddRole should open add model with justification input 1`] = `
           />
           <input
             class=" form-control input"
+            id="addrole"
             placeholder="Expiration (Optional)"
             readonly="readonly"
             tabindex="0"
             type="text"
           />
           <a
-            class="emotion-45 emotion-46"
+            class="emotion-46 emotion-47"
             data-clear=""
           >
             <svg
-              class="emotion-47"
+              class="emotion-48"
               data-testid="icon"
+              data-wdio=""
               height="1.25em"
               id=""
               viewBox="0 0 1024 1024"
@@ -609,10 +740,10 @@ exports[`AddRole should open add model with justification input 1`] = `
         </div>
       </div>
       <div
-        class="emotion-41 emotion-42"
+        class="emotion-42 emotion-43"
       >
         <div
-          class="fp-addrole-reminder emotion-43 emotion-44"
+          class="fp-addrole-reminder emotion-44 emotion-45"
         >
           <input
             class="flatpickr-input"
@@ -624,18 +755,20 @@ exports[`AddRole should open add model with justification input 1`] = `
           />
           <input
             class=" form-control input"
+            id="addrole-reminder"
             placeholder="Reminder (Optional)"
             readonly="readonly"
             tabindex="0"
             type="text"
           />
           <a
-            class="emotion-45 emotion-46"
+            class="emotion-46 emotion-47"
             data-clear=""
           >
             <svg
-              class="emotion-47"
+              class="emotion-48"
               data-testid="icon"
+              data-wdio=""
               height="1.25em"
               id=""
               viewBox="0 0 1024 1024"
@@ -659,10 +792,11 @@ exports[`AddRole should open add model with justification input 1`] = `
         class="emotion-6 denali-input-label emotion-7 emotion-8"
       />
       <div
-        class="emotion-60 emotion-61"
+        class="emotion-61 emotion-62"
       >
         <button
-          class="emotion-62 denali-button emotion-63 emotion-64"
+          class="emotion-63 denali-button emotion-64 emotion-65"
+          data-wdio="add-role-member"
         >
           Add
         </button>
@@ -675,7 +809,7 @@ exports[`AddRole should open add model with justification input 1`] = `
         class="emotion-6 denali-input-label emotion-7 emotion-8"
       />
       <div
-        class="emotion-70 emotion-71"
+        class="emotion-71 emotion-72"
       />
     </div>
     <div
@@ -690,7 +824,7 @@ exports[`AddRole should open add model with justification input 1`] = `
         class="emotion-19 emotion-20"
       >
         <div
-          class="emotion-79 denali-input animated emotion-22 emotion-23"
+          class="emotion-80 denali-input animated emotion-22 emotion-23"
           data-testid="input-wrapper"
         >
           <input
@@ -712,10 +846,11 @@ exports[`AddRole should open add model with justification input 1`] = `
       class="emotion-4 emotion-5"
     >
       <svg
-        class="emotion-47"
+        class="emotion-48"
         data-testid="icon"
+        data-wdio=""
         height="1.25em"
-        id=""
+        id="advanced-settings-icon"
         viewBox="0 0 1024 1024"
         width="1.25em"
       >
@@ -730,7 +865,7 @@ exports[`AddRole should open add model with justification input 1`] = `
         />
       </svg>
       <div
-        class="emotion-85 emotion-86"
+        class="emotion-86 emotion-87"
       >
         Advanced Settings
       </div>
@@ -759,9 +894,6 @@ exports[`AddRole should open add model without justification input 1`] = `
   -webkit-box-align: flex-start;
   -ms-flex-align: flex-start;
   align-items: flex-start;
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
   display: flex;
   -webkit-box-flex-flow: row nowrap;
   -webkit-flex-flow: row nowrap;
@@ -825,9 +957,6 @@ exports[`AddRole should open add model without justification input 1`] = `
   box-sizing: border-box;
   color: #303030;
   cursor: initial;
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
   display: flex;
   font-family: Helvetica,Arial,sans-serif;
   font-size: 14px;
@@ -855,9 +984,6 @@ exports[`AddRole should open add model without justification input 1`] = `
   box-sizing: border-box;
   color: #3697f2;
   cursor: pointer;
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
   display: flex;
   font-family: Helvetica,Arial,sans-serif;
   font-size: 14px;
@@ -885,9 +1011,6 @@ exports[`AddRole should open add model without justification input 1`] = `
 
 .emotion-21 {
   box-sizing: border-box;
-  display: -webkit-inline-box;
-  display: -webkit-inline-flex;
-  display: -ms-inline-flexbox;
   display: inline-flex;
   -webkit-box-flex-flow: row nowrap;
   -webkit-flex-flow: row nowrap;
@@ -985,20 +1108,150 @@ exports[`AddRole should open add model without justification input 1`] = `
 }
 
 .emotion-31 {
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
   display: flex;
 }
 
-.emotion-41 {
+.emotion-33 {
+  position: relative;
+  width: 100%;
+}
+
+.emotion-33 input {
+  cursor: inherit;
+}
+
+.emotion-34 {
+  width: 100%;
+}
+
+.emotion-36 {
+  box-sizing: border-box;
+  display: inline-flex;
+  -webkit-box-flex-flow: row nowrap;
+  -webkit-flex-flow: row nowrap;
+  -ms-flex-flow: row nowrap;
+  flex-flow: row nowrap;
+  font-family: Helvetica,Arial,sans-serif;
+  font-size: 14px;
+  font-weight: 300;
+  position: relative;
+  width: 100%;
+}
+
+.emotion-36 input {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  -ms-appearance: none;
+  appearance: none;
+  background: rgba(53,112,244,0.05);
+  border-top: 2px solid transparent;
+  border-bottom: 2px solid transparent;
+  border-right: transparent;
+  border-left: transparent;
+  border-radius: 2px;
+  box-shadow: none;
+  box-sizing: border-box;
+  color: #303030;
+  -webkit-flex: 1 0 auto;
+  -ms-flex: 1 0 auto;
+  flex: 1 0 auto;
+  font: inherit;
+  height: 36px;
+  margin: 0;
+  outline: none;
+  padding: 0 1rem;
+  text-align: left;
+  width: 100%;
+}
+
+.emotion-36.animated input {
+  -webkit-transition: background-color 0.2s ease-in-out,color 0.2s ease-in-out,border 0.2s ease-in-out;
+  transition: background-color 0.2s ease-in-out,color 0.2s ease-in-out,border 0.2s ease-in-out;
+}
+
+.emotion-36 input::-webkit-input-placeholder {
+  color: rgba(48,48,48,0.6);
+}
+
+.emotion-36 input::-moz-placeholder {
+  color: rgba(48,48,48,0.6);
+}
+
+.emotion-36 input:-ms-input-placeholder {
+  color: rgba(48,48,48,0.6);
+}
+
+.emotion-36 input::placeholder {
+  color: rgba(48,48,48,0.6);
+}
+
+.emotion-36 input.focused,
+.emotion-36 input:active,
+.emotion-36 input:focus {
+  background: rgba(53,112,244,0.05);
+  border-bottom: 2px solid #3570f4;
+  color: #303030;
+}
+
+.emotion-36 input:invalid {
+  background: rgba(53,112,244,0.05);
+  border-bottom: 2px solid #d01111;
+  color: #303030;
+}
+
+.emotion-36 .message {
+  font-size: 12px;
+  left: 0;
+  line-height: 1.8;
+  position: absolute;
+  top: 2.571rem;
+}
+
+.emotion-36.error input,
+.emotion-36.error input.focused,
+.emotion-36.error input:active,
+.emotion-36.error input:focus {
+  border-bottom: 2px solid #d01111;
+}
+
+.emotion-36.error .message {
+  color: #d01111;
+}
+
+.emotion-36 input {
+  padding-right: 36px;
+}
+
+.emotion-36 .input-icon {
+  -webkit-align-items: center;
+  -webkit-box-align: center;
+  -ms-flex-align: center;
+  align-items: center;
+  display: flex;
+  height: 36px;
+  position: absolute;
+  right: 6px;
+  z-index: 1;
+}
+
+.emotion-36 .input-icon[onclick] {
+  cursor: pointer;
+  -webkit-transition: opacity 0.2s ease-in-out;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.emotion-36 .input-icon[onclick]:hover {
+  opacity: 0.7;
+}
+
+.emotion-42 {
   -webkit-flex: 1 1;
   -ms-flex: 1 1;
   flex: 1 1;
   margin-right: 10px;
 }
 
-.emotion-41>div input {
+.emotion-42>div input {
   position: relative;
   font: 300 14px HelveticaNeue-Reg,Helvetica,Arial,sans-serif;
   background-color: rgba(53, 112, 244, 0.05);
@@ -1024,32 +1277,29 @@ exports[`AddRole should open add model without justification input 1`] = `
   width: 77%;
 }
 
-.emotion-43 {
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
+.emotion-44 {
   display: flex;
 }
 
-.emotion-45 {
+.emotion-46 {
   margin-left: -7px;
   margin-top: 10px!important;
 }
 
-.emotion-47 {
+.emotion-48 {
   fill: #188fff;
   cursor: pointer;
   vertical-align: text-bottom;
 }
 
-.emotion-60 {
+.emotion-61 {
   margin-left: 10px;
 }
 
-.emotion-62 {
+.emotion-63 {
   border: none;
   border-radius: 2px;
-  box-shadow: 0 0 0 1px transparent inset,0 0 0 0 #d5d5d5 inset;
+  box-shadow: 0 0 0 1px #3697f2 inset;
   box-sizing: border-box;
   cursor: pointer;
   display: inline-block;
@@ -1069,37 +1319,36 @@ exports[`AddRole should open add model without justification input 1`] = `
   vertical-align: baseline;
   white-space: nowrap;
   background: transparent;
-  box-shadow: 0 0 0 1px #3697f2 inset;
   color: #3697f2;
 }
 
-.emotion-62:first-of-type {
+.emotion-63:first-of-type {
   margin-left: 0;
 }
 
-.emotion-62:disabled {
+.emotion-63:disabled {
   background: rgba(48,48,48,0.1);
   color: rgba(48,48,48,0.2);
   cursor: not-allowed;
 }
 
-.emotion-62:disabled {
+.emotion-63:disabled {
   box-shadow: 0 0 0 1px rgba(48,48,48,0.1) inset;
 }
 
-.emotion-62:hover:not(:disabled) {
+.emotion-63:hover:not(:disabled) {
   background: #d7e2fd;
 }
 
-.emotion-63 {
+.emotion-64 {
   width: 125px;
 }
 
-.emotion-70 {
+.emotion-71 {
   width: 65%;
 }
 
-.emotion-75 {
+.emotion-76 {
   -webkit-flex: 1 1;
   -ms-flex: 1 1;
   flex: 1 1;
@@ -1184,19 +1433,37 @@ exports[`AddRole should open add model without justification input 1`] = `
           class="emotion-31 emotion-32"
         >
           <div
-            class="emotion-21 denali-input emotion-22 emotion-23"
-            data-testid="input-wrapper"
+            aria-expanded="false"
+            aria-haspopup="listbox"
+            aria-labelledby="downshift-1-label"
+            class="emotion-33 denali-input-dropdown emotion-34 emotion-35"
+            data-testid="input-dropdown"
+            role="combobox"
           >
-            <input
-              autocomplete="off"
-              data-testid="input-node"
-              placeholder="user.<userid> or <domain>.<service> or <domain>:group.<group>"
-              value=""
-            />
             <div
-              class="message"
-              data-testid="message"
-            />
+              class="emotion-36 denali-input"
+              data-testid="input-wrapper"
+            >
+              <input
+                aria-autocomplete="list"
+                aria-labelledby="downshift-1-label"
+                autocomplete="off"
+                autocorrect="off"
+                data-testid="input-node"
+                id="downshift-1-input"
+                name="member-name"
+                placeholder="user.<userid> or <domain>.<service> or <domain>:group.<group>"
+                spellcheck="false"
+                value=""
+              />
+              <div
+                class="input-icon"
+              />
+              <div
+                class="message"
+                data-testid="message"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -1208,10 +1475,10 @@ exports[`AddRole should open add model without justification input 1`] = `
         class="emotion-6 denali-input-label emotion-7 emotion-8"
       />
       <div
-        class="emotion-41 emotion-42"
+        class="emotion-42 emotion-43"
       >
         <div
-          class="fp-addrole emotion-43 emotion-44"
+          class="fp-addrole emotion-44 emotion-45"
         >
           <input
             class="flatpickr-input"
@@ -1223,18 +1490,20 @@ exports[`AddRole should open add model without justification input 1`] = `
           />
           <input
             class=" form-control input"
+            id="addrole"
             placeholder="Expiration (Optional)"
             readonly="readonly"
             tabindex="0"
             type="text"
           />
           <a
-            class="emotion-45 emotion-46"
+            class="emotion-46 emotion-47"
             data-clear=""
           >
             <svg
-              class="emotion-47"
+              class="emotion-48"
               data-testid="icon"
+              data-wdio=""
               height="1.25em"
               id=""
               viewBox="0 0 1024 1024"
@@ -1251,10 +1520,10 @@ exports[`AddRole should open add model without justification input 1`] = `
         </div>
       </div>
       <div
-        class="emotion-41 emotion-42"
+        class="emotion-42 emotion-43"
       >
         <div
-          class="fp-addrole-reminder emotion-43 emotion-44"
+          class="fp-addrole-reminder emotion-44 emotion-45"
         >
           <input
             class="flatpickr-input"
@@ -1266,18 +1535,20 @@ exports[`AddRole should open add model without justification input 1`] = `
           />
           <input
             class=" form-control input"
+            id="addrole-reminder"
             placeholder="Reminder (Optional)"
             readonly="readonly"
             tabindex="0"
             type="text"
           />
           <a
-            class="emotion-45 emotion-46"
+            class="emotion-46 emotion-47"
             data-clear=""
           >
             <svg
-              class="emotion-47"
+              class="emotion-48"
               data-testid="icon"
+              data-wdio=""
               height="1.25em"
               id=""
               viewBox="0 0 1024 1024"
@@ -1301,10 +1572,11 @@ exports[`AddRole should open add model without justification input 1`] = `
         class="emotion-6 denali-input-label emotion-7 emotion-8"
       />
       <div
-        class="emotion-60 emotion-61"
+        class="emotion-61 emotion-62"
       >
         <button
-          class="emotion-62 denali-button emotion-63 emotion-64"
+          class="emotion-63 denali-button emotion-64 emotion-65"
+          data-wdio="add-role-member"
         >
           Add
         </button>
@@ -1317,17 +1589,18 @@ exports[`AddRole should open add model without justification input 1`] = `
         class="emotion-6 denali-input-label emotion-7 emotion-8"
       />
       <div
-        class="emotion-70 emotion-71"
+        class="emotion-71 emotion-72"
       />
     </div>
     <div
       class="emotion-4 emotion-5"
     >
       <svg
-        class="emotion-47"
+        class="emotion-48"
         data-testid="icon"
+        data-wdio=""
         height="1.25em"
-        id=""
+        id="advanced-settings-icon"
         viewBox="0 0 1024 1024"
         width="1.25em"
       >
@@ -1342,7 +1615,7 @@ exports[`AddRole should open add model without justification input 1`] = `
         />
       </svg>
       <div
-        class="emotion-75 emotion-76"
+        class="emotion-76 emotion-77"
       >
         Advanced Settings
       </div>

@@ -21,6 +21,7 @@ public final class ServerCommonConsts {
     public static final String OBJECT_ROLE      = "role";
     public static final String OBJECT_GROUP     = "group";
     public static final String OBJECT_POLICY    = "policy";
+    public static final String OBJECT_ASSERTION = "assertion";
     public static final String OBJECT_ENTITY    = "entity";
     public static final String USER_DOMAIN      = "user";
 
@@ -40,14 +41,36 @@ public final class ServerCommonConsts {
     public static final String ZTS_PROP_FILE_NAME           = "athenz.zts.prop_file";
     public static final String PROP_DATA_STORE_SUBDIR = "athenz.server_common.data_store_subdir";
 
-    public static final String REQUEST_PRINCIPAL    = "com.yahoo.athenz.auth.principal";
-    public static final String REQUEST_AUTHORITY_ID = "com.yahoo.athenz.auth.authority_id";
+    public static final String REQUEST_PRINCIPAL      = "com.yahoo.athenz.auth.principal";
+    public static final String REQUEST_AUTHORITY_ID   = "com.yahoo.athenz.auth.authority_id";
+    public static final String REQUEST_X509_SERIAL    = "com.yahoo.athenz.auth.principal_x509_serial";
+    public static final String REQUEST_URI_SKIP_QUERY = "com.yahoo.athenz.uri.skip_query";
+    public static final String REQUEST_URI_ADDL_QUERY = "com.yahoo.athenz.uri.addl_query";
+    public static final String REQUEST_SSL_SESSION    = "org.eclipse.jetty.servlet.request.ssl_session";
 
     public static final String METRIC_DEFAULT_FACTORY_CLASS = "com.yahoo.athenz.common.metrics.impl.NoOpMetricFactory";
 
     public static final String ACTION_LAUNCH     = "launch";
     public static final String RESOURCE_INSTANCE = "sys.auth:instance";
 
+    public static final String DB_PROP_USER               = "user";
+    public static final String DB_PROP_PASSWORD           = "password";
+    public static final String DB_PROP_USE_SSL            = "useSSL";
+    public static final String DB_PROP_VERIFY_SERVER_CERT = "verifyServerCertificate";
+    public static final String DB_PROP_TLS_PROTOCOLS      = "enabledTLSProtocols";
+    public static final String DB_PROP_CONN_TIME_ZONE     = "connectionTimeZone";
+
+    public static final String SYS_AUTH_AUDIT_BY_ORG    = "sys.auth.audit.org";
+    public static final String SYS_AUTH_AUDIT_BY_DOMAIN = "sys.auth.audit.domain";
+
     // for tests
     public static final String ZTS_PROP_AWS_PUBLIC_CERT = "athenz.zts.aws_public_cert";
+
+    // ZMS domain object feature flag bits
+    public static final int ZMS_DOMAIN_FEATURE_ALLOW_SERVICE_UNDERSCORE  = 0x01;
+    public static final int ZMS_DOMAIN_FEATURE_SKIP_BOOT_TIME_VALIDATION = 0x02;
+    public static final int ZMS_DOMAIN_FEATURE_ENFORCE_AUDIT_TEMPLATE    = 0x04;
+
+    // ZMS service object feature flag bits
+    public static final int ZMS_SERVICE_FEATURE_SKIP_BOOT_TIME_VALIDATION = 0x01;
 }

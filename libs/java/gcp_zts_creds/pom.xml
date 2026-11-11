@@ -17,7 +17,7 @@
   <parent>
     <groupId>com.yahoo.athenz</groupId>
     <artifactId>athenz</artifactId>
-    <version>1.11.39-SNAPSHOT</version>
+    <version>1.12.52-SNAPSHOT</version>
     <relativePath>../../../pom.xml</relativePath>
   </parent>
 
@@ -27,11 +27,21 @@
   <packaging>jar</packaging>
 
   <properties>
-    <code.coverage.min>1.0</code.coverage.min>
+    <code.coverage.min>1.00</code.coverage.min>
   </properties>
 
   <dependencyManagement>
     <dependencies>
+      <dependency>
+        <groupId>org.apache.httpcomponents.core5</groupId>
+        <artifactId>httpcore5</artifactId>
+        <version>${apache.httpcore.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.httpcomponents.core5</groupId>
+        <artifactId>httpcore5-h2</artifactId>
+        <version>${apache.httpcore.version}</version>
+      </dependency>
       <dependency>
         <groupId>com.google.cloud</groupId>
         <artifactId>libraries-bom</artifactId>
@@ -57,6 +67,16 @@
       <groupId>${project.groupId}</groupId>
       <artifactId>athenz-auth-core</artifactId>
       <version>${project.parent.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.httpcomponents.client5</groupId>
+      <artifactId>httpclient5</artifactId>
+      <version>${apache.httpclient.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.httpcomponents</groupId>
+      <artifactId>httpclient</artifactId>
+      <version>${apache.httpclient4.version}</version>
     </dependency>
     <dependency>
       <groupId>com.google.auth</groupId>

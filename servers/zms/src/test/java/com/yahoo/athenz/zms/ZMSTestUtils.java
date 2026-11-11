@@ -15,48 +15,151 @@
  */
 package com.yahoo.athenz.zms;
 
-import com.wix.mysql.EmbeddedMysql;
-import com.wix.mysql.Sources;
-import com.wix.mysql.config.MysqldConfig;
+import com.yahoo.athenz.common.messaging.DomainChangeMessage;
 import com.yahoo.rdl.Timestamp;
 import com.yahoo.rdl.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
+import org.testcontainers.shaded.org.apache.commons.io.FileUtils;
+import org.testcontainers.utility.DockerImageName;
+import org.testcontainers.utility.MountableFile;
 
 import java.io.File;
-import java.util.Date;
+import java.io.IOException;
+import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
 
-import static com.wix.mysql.EmbeddedMysql.anEmbeddedMysql;
-import static com.wix.mysql.ScriptResolver.classPathScript;
-import static com.wix.mysql.config.MysqldConfig.aMysqldConfig;
-import static com.wix.mysql.distribution.Version.v5_7_latest;
+import static org.testng.Assert.assertEquals;
 
 public class ZMSTestUtils {
 
-    public static EmbeddedMysql startMemoryMySQL(final String userName, final String password) {
+    private static final Logger LOG = LoggerFactory.getLogger(ZMSTestUtils.class);
 
-        System.out.println("Starting Embedded MySQL server...");
+    private static final String MYSQL_IMAGE_ENV_VAR = "ZMS_TEST_MYSQL_IMAGE";
+    private static final String DEFAULT_MYSQL_IMAGE = "mysql/mysql-server:8.0";
+    private static final String DB_USER = "admin";
 
-        final MysqldConfig config = aMysqldConfig(v5_7_latest)
-                .withPort(3310)
-                .withUser(userName, password)
-                .build();
+    private static MySQLContainer<?> sharedMysqld;
+    private static boolean shutdownHookRegistered = false;
 
-        File sqlSchemaFile = new File("schema/zms_server.sql");
-        return anEmbeddedMysql(config)
-                .addSchema("zms_server", Sources.fromFile(sqlSchemaFile))
-                .start();
+    public static synchronized MySQLContainer startMemoryMySQL(final String userName, final String password) {
+
+        if (sharedMysqld != null && sharedMysqld.isRunning()) {
+            System.out.println("Reusing existing testcontainers MySQL server...");
+            return sharedMysqld;
+        }
+
+        System.out.println("Starting MySQL server using testcontainers...");
+        final String mysqlImage = getMySQLImage();
+        MySQLContainer<?> mysql = null;
+        try {
+
+            String externalInitScriptPath = "schema/zms_server.sql";
+            File destinationInitScript = new File("src/test/resources/mysql/zms_server.sql");
+            FileUtils.copyFile(new File(externalInitScriptPath), destinationInitScript);
+            LOG.info("Copied {} to {}", externalInitScriptPath, destinationInitScript.getAbsolutePath());
+
+            mysql = new MySQLContainer<>(DockerImageName.parse(mysqlImage).asCompatibleSubstituteFor("mysql"))
+                    .withDatabaseName("zms_server")
+                    .withUsername(userName)
+                    .withPassword(password)
+                    .withEnv("MYSQL_ROOT_PASSWORD", password)
+                    .withInitScript("mysql/zms_server.sql")
+                    .withStartupTimeout(Duration.ofMinutes(1))
+                    .withCopyFileToContainer(
+                            MountableFile.forClasspathResource("mysql/"),
+                            "/athenz-mysql-scripts/");
+            mysql.start();
+            mysql.followOutput(new Slf4jLogConsumer(LOG));
+            mysql.execInContainer("mysql", "-u", "root", "-p" + password, "-e",
+                    "SET GLOBAL max_connections = 500;");
+        } catch (Throwable t) {
+            LOG.error("Unable to start MySQL server using testcontainers", t);
+        }
+
+        sharedMysqld = mysql;
+        if (!shutdownHookRegistered) {
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                if (sharedMysqld != null && sharedMysqld.isRunning()) {
+                    System.out.println("Stopping testcontainers MySQL server via shutdown hook...");
+                    sharedMysqld.stop();
+                }
+            }));
+            shutdownHookRegistered = true;
+        }
+
+        return mysql;
     }
 
-    public static void stopMemoryMySQL(EmbeddedMysql mysqld) {
-        System.out.println("Stopping Embedded MySQL server...");
-        mysqld.stop();
+    public static void stopMemoryMySQL(MySQLContainer<?> mysqld) {
     }
 
-    public static void setDatabaseReadOnlyMode(EmbeddedMysql mysqld, boolean readOnly) {
-        final String scriptName = readOnly ? "mysql/set-read-only.sql" : "mysql/unset-read-only.sql";
-        mysqld.executeScripts("zms_server", classPathScript(scriptName));
+    public static void clearDatabase(MySQLContainer<?> mysqld, final String password) {
+        try {
+            // Kill all existing user connections to free up connection slots.
+            // pool.clear() in AthenzDataSource only evicts idle connections;
+            // active/borrowed connections survive and accumulate across test classes.
+            mysqld.execInContainer("bash", "-c",
+                    "mysql -u root -p" + password + " -N -e " +
+                    "\"SELECT id FROM information_schema.processlist WHERE user='" + DB_USER + "'\" " +
+                    "| while read id; do mysql -u root -p" + password + " -e \"KILL $id\" 2>/dev/null; done");
+
+            String sql = "SET FOREIGN_KEY_CHECKS=0; " +
+                    "TRUNCATE TABLE assertion_condition; " +
+                    "TRUNCATE TABLE role_tags; " +
+                    "TRUNCATE TABLE domain_tags; " +
+                    "TRUNCATE TABLE group_tags; " +
+                    "TRUNCATE TABLE policy_tags; " +
+                    "TRUNCATE TABLE service_tags; " +
+                    "TRUNCATE TABLE domain_contacts; " +
+                    "TRUNCATE TABLE service_domain_dependency; " +
+                    "TRUNCATE TABLE role_audit_log; " +
+                    "TRUNCATE TABLE principal_group_audit_log; " +
+                    "TRUNCATE TABLE pending_role_member; " +
+                    "TRUNCATE TABLE pending_principal_group_member; " +
+                    "TRUNCATE TABLE role_member; " +
+                    "TRUNCATE TABLE principal_group_member; " +
+                    "TRUNCATE TABLE domain_template; " +
+                    "TRUNCATE TABLE quota; " +
+                    "TRUNCATE TABLE public_key; " +
+                    "TRUNCATE TABLE service_host; " +
+                    "TRUNCATE TABLE assertion; " +
+                    "TRUNCATE TABLE entity; " +
+                    "TRUNCATE TABLE host; " +
+                    "TRUNCATE TABLE service; " +
+                    "TRUNCATE TABLE policy; " +
+                    "TRUNCATE TABLE role; " +
+                    "TRUNCATE TABLE principal_group; " +
+                    "TRUNCATE TABLE principal; " +
+                    "TRUNCATE TABLE domain; " +
+                    "SET FOREIGN_KEY_CHECKS=1;";
+            mysqld.execInContainer("mysql", "-u", "root", "-p" + password, "zms_server", "-e", sql);
+        } catch (Throwable t) {
+            LOG.error("Unable to clear database in testcontainers mysql container", t);
+        }
+    }
+
+    public static String getMySQLImage() {
+        String image = System.getenv(MYSQL_IMAGE_ENV_VAR);
+        if (image == null || image.isBlank()) {
+            image = DEFAULT_MYSQL_IMAGE; // fallback to default if no image specified
+        }
+        return image;
+    }
+
+    public static void setDatabaseReadOnlyMode(MySQLContainer<?> mysqld, boolean readOnly,
+            final String password) throws IOException, InterruptedException {
+        final String scriptName = readOnly ? "set-read-only.sql" : "unset-read-only.sql";
+        try {
+            mysqld.execInContainer("mysql", "-u", "root", "-p"+password, "zms_server", "-e",
+                    "source /athenz-mysql-scripts/" + scriptName);
+        } catch (Throwable t) {
+            LOG.error("Unable to execute script in testcontainers mysql container: {}", scriptName, t);
+        }
     }
 
     public static boolean verifyDomainRoleMember(DomainRoleMember domainRoleMember, MemberRole memberRole) {
@@ -91,25 +194,6 @@ public class ZMSTestUtils {
                 }
 
                 return true;
-            }
-        }
-
-        return false;
-    }
-
-    public static boolean verifyDomainRoleMemberTimestamp(List<DomainRoleMember> members,
-                                                          String memberName,
-                                                          String roleName,
-                                                          Timestamp timestamp,
-                                                          Function<MemberRole, Timestamp> timestampGetter) {
-
-        for (DomainRoleMember member : members) {
-            if (member.getMemberName().equals(memberName)) {
-                for (MemberRole memberRole : member.getMemberRoles()) {
-                    if (memberRole.getRoleName().equals(roleName)) {
-                        return timestampGetter.apply(memberRole).equals(timestamp);
-                    }
-                }
             }
         }
 
@@ -161,10 +245,146 @@ public class ZMSTestUtils {
         return Timestamp.fromMillis(System.currentTimeMillis() + TimeUnit.MILLISECONDS.convert(alreadyExpired ? -daysInterval : daysInterval , TimeUnit.DAYS));
     }
 
-    public static long getDaysSinceExpiry(Timestamp expiry) {
-        Date expirationDate = new Date(expiry.millis());
-        Date date = new Date();
-        long diffInMillis = date.getTime() - expirationDate.getTime();
-        return TimeUnit.DAYS.convert(diffInMillis, TimeUnit.MILLISECONDS);
+    public static void assertChange(DomainChangeMessage change, DomainChangeMessage.ObjectType objType,
+            final String domainName, final String objName, final String apiName) {
+        assertEquals(change.getObjectType(), objType);
+        assertEquals(change.getDomainName(), domainName);
+        assertEquals(change.getObjectName(), objName);
+        assertEquals(change.getApiName(), apiName.toLowerCase());
+    }
+
+    public static RoleMeta createRoleMetaObject(Boolean selfServe) {
+
+        RoleMeta meta = new RoleMeta();
+
+        if (selfServe != null) {
+            meta.setSelfServe(selfServe);
+        }
+        return meta;
+    }
+
+    public static RoleSystemMeta createRoleSystemMetaObject(Boolean auditEnabled) {
+
+        RoleSystemMeta meta = new RoleSystemMeta();
+
+        if (auditEnabled != null) {
+            meta.setAuditEnabled(auditEnabled);
+        }
+        return meta;
+    }
+
+    public static GroupSystemMeta createGroupSystemMetaObject(Boolean auditEnabled) {
+
+        GroupSystemMeta meta = new GroupSystemMeta();
+
+        if (auditEnabled != null) {
+            meta.setAuditEnabled(auditEnabled);
+        }
+        return meta;
+    }
+
+    public static RoleMember getRoleMember(Role role, final String memberName) {
+        if (role.getRoleMembers() == null) {
+            return null;
+        }
+        for (RoleMember roleMember : role.getRoleMembers()) {
+            if (roleMember.getMemberName().equals(memberName)) {
+                return roleMember;
+            }
+        }
+        return null;
+    }
+
+    public static GroupMember getGroupMember(Group group, final String memberName) {
+        if (group.getGroupMembers() == null) {
+            return null;
+        }
+        for (GroupMember groupMember : group.getGroupMembers()) {
+            if (groupMember.getMemberName().equals(memberName)) {
+                return groupMember;
+            }
+        }
+        return null;
+    }
+
+    public static boolean verifyDomainGroupMember(List<DomainGroupMember> members, String memberName,
+            String... groups) {
+
+        for (DomainGroupMember member : members) {
+            if (member.getMemberName().equals(memberName)) {
+                List<GroupMember> memberGroups = member.getMemberGroups();
+                if (memberGroups.size() != groups.length) {
+                    return false;
+                }
+                for (String group : groups) {
+                    boolean bMatchFound = false;
+                    for (GroupMember memberGroup : memberGroups) {
+                        if (memberGroup.getGroupName().equals(group)) {
+                            bMatchFound = true;
+                            break;
+                        }
+                    }
+                    if (!bMatchFound) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static void setupSystemMetaAuthorization(ResourceContext ctx, ZMSImpl zmsImpl, final String principal,
+            final String auditRef) {
+
+        final String sysDomain = "sys.auth";
+        final String objectName = "domain-meta-admins";
+
+        Role role = new Role();
+        role.setName(objectName);
+        RoleMember roleMember = new RoleMember();
+        roleMember.setMemberName(principal);
+        List<RoleMember> roleMembers = Arrays.asList(roleMember);
+        role.setRoleMembers(roleMembers);
+        zmsImpl.putRole(ctx, sysDomain, objectName, auditRef, false, null, role);
+
+        Policy policy = new Policy();
+        policy.setName(objectName);
+        Assertion assertion = new Assertion();
+        assertion.setAction("update");
+        assertion.setResource("sys.auth:meta.domain.*");
+        assertion.setEffect(AssertionEffect.ALLOW);
+        assertion.setRole(sysDomain + ":role." + objectName);
+        List<Assertion> assertions = List.of(assertion);
+        policy.setAssertions(assertions);
+        zmsImpl.putPolicy(ctx, sysDomain, objectName, auditRef, false, null, policy);
+    }
+
+    public static void setupServiceSystemMetaAuthorization(ResourceContext ctx, ZMSImpl zmsImpl,
+            final String principal, final String auditRef) {
+
+        final String sysDomain = "sys.auth";
+        final String objectName = "service-meta-admins";
+
+        Role role = new Role();
+        role.setName(objectName);
+        RoleMember roleMember = new RoleMember();
+        roleMember.setMemberName(principal);
+        List<RoleMember> roleMembers = Arrays.asList(roleMember);
+        role.setRoleMembers(roleMembers);
+        zmsImpl.putRole(ctx, sysDomain, objectName, auditRef, false, null, role);
+
+        Policy policy = new Policy();
+        policy.setName(objectName);
+        Assertion assertion = new Assertion();
+        assertion.setAction("update");
+        assertion.setResource("sys.auth:meta.service.*");
+        assertion.setEffect(AssertionEffect.ALLOW);
+        assertion.setRole(sysDomain + ":role." + objectName);
+        List<Assertion> assertions = List.of(assertion);
+        policy.setAssertions(assertions);
+        zmsImpl.putPolicy(ctx, sysDomain, objectName, auditRef, false, null, policy);
     }
 }

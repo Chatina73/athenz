@@ -32,8 +32,14 @@ import MemberUtils from '../utils/MemberUtils';
 import RegexUtils from '../utils/RegexUtils';
 import { connect } from 'react-redux';
 import { addGroup } from '../../redux/thunks/groups';
-import Switch from '../denali/Switch';
 import { selectDomainAuditEnabled } from '../../redux/selectors/domainData';
+import InputDropdown from '../denali/InputDropdown';
+import { selectAllUsers } from '../../redux/selectors/user';
+import Flatpicker from '../flatpicker/FlatPicker';
+import Icon from '../denali/icons/Icon';
+import produce from 'immer';
+import AddGroupAdvancedSettings from './AddGroupAdvancedSettings';
+import { selectAuthorityAttributes } from '../../redux/selectors/domains';
 
 const SectionDiv = styled.div`
     align-items: flex-start;
@@ -58,10 +64,10 @@ const StyledInputLabelPadding = styled(InputLabel)`
 `;
 
 const StyledInput = styled(Input)`
-    width: 500px;
+    width: 100%;
 `;
 
-const StyledInputUser = styled(Input)`
+const StyledInputAutoComplete = styled(InputDropdown)`
     margin-top: 5px;
 `;
 
@@ -79,7 +85,7 @@ const StyledIncludedMembersDiv = styled.div`
 `;
 
 const SectionsDiv = styled.div`
-    width: 780px;
+    width: 700px;
     text-align: left;
     background-color: ${colors.white};
 `;
@@ -103,26 +109,81 @@ const AuditEnabledLabel = styled.label`
     font: 300 14px HelveticaNeue-Reg, Helvetica, Arial, sans-serif;
 `;
 
+const FlatPickrStyled = styled.div`
+    flex: 1 1;
+    margin-right: 10px;
+    & > div input {
+        position: relative;
+        font: 300 14px HelveticaNeue-Reg, Helvetica, Arial, sans-serif;
+        background-color: rgba(53, 112, 244, 0.05);
+        box-shadow: none;
+        color: rgb(48, 48, 48);
+        min-width: 50px;
+        text-align: left;
+        border-width: 2px;
+        border-style: solid;
+        border-color: transparent;
+        border-image: initial;
+        border-radius: 2px;
+        flex: 1 0 auto;
+        margin: 0;
+        margin-right: 10px;
+        margin-top: 5px;
+        outline: none;
+        padding: 0.6em 12px;
+        transition: background-color 0.2s ease-in-out 0s,
+            color 0.2s ease-in-out 0s, border 0.2s ease-in-out 0s;
+        width: 77%;
+    }
+`;
+
+const AdvancedSettingsDiv = styled.div`
+    flex: 1 1;
+    margin-left: 10px;
+`;
+
+const StyleTable = styled.table`
+    width: 100%;
+    border-spacing: 0 20px;
+    display: table;
+    border-collapse: separate;
+    border-color: grey;
+`;
+
 class AddGroup extends React.Component {
     constructor(props) {
         super(props);
         this.addMember = this.addMember.bind(this);
         this.onSubmit = this.onSubmit.bind(this);
         this.toggleAuditEnabled = this.toggleAuditEnabled.bind(this);
+        this.userSearch = this.userSearch.bind(this);
+        this.expandSettings = this.expandSettings.bind(this);
         this.dateUtils = new DateUtils();
+
+        const group = {
+            auditEnabled: false,
+        };
+
         this.state = {
             saving: 'nope',
             name: '',
             newMemberName: '',
+            memberNameInInput: '',
+            memberExpiry: '',
             members: [],
             justification: '',
-            auditEnabled: false,
+            showSettings: false,
+            group,
         };
     }
 
     toggleAuditEnabled() {
+        let newGroup = produce(this.state.group, (draft) => {
+            draft.auditEnabled = !this.state.group.auditEnabled;
+        });
+
         this.setState({
-            auditEnabled: !this.state.auditEnabled,
+            group: newGroup,
         });
     }
 
@@ -171,12 +232,18 @@ class AddGroup extends React.Component {
         names.validUsers.forEach((name) => {
             members.push({
                 memberName: name,
+                expiration: this.dateUtils.uxDatetimeToRDLTimestamp(
+                    this.state.memberExpiry
+                ),
             });
         });
-        if (names.invalidUsers.length !== 0) {
+
+        if (names.invalidUsers.length) {
             this.setState({
                 members,
                 newMemberName: names.invalidUsers.toString(),
+                memberExpiry: '',
+                memberNameInInput: '',
                 errorMessage:
                     "Member name doesn't match regex: " +
                     GROUP_MEMBER_NAME_REGEX,
@@ -185,6 +252,8 @@ class AddGroup extends React.Component {
             this.setState({
                 members,
                 newMemberName: '',
+                memberExpiry: '',
+                memberNameInInput: '',
                 errorMessage: '',
             });
         }
@@ -218,36 +287,57 @@ class AddGroup extends React.Component {
             return;
         }
 
-        let group = {
-            name: groupName,
-            auditEnabled: this.state.auditEnabled,
-        };
-        if (!this.state.auditEnabled) {
-            group.groupMembers =
-                this.state.members.filter((member) => {
-                    return member != null || member != undefined;
-                }) || [];
+        const validMembers = [];
 
-            if (this.state.newMemberName && this.state.newMemberName !== '') {
-                let names = MemberUtils.getUserNames(
-                    this.state.newMemberName,
-                    GROUP_MEMBER_NAME_REGEX
-                );
-                names.validUsers.forEach((name) => {
-                    group.groupMembers.push({
-                        memberName: name,
-                    });
+        if (this.state.newMemberName) {
+            let names = MemberUtils.getUserNames(
+                this.state.newMemberName,
+                GROUP_MEMBER_NAME_REGEX
+            );
+
+            names.validUsers.forEach((name) => {
+                validMembers.push({
+                    memberName: name,
+                    expiration: this.dateUtils.uxDatetimeToRDLTimestamp(
+                        this.state.memberExpiry
+                    ),
                 });
-                if (names.invalidUsers.length !== 0) {
-                    this.setState({
-                        newMemberName: names.invalidUsers.toString(),
-                        errorMessage:
-                            "Member name doesn't match regex: " +
-                            GROUP_MEMBER_NAME_REGEX,
-                    });
-                    return;
-                }
+            });
+
+            if (names.invalidUsers.length) {
+                this.setState({
+                    newMemberName: names.invalidUsers.toString(),
+                    errorMessage:
+                        "Member name doesn't match regex: " +
+                        GROUP_MEMBER_NAME_REGEX,
+                });
+                return;
             }
+        }
+
+        let group = produce(this.state.group, (draft) => {
+            draft.name = groupName;
+            draft.reviewEnabled = this.state.reviewEnabled;
+            draft.auditEnabled = this.state.group.auditEnabled;
+            draft.deleteProtection = this.state.deleteProtection;
+
+            if (!this.state.reviewEnabled && !this.state.group.auditEnabled) {
+                draft.groupMembers = this.state.members.filter(
+                    (member) => member
+                );
+                draft.groupMembers.push(...validMembers);
+            }
+        });
+
+        if (
+            this.state.newMemberName.trim() !==
+            this.state.memberNameInInput.trim()
+        ) {
+            this.setState({
+                errorMessage:
+                    'Member must be selected in the dropdown or member input field must be empty.',
+            });
+            return;
         }
 
         if (
@@ -284,38 +374,76 @@ class AddGroup extends React.Component {
             });
     }
 
+    onInputValueChange(inputVal) {
+        this.setState({ ['memberNameInInput']: inputVal });
+        if (this.state.newMemberName && this.state.newMemberName !== inputVal) {
+            this.setState({ ['newMemberName']: '' });
+        }
+    }
+
+    userSearch(part) {
+        return MemberUtils.userSearch(part, this.props.userList);
+    }
+
+    advancedSettingsChanged(name, val) {
+        let newGroup = produce(this.state.group, (draft) => {
+            draft[name] = val;
+        });
+
+        this.setState({
+            group: newGroup,
+        });
+    }
+
+    expandSettings() {
+        this.setState((prevState) => ({
+            showSettings: !prevState.showSettings,
+        }));
+    }
+
     render() {
-        let memberNameChanged = this.inputChanged.bind(this, 'newMemberName');
+        let memberExpiryDateChanged = this.inputChanged.bind(
+            this,
+            'memberExpiry'
+        );
 
         let nameChanged = this.inputChanged.bind(this, 'name');
+        let advancedSettingsChanged = this.advancedSettingsChanged.bind(this);
+        let deleteProtectionChanged = this.inputChanged.bind(this);
+        let reviewEnabledChanged = this.inputChanged.bind(this);
+
+        const arrowUp = 'arrowhead-up-circle-solid';
+        const arrowDown = 'arrowhead-down-circle';
 
         let members = this.state.members
             ? this.state.members.map((item, idx) => {
-                  // dummy place holder so that it can be be used in the form
-                  item.approved = true;
+                  let member = { ...item };
+                  member.approved = true;
                   let remove = this.deleteMember.bind(this, idx);
                   return (
                       <Member
                           key={idx}
-                          item={item}
+                          item={member}
                           onClickRemove={remove}
                           noanim
                       />
                   );
               })
             : '';
-        let auditToolTip = this.state.auditEnabled
+        let auditToolTip = this.state.group.auditEnabled
             ? ADD_GROUP_AUDIT_ENABLED_TOOLTIP
             : null;
-        let auditTriggerStyle = this.state.auditEnabled
-            ? { pointerEvents: 'none', opacity: '0.4' }
-            : {};
+        let reviewTriggerStyle =
+            this.state.reviewEnabled || this.state.group.auditEnabled
+                ? { pointerEvents: 'none', opacity: '0.4' }
+                : {};
         let sections = (
             <SectionsDiv>
                 <SectionDiv>
                     <StyledInputLabel>Group Name</StyledInputLabel>
                     <ContentDiv>
                         <StyledInput
+                            id={'group-name-input'}
                             placeholder='Enter New Group Name'
                             value={this.state.name}
                             onChange={nameChanged}
@@ -324,32 +452,65 @@ class AddGroup extends React.Component {
                         />
                     </ContentDiv>
                 </SectionDiv>
-                {
-                    <SectionDiv title={auditToolTip}>
-                        <StyledInputLabelPadding style={auditTriggerStyle}>
-                            Add Member(s)
-                        </StyledInputLabelPadding>
-                        <ContentDiv style={auditTriggerStyle}>
-                            <AddMemberDiv>
-                                <StyledInputUser
-                                    placeholder={GROUP_MEMBER_PLACEHOLDER}
-                                    value={this.state.newMemberName}
-                                    onChange={memberNameChanged}
-                                    noanim
-                                    fluid
-                                />
-                                <ButtonDiv style={auditTriggerStyle}>
-                                    <StyledButton
-                                        secondary
-                                        onClick={this.addMember}
-                                    >
-                                        Add
-                                    </StyledButton>
-                                </ButtonDiv>
-                            </AddMemberDiv>
-                        </ContentDiv>
-                    </SectionDiv>
-                }
+
+                <SectionDiv title={auditToolTip}>
+                    <StyledInputLabelPadding style={reviewTriggerStyle}>
+                        Add Member(s)
+                    </StyledInputLabelPadding>
+
+                    <ContentDiv style={reviewTriggerStyle}>
+                        <AddMemberDiv>
+                            <StyledInputAutoComplete
+                                value={this.state.memberNameInInput}
+                                selectedDropdownValue={this.state.newMemberName} // marks value in dropdown selected
+                                onInputValueChange={(inputVal) => {
+                                    this.onInputValueChange(inputVal);
+                                }}
+                                placeholder={GROUP_MEMBER_PLACEHOLDER}
+                                itemToString={(i) =>
+                                    i === null ? '' : i.value
+                                }
+                                id='member-name'
+                                name='member-name'
+                                onChange={(evt) =>
+                                    this.setState({
+                                        ['newMemberName']: evt ? evt.value : '',
+                                    })
+                                }
+                                asyncSearchFunc={this.userSearch}
+                                noanim={true}
+                                fluid={true}
+                            />
+                        </AddMemberDiv>
+                    </ContentDiv>
+                </SectionDiv>
+
+                <SectionDiv title={auditToolTip}>
+                    <StyledInputLabel style={reviewTriggerStyle} />
+                    <FlatPickrStyled style={reviewTriggerStyle}>
+                        <Flatpicker
+                            onChange={memberExpiryDateChanged}
+                            clear={this.state.memberExpiry}
+                            id='groupMemberExpiry'
+                            data-testid='memberExpiry'
+                        />
+                    </FlatPickrStyled>
+                </SectionDiv>
+
+                <SectionDiv title={auditToolTip}>
+                    <StyledInputLabel style={reviewTriggerStyle} />
+                    <ButtonDiv style={reviewTriggerStyle}>
+                        <StyledButton
+                            secondary
+                            size={'small'}
+                            onClick={this.addMember}
+                            data-wdio={'add-group-member'}
+                        >
+                            Add
+                        </StyledButton>
+                    </ButtonDiv>
+                </SectionDiv>
+
                 <SectionDiv title={auditToolTip}>
                     <StyledInputLabel />
                     <StyledIncludedMembersDiv>
@@ -357,18 +518,46 @@ class AddGroup extends React.Component {
                     </StyledIncludedMembersDiv>
                 </SectionDiv>
                 {this.getJustification()}
-                {this.props.isDomainAuditEnabled && (
-                    <SectionDiv>
-                        <SliderDiv>
-                            <Switch
-                                checked={this.state.auditEnabled}
-                                disabled={members.length > 0}
-                                onChange={this.toggleAuditEnabled}
-                                name={'auditEnabled'}
+
+                <SectionDiv>
+                    <Icon
+                        id={'advanced-settings-icon'}
+                        icon={this.state.showSettings ? arrowUp : arrowDown}
+                        onClick={this.expandSettings}
+                        color={colors.icons}
+                        isLink
+                        size={'1.25em'}
+                        verticalAlign={'text-bottom'}
+                    />
+                    <AdvancedSettingsDiv>
+                        {'Advanced Settings'}
+                    </AdvancedSettingsDiv>
+                </SectionDiv>
+
+                {this.state.showSettings && (
+                    <StyleTable data-testid='advanced-setting-table'>
+                        <tbody>
+                            <AddGroupAdvancedSettings
+                                userAuthorityAttributes={
+                                    this.props.userAuthorityAttributes
+                                }
+                                advancedSettingsChanged={
+                                    advancedSettingsChanged
+                                }
+                                reviewEnabledChanged={reviewEnabledChanged}
+                                deleteProtectionChanged={
+                                    deleteProtectionChanged
+                                }
+                                auditEnabledChanged={this.toggleAuditEnabled}
+                                isDomainAuditEnabled={
+                                    this.props.isDomainAuditEnabled
+                                }
+                                members={members}
+                                group={this.state.group}
+                                reviewEnabled={this.state.reviewEnabled}
                             />
-                            <AuditEnabledLabel>Audit Enabled</AuditEnabledLabel>
-                        </SliderDiv>
-                    </SectionDiv>
+                        </tbody>
+                    </StyleTable>
                 )}
             </SectionsDiv>
         );
@@ -391,6 +580,8 @@ const mapStateToProps = (state, props) => {
     return {
         ...props,
         isDomainAuditEnabled: selectDomainAuditEnabled(state),
+        userAuthorityAttributes: selectAuthorityAttributes(state),
+        userList: selectAllUsers(state),
     };
 };
 

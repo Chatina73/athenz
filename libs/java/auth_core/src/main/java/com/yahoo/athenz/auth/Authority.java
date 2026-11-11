@@ -38,6 +38,11 @@ public interface Authority {
         REQUEST
     }
 
+    enum UserType {
+        USER_ACTIVE,
+        USER_SUSPENDED,
+        USER_INVALID
+    }
     /**
      * Initialize the authority
      */
@@ -80,7 +85,7 @@ public interface Authority {
     }
 
     /**
-     * @return a boolean flag indicating whether or not authenticated principals
+     * @return a boolean flag indicating whether authenticated principals
      * by this authority are allowed to be "authorized" to make changes. If this
      * flag is false, then the principal must first get a ZMS UserToken and then
      * use that UserToken for subsequent operations.
@@ -107,15 +112,29 @@ public interface Authority {
      * @param username name of the user to check
      * @return true if username is valid, false otherwise
      */
+    @Deprecated
     default boolean isValidUser(String username) {
         return true;
+    }
+
+    /**
+     * If the authority is handling user principals, then this method will be
+     * called when the server is processing role/group member requests. If the
+     * user is INVALID, then the request will be rejected. If the user is SUSPENDED,
+     * then the request will be allowed only if the user is a member of the role/group
+     * with the suspended flag set.
+     * @param username name of the user to check
+     * @return UserType enum value indicating the user status
+     */
+    default UserType getUserType(String username) {
+        return isValidUser(username) ? UserType.USER_ACTIVE : UserType.USER_INVALID;
     }
 
     /**
      * Verify the credentials and if valid return the corresponding Principal, null otherwise.
      * @param creds the credentials (i.e. cookie, token, secret) that will identify the principal.
      * @param remoteAddr remote IP address of the connection
-     * @param httpMethod the http method for this request (e.g. GET, PUT, etc)
+     * @param httpMethod the http method for this request (e.g. GET, PUT, etc.)
      * @param errMsg will contain error message if authenticate fails
      * @return the Principal for the credentials, or null if the credentials are not valid.
      */
@@ -152,6 +171,19 @@ public interface Authority {
      */
     default boolean isAttributeSet(final String username, final String attribute) {
         return false;
+    }
+
+    /**
+     * Return whether the attribute can be revoked or not. If the attribute is
+     * not revocable then during the periodic checks, there is no reason to keep
+     * asking the authority for the updated attribute values. The validation
+     * still happens when the principal is added to the role/group. By default,
+     * we assume all attributes are revocable.
+     * @param attribute boolean attribute name
+     * @return true if the given attribute value can be revoked
+     */
+    default boolean isAttributeRevocable(final String attribute) {
+        return true;
     }
 
     /**
@@ -199,5 +231,43 @@ public interface Authority {
      */
     default List<Principal> getPrincipals(EnumSet<Principal.State> principalStates) {
         return Collections.emptyList();
+    }
+
+    /**
+     * Retrieves the principal's manager's username. This is used for domain contacts
+     * when a domain contact user is no longer valid, the server will automatically
+     * assign the contact type to the user's manager.
+     * @param username user's name or id
+     * @return user's manager's name or id
+     */
+    default String getUserManager(final String username) {
+        return null;
+    }
+
+    /**
+     * Return the signer key id for the user if the authority is handling user
+     * principals and needs to determine the signer key id for the user that
+     * is requesting the certificate.
+     * @param username user's name or id
+     * @return signer key id or null if not available
+     */
+    @Deprecated
+    default String getSignerKeyId(final String username) {
+        return getSignerKeyId(username, null);
+    }
+
+    /**
+     * Return the signer key id for the user if the authority is handling user
+     * principals and needs to determine the signer key id for the user that
+     * is requesting the certificate. The requestSignerKeyId is the signer key id
+     * that was requested by the client in the request. If the requestSignerKeyId
+     * is not null, then the authority should determine if it's valid for the user
+     * and either return that value or another signer key id for the user.
+     * @param username user's name or id
+     * @param requestSignerKeyId user's requested signer key id
+     * @return signer key id or null if not available
+     */
+    default String getSignerKeyId(final String username, final String requestSignerKeyId) {
+        return null;
     }
 }

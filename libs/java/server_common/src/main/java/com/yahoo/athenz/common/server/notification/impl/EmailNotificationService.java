@@ -16,7 +16,6 @@
 
 package com.yahoo.athenz.common.server.notification.impl;
 
-import com.amazonaws.util.IOUtils;
 import com.yahoo.athenz.common.server.notification.EmailProvider;
 import com.yahoo.athenz.common.server.notification.Notification;
 import com.yahoo.athenz.common.server.notification.NotificationEmail;
@@ -58,7 +57,7 @@ public class EmailNotificationService implements NotificationService {
     private final String emailDomainFrom;
     private final String from;
 
-    private byte[] logoImage;
+    private final byte[] logoImage;
 
     public EmailNotificationService(EmailProvider emailProvider) {
         this.emailProvider = emailProvider;
@@ -74,7 +73,7 @@ public class EmailNotificationService implements NotificationService {
         if (resource != null) {
             try (InputStream fileStream = resource.openStream()) {
                 //convert to byte array
-                fileByteArray = IOUtils.toByteArray(fileStream);
+                fileByteArray = fileStream.readAllBytes();
 
             } catch (IOException ex) {
                 LOGGER.error("Could not read file: {}. Error message: {}", fileName, ex.getMessage());
@@ -87,6 +86,9 @@ public class EmailNotificationService implements NotificationService {
     public boolean notify(Notification notification) {
         if (notification == null) {
             return false;
+        } else if (!Notification.ConsolidatedBy.PRINCIPAL.equals(notification.getConsolidatedBy())) {
+            // only notify for principal consolidated notifications
+            return true;
         }
 
         NotificationEmail notificationAsEmail = notification.getNotificationAsEmail();
@@ -98,7 +100,16 @@ public class EmailNotificationService implements NotificationService {
         final String subject = notificationAsEmail.getSubject();
         final String body = notificationAsEmail.getBody();
         Set<String> recipients = notificationAsEmail.getFullyQualifiedRecipientsEmail();
-            if (sendEmail(recipients, subject, body)) {
+
+        // if our list of recipients is empty then we have nothing to do,
+        // but we want to log it for debugging purposes
+
+        if (recipients.isEmpty()) {
+            LOGGER.error("No recipients specified in the notification. Subject={}", subject);
+            return false;
+        }
+
+        if (sendEmail(recipients, subject, body)) {
             LOGGER.info("Successfully sent email notification. Subject={}, Recipients={}", subject, recipients);
             return true;
         } else {
@@ -107,7 +118,7 @@ public class EmailNotificationService implements NotificationService {
         }
     }
 
-    boolean sendEmail(Set<String> recipients, String subject, String body) {
+    public boolean sendEmail(Set<String> recipients, String subject, String body) {
         final AtomicInteger counter = new AtomicInteger();
         // SES imposes a limit of 50 recipients. So we convert the recipients into batches
         if (recipients.size() > SES_RECIPIENTS_LIMIT_PER_MESSAGE) {

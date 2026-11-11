@@ -15,15 +15,19 @@
  */
 package com.yahoo.athenz.instance.provider.impl;
 
+import com.yahoo.athenz.common.ServerCommonConsts;
+import com.yahoo.athenz.common.server.util.IPBlock;
+import com.yahoo.athenz.common.server.util.config.dynamic.DynamicConfigBoolean;
+import com.yahoo.athenz.instance.provider.InstanceConfirmation;
+import com.yahoo.athenz.instance.provider.InstanceProvider;
+import com.yahoo.athenz.instance.provider.ProviderResourceException;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.util.*;
 
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.*;
 
 public class InstanceUtilsTest {
 
@@ -51,13 +55,13 @@ public class InstanceUtilsTest {
     @Test
     public void testValidateCertRequestHostnamesNullSuffix() {
         assertFalse(InstanceUtils.validateCertRequestSanDnsNames(null,  null,  null,  null,
-                null, null, false, new StringBuilder(256)));
+                null, null, false, new StringBuilder(256), null));
     }
 
     @Test
     public void testValidateCertRequestHostnamesEmptySuffix() {
         assertFalse(InstanceUtils.validateCertRequestSanDnsNames(null,  null,  null,
-                Collections.emptySet(), null, null, false, new StringBuilder(256)));
+                Collections.emptySet(), null, null, false, new StringBuilder(256), null));
     }
 
     @Test
@@ -66,7 +70,7 @@ public class InstanceUtilsTest {
         attributes.put("sanDNS", "service.athenz.athenz.cloud,service2.athenz.athenz.cloud,service3.athenz.athenz.cloud");
 
         assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, null, false, new StringBuilder(256)));
+                Collections.singleton("athenz.cloud"), null, null, false, new StringBuilder(256), null));
     }
 
     @Test
@@ -75,7 +79,7 @@ public class InstanceUtilsTest {
         attributes.put("sanDNS", "api.athenz.athenz.cloud,i-1234.instanceid.athenz.athenz2.cloud");
 
         assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, null, false, new StringBuilder(256)));
+                Collections.singleton("athenz.cloud"), null, null, false, new StringBuilder(256), null));
     }
 
     @Test
@@ -84,7 +88,7 @@ public class InstanceUtilsTest {
         attributes.put("sanDNS", "storage.athenz.athenz.cloud,i-1234.instanceid.athenz.athenz.cloud");
 
         assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, null, false, new StringBuilder(256)));
+                Collections.singleton("athenz.cloud"), null, null, false, new StringBuilder(256), null));
     }
 
     @Test
@@ -93,16 +97,23 @@ public class InstanceUtilsTest {
         attributes.put("sanDNS", "api.athenz.athenz.cloud,api.athenz.athenz.cloud");
 
         assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, null, false, new StringBuilder(256)));
+                Collections.singleton("athenz.cloud"), null, null, false, new StringBuilder(256), null));
     }
 
     @Test
-    public void testValidateCertRequestHostnamesMissingHost() {
+    public void testValidateCertRequestHostnamesMultipleInstanceId() {
         HashMap<String, String> attributes = new HashMap<>();
         attributes.put("sanDNS", "i-1234.instanceid.athenz.athenz.cloud,i-1234.instanceid.athenz.athenz.cloud");
 
         assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, null, false, new StringBuilder(256)));
+                Collections.singleton("athenz.cloud"), null, null, false, new StringBuilder(256), null));
+
+        // critical error, the list must be returned empty
+
+        List<String> failedHosts = new ArrayList<>();
+        assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
+                Collections.singleton("athenz.cloud"), null, null, false, new StringBuilder(256), failedHosts));
+        assertTrue(failedHosts.isEmpty());
     }
 
     @Test
@@ -111,7 +122,55 @@ public class InstanceUtilsTest {
         attributes.put("sanDNS", "api.athenz.athenz.cloud,i-1234.instanceid.athenz.athenz.cloud");
         StringBuilder id = new StringBuilder(256);
         assertTrue(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, null, false, id));
+                Collections.singleton("athenz.cloud"), null, null, false, id, null));
+        assertEquals(id.toString(), "i-1234");
+
+        List<String> failedHosts = new ArrayList<>();
+        id.setLength(0);
+        assertTrue(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
+                Collections.singleton("athenz.cloud"), null, null, false, id, failedHosts));
+        assertEquals(id.toString(), "i-1234");
+        assertTrue(failedHosts.isEmpty());
+    }
+
+    @Test
+    public void testValidateCertRequestHostnamesWithZtsDerivedInstanceId() {
+        HashMap<String, String> attributes = new HashMap<>();
+        attributes.put("sanDNS", "istiod.athenz-k8s-nonprod.svc.cluster.local");
+        attributes.put(InstanceProvider.ZTS_INSTANCE_ID, "120ed2ec-783a-41a5-af89-177b1e175312");
+        StringBuilder id = new StringBuilder(256);
+        assertTrue(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz.k8s.nonprod", "istiod",
+                Collections.singleton("svc.cluster.local"), null, null, false, id, null));
+        assertEquals(id.toString(), "120ed2ec-783a-41a5-af89-177b1e175312");
+    }
+
+    @Test
+    public void testValidateCertRequestHostnamesMultipleInstanceIdsRejectedNotFallback() {
+
+        // Two conflicting instanceid SAN DNS entries: extractCertRequestInstanceId appends
+        // the first one before detecting the conflict on the second, so instanceId is left
+        // partially populated when it returns false. The ZTS_INSTANCE_ID fallback must not
+        // then be appended on top of that partial value -- the request must be rejected
+        // outright, not issued with a corrupted, concatenated instance id.
+        HashMap<String, String> attributes = new HashMap<>();
+        attributes.put("sanDNS", "api.athenz.athenz.cloud,i-1234.instanceid.athenz.athenz.cloud," +
+                "i-5678.instanceid.athenz.athenz.cloud");
+        attributes.put(InstanceProvider.ZTS_INSTANCE_ID, "sa-uid-from-token");
+        StringBuilder id = new StringBuilder(256);
+        assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
+                Collections.singleton("athenz.cloud"), null, null, false, id, null));
+        assertEquals(id.toString(), "i-1234", "instanceId must hold only the first conflicting " +
+                "value, not a corrupted concatenation with the ZTS-derived fallback");
+    }
+
+    @Test
+    public void testValidateCertRequestHostnamesSanInstanceIdOverridesZtsAttribute() {
+        HashMap<String, String> attributes = new HashMap<>();
+        attributes.put("sanDNS", "api.athenz.athenz.cloud,i-1234.instanceid.athenz.athenz.cloud");
+        attributes.put(InstanceProvider.ZTS_INSTANCE_ID, "sa-uid-from-token");
+        StringBuilder id = new StringBuilder(256);
+        assertTrue(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
+                Collections.singleton("athenz.cloud"), null, null, false, id, null));
         assertEquals(id.toString(), "i-1234");
     }
 
@@ -122,7 +181,7 @@ public class InstanceUtilsTest {
         attributes.put("sanURI", "spiffe://athenz/sa/cloud,athenz://instanceid/zts/i-1234");
         StringBuilder id = new StringBuilder(256);
         assertTrue(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, null, false, id));
+                Collections.singleton("athenz.cloud"), null, null, false, id, null));
         assertEquals(id.toString(), "i-1234");
     }
 
@@ -133,7 +192,7 @@ public class InstanceUtilsTest {
         attributes.put("sanURI", "spiffe://athenz/sa/cloud,athenz://instanceid/zts");
         StringBuilder id = new StringBuilder(256);
         assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, null, false, id));
+                Collections.singleton("athenz.cloud"), null, null, false, id, null));
     }
 
     @Test
@@ -143,7 +202,7 @@ public class InstanceUtilsTest {
         attributes.put("sanURI", "spiffe://athenz/sa/cloud,athenz://instanceid/zts/");
         StringBuilder id = new StringBuilder(256);
         assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, null, false, id));
+                Collections.singleton("athenz.cloud"), null, null, false, id, null));
     }
 
     @Test
@@ -151,7 +210,15 @@ public class InstanceUtilsTest {
         HashMap<String, String> attributes = new HashMap<>();
         StringBuilder id = new StringBuilder(256);
         assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, null, false, id));
+                Collections.singleton("athenz.cloud"), null, null, false, id, null));
+
+        // critical error, the list must be returned empty
+
+        List<String> failedHosts = new ArrayList<>();
+        id.setLength(0);
+        assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
+                Collections.singleton("athenz.cloud"), null, null, false, id, failedHosts));
+        assertTrue(failedHosts.isEmpty());
     }
 
     @Test
@@ -160,7 +227,7 @@ public class InstanceUtilsTest {
         attributes.put("sanDNS", "");
         StringBuilder id = new StringBuilder(256);
         assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, null, false, id));
+                Collections.singleton("athenz.cloud"), null, null, false, id, null));
     }
 
     @Test
@@ -172,7 +239,7 @@ public class InstanceUtilsTest {
         attributes.put("sanDNS", "api.athenz.athenz.cloud,i-1234.instanceid.athenz.athenz.cloud");
         StringBuilder id = new StringBuilder(256);
         assertTrue(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, null, true, id));
+                Collections.singleton("athenz.cloud"), null, null, true, id, null));
         assertEquals(id.toString(), "i-1234");
 
         // now let's set the hostname to a valid value and verify
@@ -181,7 +248,7 @@ public class InstanceUtilsTest {
         attributes.put("sanDNS", "api.athenz.athenz.cloud,i-1234.api.athenz.athenz.cloud,i-1234.instanceid.athenz.athenz.cloud");
         attributes.put("hostname", "i-1234.api.athenz.athenz.cloud");
         assertTrue(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, null, true, id));
+                Collections.singleton("athenz.cloud"), null, null, true, id, null));
         assertEquals(id.toString(), "i-1234");
 
         // now let's set the hostname to a non-matching value
@@ -189,7 +256,15 @@ public class InstanceUtilsTest {
         id.setLength(0);
         attributes.put("hostname", "i-1235.api2.athenz.athenz.cloud");
         assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, null, true, id));
+                Collections.singleton("athenz.cloud"), null, null, true, id, null));
+
+        // critical error, the list must be returned empty
+
+        List<String> failedHosts = new ArrayList<>();
+        id.setLength(0);
+        assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
+                Collections.singleton("athenz.cloud"), null, null, true, id, failedHosts));
+        assertTrue(failedHosts.isEmpty());
     }
 
     @Test
@@ -201,7 +276,7 @@ public class InstanceUtilsTest {
         attributes.put("sanDNS", "i-1234.instanceid.athenz.athenz.cloud");
         StringBuilder id = new StringBuilder(256);
         assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, null, true, id));
+                Collections.singleton("athenz.cloud"), null, null, true, id, null));
 
         // now let's set the hostname to a valid value and verify
 
@@ -209,7 +284,7 @@ public class InstanceUtilsTest {
         attributes.put("sanDNS", "i-1234.api.athenz.athenz.cloud,i-1234.instanceid.athenz.athenz.cloud");
         attributes.put("hostname", "i-1234.api.athenz.athenz.cloud");
         assertTrue(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, null, true, id));
+                Collections.singleton("athenz.cloud"), null, null, true, id, null));
         assertEquals(id.toString(), "i-1234");
     }
 
@@ -344,7 +419,7 @@ public class InstanceUtilsTest {
     }
 
     @Test
-    public void testValidateCertRequestSanDnsNamesWithClusterNames() {
+    public void testValidateCertRequestSanDnsNamesAllFailed() {
 
         // with only instance id dns name, we should get failure
 
@@ -352,23 +427,60 @@ public class InstanceUtilsTest {
         HashMap<String, String> attributes = new HashMap<>();
         attributes.put("sanDNS", "api.athenz.cluster-us-west-2.athenz.cloud");
         attributes.put("sanURI", "athenz://instanceid/aws/id-1");
+
         assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.io"), null, null, true, id));
+                Collections.singleton("athenz.cloud"), null, null, true, id, null));
+
+        // let's verify we get an empty failed host name since we don't have any
+        // other valid hostnames in our list
+
+        List<String> failedHosts = new ArrayList<>();
+        id.setLength(0);
         assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.io"), null, Collections.emptyList(), true, id));
+                Collections.singleton("athenz.cloud"), null, null, true, id, failedHosts));
+        assertTrue(failedHosts.isEmpty());
+    }
+
+    @Test
+    public void testValidateCertRequestSanDnsNamesWithClusterNames() {
+
+        // with only instance id dns name, we should get failure
+
+        StringBuilder id = new StringBuilder(256);
+        HashMap<String, String> attributes = new HashMap<>();
+        attributes.put("sanDNS", "api.athenz.athenz.cloud,api.athenz.cluster-us-west-2.athenz.cloud");
+        attributes.put("sanURI", "athenz://instanceid/aws/id-1");
+
+        assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
+                Collections.singleton("athenz.io"), null, null, true, id, null));
+
+        id.setLength(0);
+        assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
+                Collections.singleton("athenz.io"), null, Collections.emptyList(), true, id, null));
 
         // let's include a cluster name list without our cluster
 
         List<String> clusterNames = new ArrayList<>();
         clusterNames.add("cluster-us-east-1");
+        id.setLength(0);
         assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, clusterNames, true, id));
+                Collections.singleton("athenz.cloud"), null, clusterNames, true, id, null));
+
+        // let's verify we get our cluster name as a failure
+
+        List<String> failedHosts = new ArrayList<>();
+        id.setLength(0);
+        assertFalse(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
+                Collections.singleton("athenz.cloud"), null, clusterNames, true, id, failedHosts));
+        assertEquals(failedHosts.size(), 1);
+        assertTrue(failedHosts.contains("api.athenz.cluster-us-west-2.athenz.cloud"));
 
         // now finally let's add our cluster name
 
         clusterNames.add("cluster-us-west-2");
+        id.setLength(0);
         assertTrue(InstanceUtils.validateCertRequestSanDnsNames(attributes, "athenz", "api",
-                Collections.singleton("athenz.cloud"), null, clusterNames, true, id));
+                Collections.singleton("athenz.cloud"), null, clusterNames, true, id, null));
     }
 
     @Test
@@ -394,5 +506,315 @@ public class InstanceUtilsTest {
         Assert.assertNull(InstanceUtils.getServiceAccountNameFromIdTokenSubject(null));
         Assert.assertNull(InstanceUtils.getServiceAccountNameFromIdTokenSubject("my:invalid:ns:xyz"));
         Assert.assertNull(InstanceUtils.getServiceAccountNameFromIdTokenSubject("system:serviceaccount:invalid"));
+    }
+
+    @Test
+    public void testGetNamespaceFromIdTokenSubject() {
+        Assert.assertEquals(InstanceUtils.getNamespaceFromIdTokenSubject("system:serviceaccount:my-ns:my-sa"), "my-ns");
+        Assert.assertEquals(InstanceUtils.getNamespaceFromIdTokenSubject("system:serviceaccount:default:athenz.api"), "default");
+        Assert.assertNull(InstanceUtils.getNamespaceFromIdTokenSubject(""));
+        Assert.assertNull(InstanceUtils.getNamespaceFromIdTokenSubject(null));
+        Assert.assertNull(InstanceUtils.getNamespaceFromIdTokenSubject("my:invalid:ns:xyz"));
+        Assert.assertNull(InstanceUtils.getNamespaceFromIdTokenSubject("system:serviceaccount:invalid"));
+    }
+
+    @Test
+    public void testGetNamespaceFromSpiffeUri() {
+
+        Assert.assertEquals(InstanceUtils.getNamespaceFromSpiffeUri(
+                "spiffe://athenz.io/ns/my-ns/sa/athenz.api"), "my-ns");
+
+        // the attribute carries all the uris from the request, and the spiffe one
+        // is not necessarily the first entry in the list
+
+        Assert.assertEquals(InstanceUtils.getNamespaceFromSpiffeUri(
+                "athenz://instanceid/sys.k8s.gcp/1001,spiffe://athenz.io/ns/my-ns/sa/athenz.api"), "my-ns");
+
+        // no spiffe uri, or a spiffe uri without a namespace component
+
+        Assert.assertNull(InstanceUtils.getNamespaceFromSpiffeUri("athenz://instanceid/sys.k8s.gcp/1001"));
+        Assert.assertNull(InstanceUtils.getNamespaceFromSpiffeUri("spiffe://athenz.io/sa/athenz.api"));
+        Assert.assertNull(InstanceUtils.getNamespaceFromSpiffeUri("spiffe://athenz.io/ns/my-ns"));
+        Assert.assertNull(InstanceUtils.getNamespaceFromSpiffeUri(""));
+        Assert.assertNull(InstanceUtils.getNamespaceFromSpiffeUri(null));
+    }
+
+    @Test
+    public void testValidateCertIPAddresses() throws ProviderResourceException {
+
+        // if the feature is not enabled then the method returns without
+        // any exceptions
+
+        DynamicConfigBoolean feature = new DynamicConfigBoolean(false);
+        InstanceUtils.validateCertIPAddresses(feature, null, null, null);
+
+        DynamicConfigBoolean featureMock = Mockito.mock(DynamicConfigBoolean.class);
+        Mockito.when(featureMock.get()).thenReturn(null);
+        InstanceUtils.validateCertIPAddresses(featureMock, null, null, null);
+
+        // if there are no IP addresses specified in the attributes then the
+        // method returns without any exceptions
+
+        feature = new DynamicConfigBoolean(true);
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put(InstanceProvider.ZTS_INSTANCE_SAN_IP, "");
+        InstanceUtils.validateCertIPAddresses(feature, attributes, null, null);
+
+        // if the list only contains empty values then the method returns without any exceptions
+
+        attributes.put(InstanceProvider.ZTS_INSTANCE_SAN_IP, ", ,  ,");
+        InstanceUtils.validateCertIPAddresses(feature, attributes, null, null);
+
+        // if the IP address matches to the private IP, then we return without any exceptions
+
+        attributes.put(InstanceProvider.ZTS_INSTANCE_SAN_IP, "10.11.11.11");
+        InstanceUtils.validateCertIPAddresses(feature, attributes, "10.11.11.11", null);
+
+        // generate the IPBlocks object
+
+        List<IPBlock> ipBlocks = InstanceUtils.parseIPBlocks("10.0.0.0/8,172.16.0.0/12");
+        InstanceUtils.validateCertIPAddresses(feature, attributes, null, ipBlocks);
+
+        // specify multiple IP addresses in the attributes
+
+        attributes.put(InstanceProvider.ZTS_INSTANCE_SAN_IP, "10.11.11.11,172.16.10.10");
+        InstanceUtils.validateCertIPAddresses(feature, attributes, "10.11.11.11", ipBlocks);
+
+        // if the IP address is not in the private range, then we throw an exception
+
+        attributes.put(InstanceProvider.ZTS_INSTANCE_SAN_IP, "12.12.12.12");
+        try {
+            InstanceUtils.validateCertIPAddresses(feature, attributes, "10.11.11.11", ipBlocks);
+            fail();
+        } catch (ProviderResourceException ex) {
+            assertTrue(ex.getMessage().contains("Certificate IP address validation failed for: 12.12.12.12"));
+            assertEquals(ex.getCode(), ProviderResourceException.FORBIDDEN);
+        }
+
+        // there are 2 IP addresses in the attributes, one of them is valid.
+        // first use case: the private IP match, no match for the 2nd IP in the IPBlocks
+
+        attributes.put(InstanceProvider.ZTS_INSTANCE_SAN_IP, "10.11.11.11,12.12.12.12");
+        try {
+            InstanceUtils.validateCertIPAddresses(feature, attributes, "10.11.11.11", ipBlocks);
+            fail();
+        } catch (ProviderResourceException ex) {
+            assertTrue(ex.getMessage().contains("Certificate IP address validation failed for: 12.12.12.12"));
+            assertEquals(ex.getCode(), ProviderResourceException.FORBIDDEN);
+        }
+
+        // second use case: no private IP match, one match in IPBlocks but not the 2nd one
+
+        attributes.put(InstanceProvider.ZTS_INSTANCE_SAN_IP, "10.11.11.11,12.12.12.12");
+        try {
+            InstanceUtils.validateCertIPAddresses(feature, attributes, "10.11.12.13", ipBlocks);
+            fail();
+        } catch (ProviderResourceException ex) {
+            assertTrue(ex.getMessage().contains("Certificate IP address validation failed for: 12.12.12.12"));
+            assertEquals(ex.getCode(), ProviderResourceException.FORBIDDEN);
+        }
+    }
+
+    @Test
+    public void testShouldCheckBootTimeNullAttributes() {
+        assertTrue(InstanceUtils.shouldCheckBootTime(null));
+    }
+
+    @Test
+    public void testShouldCheckBootTimeEmptyAttributes() {
+        Map<String, String> attributes = new HashMap<>();
+        assertTrue(InstanceUtils.shouldCheckBootTime(attributes));
+    }
+
+    @Test
+    public void testShouldCheckBootTimeNoFeatureFlags() {
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put("someKey", "someValue");
+        assertTrue(InstanceUtils.shouldCheckBootTime(attributes));
+    }
+
+    @Test
+    public void testShouldCheckBootTimeDomainFlagSkipSet() {
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put(InstanceProvider.ZTS_INSTANCE_DOMAIN_FEATURE_FLAGS,
+                Integer.toString(ServerCommonConsts.ZMS_DOMAIN_FEATURE_SKIP_BOOT_TIME_VALIDATION));
+        assertFalse(InstanceUtils.shouldCheckBootTime(attributes));
+    }
+
+    @Test
+    public void testShouldCheckBootTimeServiceFlagSkipSet() {
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put(InstanceProvider.ZTS_INSTANCE_SERVICE_FEATURE_FLAGS,
+                Integer.toString(ServerCommonConsts.ZMS_SERVICE_FEATURE_SKIP_BOOT_TIME_VALIDATION));
+        assertFalse(InstanceUtils.shouldCheckBootTime(attributes));
+    }
+
+    @Test
+    public void testShouldCheckBootTimeBothFlagsSkipSet() {
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put(InstanceProvider.ZTS_INSTANCE_DOMAIN_FEATURE_FLAGS,
+                Integer.toString(ServerCommonConsts.ZMS_DOMAIN_FEATURE_SKIP_BOOT_TIME_VALIDATION));
+        attributes.put(InstanceProvider.ZTS_INSTANCE_SERVICE_FEATURE_FLAGS,
+                Integer.toString(ServerCommonConsts.ZMS_SERVICE_FEATURE_SKIP_BOOT_TIME_VALIDATION));
+        assertFalse(InstanceUtils.shouldCheckBootTime(attributes));
+    }
+
+    @Test
+    public void testShouldCheckBootTimeDomainFlagNotSkip() {
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put(InstanceProvider.ZTS_INSTANCE_DOMAIN_FEATURE_FLAGS,
+                Integer.toString(ServerCommonConsts.ZMS_DOMAIN_FEATURE_ALLOW_SERVICE_UNDERSCORE));
+        assertTrue(InstanceUtils.shouldCheckBootTime(attributes));
+    }
+
+    @Test
+    public void testShouldCheckBootTimeDomainFlagMultipleBitsWithSkip() {
+        Map<String, String> attributes = new HashMap<>();
+        int flags = ServerCommonConsts.ZMS_DOMAIN_FEATURE_ALLOW_SERVICE_UNDERSCORE |
+                ServerCommonConsts.ZMS_DOMAIN_FEATURE_SKIP_BOOT_TIME_VALIDATION;
+        attributes.put(InstanceProvider.ZTS_INSTANCE_DOMAIN_FEATURE_FLAGS, Integer.toString(flags));
+        assertFalse(InstanceUtils.shouldCheckBootTime(attributes));
+    }
+
+    @Test
+    public void testShouldCheckBootTimeDomainFlagZero() {
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put(InstanceProvider.ZTS_INSTANCE_DOMAIN_FEATURE_FLAGS, "0");
+        assertTrue(InstanceUtils.shouldCheckBootTime(attributes));
+    }
+
+    @Test
+    public void testShouldCheckBootTimeServiceFlagZero() {
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put(InstanceProvider.ZTS_INSTANCE_SERVICE_FEATURE_FLAGS, "0");
+        assertTrue(InstanceUtils.shouldCheckBootTime(attributes));
+    }
+
+    @Test
+    public void testShouldCheckBootTimeDomainFlagInvalidValue() {
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put(InstanceProvider.ZTS_INSTANCE_DOMAIN_FEATURE_FLAGS, "invalid");
+        assertTrue(InstanceUtils.shouldCheckBootTime(attributes));
+    }
+
+    @Test
+    public void testShouldCheckBootTimeServiceFlagInvalidValue() {
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put(InstanceProvider.ZTS_INSTANCE_SERVICE_FEATURE_FLAGS, "not-a-number");
+        assertTrue(InstanceUtils.shouldCheckBootTime(attributes));
+    }
+
+    @Test
+    public void testShouldCheckBootTimeDomainInvalidServiceSkipSet() {
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put(InstanceProvider.ZTS_INSTANCE_DOMAIN_FEATURE_FLAGS, "invalid");
+        attributes.put(InstanceProvider.ZTS_INSTANCE_SERVICE_FEATURE_FLAGS,
+                Integer.toString(ServerCommonConsts.ZMS_SERVICE_FEATURE_SKIP_BOOT_TIME_VALIDATION));
+        assertFalse(InstanceUtils.shouldCheckBootTime(attributes));
+    }
+
+    @Test
+    public void testShouldCheckBootTimeDomainSkipSetServiceInvalid() {
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put(InstanceProvider.ZTS_INSTANCE_DOMAIN_FEATURE_FLAGS,
+                Integer.toString(ServerCommonConsts.ZMS_DOMAIN_FEATURE_SKIP_BOOT_TIME_VALIDATION));
+        attributes.put(InstanceProvider.ZTS_INSTANCE_SERVICE_FEATURE_FLAGS, "invalid");
+        assertFalse(InstanceUtils.shouldCheckBootTime(attributes));
+    }
+
+    @Test
+    public void testShouldCheckBootTimeDomainNoSkipServiceNoSkip() {
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put(InstanceProvider.ZTS_INSTANCE_DOMAIN_FEATURE_FLAGS,
+                Integer.toString(ServerCommonConsts.ZMS_DOMAIN_FEATURE_ALLOW_SERVICE_UNDERSCORE));
+        attributes.put(InstanceProvider.ZTS_INSTANCE_SERVICE_FEATURE_FLAGS, "0");
+        assertTrue(InstanceUtils.shouldCheckBootTime(attributes));
+    }
+
+    @Test
+    public void testSetCertSignerAttributeNullMap() {
+
+        InstanceConfirmation confirmation = new InstanceConfirmation();
+        InstanceUtils.setCertSignerAttribute(confirmation, "attr1", "value1");
+
+        assertEquals(confirmation.getAttributes(), Map.of("certSignerAttr:attr1", "value1"));
+    }
+
+    @Test
+    public void testSetCertSignerAttributeExistingMap() {
+
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put(InstanceProvider.ZTS_CERT_USAGE, "client");
+        InstanceConfirmation confirmation = new InstanceConfirmation().setAttributes(attributes);
+
+        InstanceUtils.setCertSignerAttribute(confirmation, "attr1", "value1");
+        InstanceUtils.setCertSignerAttribute(confirmation, "attr2", "value2");
+
+        assertEquals(confirmation.getAttributes(), Map.of(InstanceProvider.ZTS_CERT_USAGE, "client",
+                "certSignerAttr:attr1", "value1", "certSignerAttr:attr2", "value2"));
+    }
+
+    @Test
+    public void testSetCertSignerAttributeEmptyNameOrValue() {
+
+        InstanceConfirmation confirmation = new InstanceConfirmation();
+        InstanceUtils.setCertSignerAttribute(confirmation, null, "value1");
+        InstanceUtils.setCertSignerAttribute(confirmation, "", "value1");
+        InstanceUtils.setCertSignerAttribute(confirmation, "attr1", null);
+        InstanceUtils.setCertSignerAttribute(confirmation, "attr1", "");
+
+        assertNull(confirmation.getAttributes());
+    }
+
+    @Test
+    public void testExtractCertSignerAttributesNullOrEmpty() {
+
+        assertTrue(InstanceUtils.extractCertSignerAttributes(null).isEmpty());
+        assertTrue(InstanceUtils.extractCertSignerAttributes(new HashMap<>()).isEmpty());
+    }
+
+    @Test
+    public void testExtractCertSignerAttributesNoMatch() {
+
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put(InstanceProvider.ZTS_INSTANCE_CLIENT_IP, "10.1.1.1");
+        attributes.put("certSignerAttr", "value1");
+        attributes.put(null, "value2");
+
+        assertTrue(InstanceUtils.extractCertSignerAttributes(attributes).isEmpty());
+        assertEquals(attributes.size(), 3);
+    }
+
+    @Test
+    public void testExtractCertSignerAttributes() {
+
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put(InstanceProvider.ZTS_INSTANCE_CLIENT_IP, "10.1.1.1");
+        attributes.put("certSignerAttr:attr1", "value1");
+        attributes.put("certSignerAttr:attr2", "value2");
+        attributes.put("certSignerAttr:", "value3");
+
+        Map<String, String> signerAttributes = InstanceUtils.extractCertSignerAttributes(attributes);
+
+        assertEquals(signerAttributes, Map.of("attr1", "value1", "attr2", "value2"));
+        assertEquals(attributes, Map.of(InstanceProvider.ZTS_INSTANCE_CLIENT_IP, "10.1.1.1"));
+    }
+
+    @Test
+    public void testExtractCertSignerAttributesTreeMap() {
+
+        // with three keys the middle one is the tree root with two children. removing
+        // it makes TreeMap copy the successor's key/value into the removed entry node
+
+        Map<String, String> attributes = new TreeMap<>();
+        attributes.put("aaa", "value0");
+        attributes.put("certSignerAttr:awsRuntimeAccount", "123456789012");
+        attributes.put("certSignerAttr:awsRuntimeRegion", "us-west-2");
+
+        Map<String, String> signerAttributes = InstanceUtils.extractCertSignerAttributes(attributes);
+
+        assertEquals(signerAttributes, Map.of("awsRuntimeAccount", "123456789012",
+                "awsRuntimeRegion", "us-west-2"));
+        assertEquals(attributes, Map.of("aaa", "value0"));
     }
 }

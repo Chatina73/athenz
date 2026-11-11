@@ -38,6 +38,28 @@ class PageUtils {
     static workflowDomainPage() {
         return `/workflow/domain`;
     }
+    static workflowRoleReviewPage() {
+        return `/workflow/role`;
+    }
+    static workflowGroupReviewPage() {
+        return `/workflow/group`;
+    }
+    static selfServicePage() {
+        return `/self-service`;
+    }
 }
+
+// opens new tab on cmd + click or ctrl + click
+export const onClickNewTabFunction = (route, router, args) => {
+    if (args.metaKey || args.ctrlKey) {
+        args.view.open(
+            args.view.origin + route,
+            '_blank',
+            'noopener,norefferer'
+        );
+    } else {
+        router.push(route, route);
+    }
+};
 
 export default PageUtils;

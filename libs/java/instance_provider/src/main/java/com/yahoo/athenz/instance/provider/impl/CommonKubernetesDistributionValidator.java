@@ -15,47 +15,68 @@
  */
 package com.yahoo.athenz.instance.provider.impl;
 
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.yahoo.athenz.auth.Authorizer;
 import com.yahoo.athenz.auth.token.IdToken;
 import com.yahoo.athenz.auth.token.jwts.JwtsHelper;
 import com.yahoo.athenz.auth.token.jwts.JwtsSigningKeyResolver;
+import com.yahoo.athenz.instance.provider.AttrValidator;
+import com.yahoo.athenz.instance.provider.AttrValidatorFactory;
 import com.yahoo.athenz.instance.provider.InstanceConfirmation;
 import com.yahoo.athenz.instance.provider.KubernetesDistributionValidator;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Header;
-import io.jsonwebtoken.Jwt;
-import io.jsonwebtoken.Jwts;
 import org.eclipse.jetty.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.net.ssl.SSLContext;
 import java.lang.invoke.MethodHandles;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static com.yahoo.athenz.instance.provider.InstanceProvider.ZTS_INSTANCE_ATTESTATION_DATA_SUBJECT;
+
 public abstract class CommonKubernetesDistributionValidator implements KubernetesDistributionValidator {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
-
     static final String ZTS_PROP_K8S_ATTESTATION_EXPECTED_AUDIENCE = "athenz.zts.k8s_provider_attestation_expected_audience";
+    static final String ZTS_PROP_K8S_PROVIDER_SUBJECT_ATTR_VALIDATOR_FACTORY_CLASS = "athenz.zts.k8s_provider_subject_attr_validator_factory_class";
     String k8sAttestationExpectedAudience;
 
     Map<String, JwtsSigningKeyResolver> issuersMap = new ConcurrentHashMap<>();
     JwtsHelper jwtsHelper = new JwtsHelper();
+    Authorizer authorizer;
+    static final String ACTION_LAUNCH = "launch";
+    AttrValidator subjectValidator;
 
     @Override
-    public void initialize() {
+    public void initialize(final SSLContext sslContext, final Authorizer authorizer) {
         k8sAttestationExpectedAudience = System.getProperty(ZTS_PROP_K8S_ATTESTATION_EXPECTED_AUDIENCE, "");
+        this.authorizer = authorizer;
+        this.subjectValidator = newSubjectAttrValidator(sslContext);
+    }
+
+    static AttrValidator newSubjectAttrValidator(final SSLContext sslContext) {
+        final String factoryClass = System.getProperty(ZTS_PROP_K8S_PROVIDER_SUBJECT_ATTR_VALIDATOR_FACTORY_CLASS, "com.yahoo.athenz.instance.provider.impl.DefaultInstanceK8SProviderSubjectValidatorFactory");
+        LOGGER.info("K8S provider attestation Subject AttributeValidatorFactory class: {}", factoryClass);
+        AttrValidatorFactory attrValidatorFactory;
+        try {
+            attrValidatorFactory = (AttrValidatorFactory) Class.forName(factoryClass).getConstructor().newInstance();
+        } catch (Exception e) {
+            LOGGER.error("Invalid K8S Provider attestation Subject AttributeValidatorFactory class: {}", factoryClass, e);
+            throw new IllegalArgumentException("Invalid AttributeValidatorFactory class for K8S Provider attestation Subject AttributeValidatorFactory: ");
+        }
+        return attrValidatorFactory.create(sslContext);
     }
 
     String getIssuerFromToken(IdTokenAttestationData attestationData, StringBuilder errMsg) {
         String tokenWithoutSig = attestationData.getIdentityToken().
                 substring(0, attestationData.getIdentityToken().lastIndexOf('.') + 1);
 
-        Jwt<Header, Claims> claims = Jwts.parserBuilder()
-                .setAllowedClockSkewSeconds(60)
-                .build()
-                .parseClaimsJwt(tokenWithoutSig);
-        String issuer = claims.getBody().getIssuer();
+        // Split the JWT into its three parts and only parse
+        // the second part which is the claims set (payload)
+
+        JWTClaimsSet claimsSet = JwtsHelper.parseJWTWithoutSignature(tokenWithoutSig);
+        final String issuer = claimsSet.getIssuer();
         if (StringUtil.isEmpty(issuer)) {
             errMsg.append("No issuer present in the attestation data token. Possibly malformed token");
         }
@@ -69,14 +90,10 @@ public abstract class CommonKubernetesDistributionValidator implements Kubernete
             String openIdConfigUri = idTokenIssuer + "/.well-known/openid-configuration";
             String oidcProviderJwksUri = this.jwtsHelper.extractJwksUri(openIdConfigUri, null);
             if (StringUtil.isEmpty(oidcProviderJwksUri)) {
-                errMsg.append("id_token issuer does not have valid jwks uri.");
+                errMsg.append("id_token issuer does not have valid jwks uri");
                 return null;
             }
             signingKeyResolver = new JwtsSigningKeyResolver(oidcProviderJwksUri, null, true);
-            if (signingKeyResolver.publicKeyCount() == 0) {
-                errMsg.append("No id_token issuer public keys available.");
-                return null;
-            }
             this.issuersMap.put(idTokenIssuer, signingKeyResolver);
         }
         return signingKeyResolver;
@@ -84,6 +101,9 @@ public abstract class CommonKubernetesDistributionValidator implements Kubernete
 
     IdToken validateIdToken(final String issuer, IdTokenAttestationData attestationData, StringBuilder errMsg) {
         JwtsSigningKeyResolver signingKeyResolver = getSigningKeyResolverForIssuer(issuer, errMsg);
+        if (signingKeyResolver == null) {
+            return null;
+        }
         IdToken idToken = null;
         try {
             idToken = new IdToken(attestationData.getIdentityToken(), signingKeyResolver);
@@ -94,16 +114,12 @@ public abstract class CommonKubernetesDistributionValidator implements Kubernete
     }
 
     @Override
-    public boolean validateAttestationData(InstanceConfirmation confirmation, IdTokenAttestationData attestationData, String issuer, StringBuilder errMsg) {
+    public boolean validateAttestationData(InstanceConfirmation confirmation, IdTokenAttestationData attestationData,
+            String issuer, StringBuilder errMsg) {
         IdToken idToken = validateIdToken(issuer, attestationData, errMsg);
         if (idToken == null) {
-            LOGGER.warn("No valid id_token found. Refresh public keys and retry once.");
-            this.issuersMap.get(issuer).loadPublicKeysFromServer();
-            idToken = validateIdToken(issuer, attestationData, errMsg);
-            if (idToken == null) {
-                errMsg.append("id_token in the attestation data is invalid.");
-                return false;
-            }
+            errMsg.append("id_token in the attestation data is invalid.");
+            return false;
         }
 
         // next make sure the id_token audience matches with configuration
@@ -117,16 +133,17 @@ public abstract class CommonKubernetesDistributionValidator implements Kubernete
     }
 
     boolean validateSubject(final InstanceConfirmation confirmation, final IdToken idToken, final StringBuilder errMsg) {
-        // next make sure id_token subject is the right service account name in the form of $domain.$service
-        // and K8S workload certificate is requested for the same $domain.$service
-        String csrPrincipal = confirmation.getDomain() + "." + confirmation.getService();
-        String idTokenSub = InstanceUtils.getServiceAccountNameFromIdTokenSubject(idToken.getSubject());
-        if (!csrPrincipal.equals(idTokenSub)) {
-            errMsg.append("subject mismatch between attestation id_token=").append(idTokenSub)
-                    .append(" and requested certificate=").append(csrPrincipal);
-            return false;
+        if (subjectValidator != null) {
+            if (confirmation.getAttributes() != null) {
+                confirmation.getAttributes().put(ZTS_INSTANCE_ATTESTATION_DATA_SUBJECT, idToken.getSubject());
+            }
+            if (!subjectValidator.confirm(confirmation)) {
+                errMsg.append("subject mismatch between attestation id_token=").append(idToken.getSubject())
+                        .append(" and requested certificate=").append(confirmation.getDomain())
+                        .append(".").append(confirmation.getService());
+                return false;
+            }
         }
         return true;
     }
-
 }

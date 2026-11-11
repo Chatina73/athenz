@@ -15,30 +15,39 @@
  */
 import styled from '@emotion/styled';
 import DateUtils from '../utils/DateUtils';
+import AppUtils from '../utils/AppUtils';
 import React from 'react';
 import Button from '../denali/Button';
 import Switch from '../denali/Switch';
 import Alert from '../denali/Alert';
-import { MODAL_TIME_OUT } from '../constants/constants';
+import {
+    MODAL_TIME_OUT,
+    ENVIRONMENT_DROPDOWN_OPTIONS,
+    ONCALL_URL,
+    getOrganizationDomain,
+} from '../constants/constants';
 import AddModal from '../modal/AddModal';
 import RequestUtils from '../utils/RequestUtils';
-import BusinessServiceModal from '../modal/BusinessServiceModal';
 import { colors } from '../denali/styles';
-import { updateBusinessService } from '../../redux/thunks/domain';
 import { connect } from 'react-redux';
 import {
     selectDomainAuditEnabled,
     selectDomainData,
-    selectBusinessServices,
 } from '../../redux/selectors/domainData';
 import {
-    selectBusinessServicesAll,
     selectProductMasterLink,
     selectTimeZone,
+    selectShowCloudAccountDetails,
 } from '../../redux/selectors/domains';
-import { getBusinessServicesAll } from '../../redux/thunks/domains';
 import { makeRolesExpires } from '../../redux/actions/roles';
 import { makePoliciesExpires } from '../../redux/actions/policies';
+import Icon from '../denali/icons/Icon';
+import AddPoc from '../member/AddPoc';
+import { selectAllUsers } from '../../redux/selectors/user';
+import { getAllUsers } from '../../redux/thunks/user';
+import AddEnvironmentModal from '../modal/AddEnvironmentModal';
+import AddSlackChannelModal from '../modal/AddSlackChannelModal';
+import OnCallTeamModal from '../modal/OnCallTeamModal';
 
 const DomainSectionDiv = styled.div`
     margin: 20px 0;
@@ -47,10 +56,12 @@ const DomainSectionDiv = styled.div`
 const DetailsDiv = styled.div`
     display: flex;
     flex-flow: row nowrap;
+    margin: 20px 0;
 `;
 
 const SectionDiv = styled.div`
     padding-right: 50px;
+    flex-basis: 15%;
 `;
 
 const ValueDiv = styled.div`
@@ -69,7 +80,7 @@ const StyledAnchorDiv = styled.div`
     cursor: pointer;
 `;
 
-const DivStyledBusinessService = styled.div`
+const DivStyledOnCallTeam = styled.div`
     font-weight: 600;
     title: ${(props) => props.title};
     word-break: break-all;
@@ -77,6 +88,7 @@ const DivStyledBusinessService = styled.div`
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 400px;
+    display: flex;
 `;
 
 const StyledAnchor = styled.a`
@@ -86,6 +98,11 @@ const StyledAnchor = styled.a`
     font-weight: '';
 `;
 
+const IconContainer = styled.div`
+    cursor: pointer;
+    margin-left: 5px;
+`;
+
 class DomainDetails extends React.Component {
     constructor(props) {
         super(props);
@@ -93,42 +110,39 @@ class DomainDetails extends React.Component {
         this.state = {
             showOnBoardToAWSModal: false,
             showSuccess: false,
-            showBusinessService: false,
-            businessServiceName: this.props.domainDetails.businessService,
-            tempBusinessServiceName: this.props.domainDetails.businessService,
+            showOnCallModal: false,
+            onCall: this.props.domainDetails.onCall,
             category: 'domain',
             errorMessageForModal: '',
             errorMessage: null,
             showError: false,
+            showPoc: false,
+            showEnvironment: false,
+            showSecurityPoc: false,
+            poc: AppUtils.getSafe(
+                () => this.props.domainDetails.contacts['product-owner'],
+                'add'
+            ),
+            securityPoc: AppUtils.getSafe(
+                () => this.props.domainDetails.contacts['security-owner'],
+                'add'
+            ),
+            expandedDomain: false,
+            environmentName: this.props.domainDetails.environment || 'add',
+            slackChannel: this.props.domainDetails.slackChannel || 'add',
         };
         this.showError = this.showError.bind(this);
         this.closeModal = this.closeModal.bind(this);
         this.onClickOnboardToAWS = this.onClickOnboardToAWS.bind(this);
         this.toggleOnboardToAWSModal = this.toggleOnboardToAWSModal.bind(this);
-        this.saveBusinessService = this.saveBusinessService.bind(this);
         this.saveJustification = this.saveJustification.bind(this);
     }
 
     componentDidMount() {
-        const { getBusinessServicesAll } = this.props;
-        Promise.all([getBusinessServicesAll()]).catch((err) => {
-            this.showError(RequestUtils.fetcherErrorCheckHelper(err));
+        this.props.getAllUsers().catch((err) => {
+            this.showError(RequestUtils.xhrErrorCheckHelper(err));
         });
     }
-
-    componentDidUpdate = (prevProps, prevState, snapshot) => {
-        if (
-            prevState.businessServiceName !==
-                this.props.domainDetails.businessService &&
-            prevProps.domainDetails !== this.props.domainDetails
-        ) {
-            this.setState({
-                businessServiceName: this.props.domainDetails.businessService,
-                tempBusinessServiceName:
-                    this.props.domainDetails.businessService,
-            });
-        }
-    };
 
     showError(errorMessage) {
         this.setState({
@@ -137,19 +151,107 @@ class DomainDetails extends React.Component {
         });
     }
 
-    onClickBusinessService(domainName, businessServiceName, auditEnabled) {
+    onClickPointOfContact(pointOfContact, contactType) {
+        if (contactType === 'product-owner') {
+            this.setState({
+                showPoc: true,
+                tempPocName: pointOfContact,
+            });
+        } else {
+            // contactType = 'security-owner'
+            this.setState({
+                showSecurityPoc: true,
+                tempSecurityPocName: pointOfContact,
+            });
+        }
+    }
+
+    onClickSlackChannel() {
         this.setState({
-            showBusinessService: true,
-            tempBusinessServiceName: businessServiceName,
+            showSlackChannelModal: true,
         });
     }
 
-    onClickBusinessServiceCancel() {
+    onClickOnCallTeamModal() {
         this.setState({
-            showBusinessService: false,
+            showOnCallModal: true,
+        });
+    }
+
+    onUpdateOnCallTeamSuccessCb(teamName) {
+        this.setState({
+            showOnCallModal: false,
+            onCall: teamName,
+            showSuccess: true,
+            successMessage: 'Successfully updated on call team',
+        });
+
+        setTimeout(
+            () =>
+                this.setState({
+                    showSuccess: false,
+                }),
+            MODAL_TIME_OUT + 1000
+        );
+    }
+
+    onSlackChannelUpdateSuccessCb(slackChannelName) {
+        let newState = {
+            showSlackChannelModal: false,
+            showSuccess: true,
+        };
+
+        if (!!!slackChannelName) {
+            slackChannelName = 'add';
+        }
+        newState.slackChannel = slackChannelName;
+        newState.successMessage = 'Successfully updated Slack channel';
+        this.setState(newState);
+        setTimeout(
+            () =>
+                this.setState({
+                    showSuccess: false,
+                }),
+            MODAL_TIME_OUT + 1000
+        );
+    }
+
+    onClickSlackChannelCancel() {
+        this.setState({
+            showSlackChannelModal: false,
             errorMessage: null,
             errorMessageForModal: '',
-            auditRef: '',
+        });
+    }
+
+    onClickOnCallTeamCancel() {
+        this.setState({
+            showOnCallModal: false,
+            errorMessage: null,
+            errorMessageForModal: '',
+        });
+    }
+
+    onClickPointOfContactCancel() {
+        this.setState({
+            showPoc: false,
+            showSecurityPoc: false,
+            errorMessage: null,
+            errorMessageForModal: '',
+        });
+    }
+
+    onClickEnvironment() {
+        this.setState({
+            showEnvironment: true,
+        });
+    }
+
+    onClickEnvironmentCancel() {
+        this.setState({
+            showEnvironment: false,
+            errorMessage: null,
+            errorMessageForModal: '',
         });
     }
 
@@ -157,89 +259,6 @@ class DomainDetails extends React.Component {
         this.setState({
             auditRef: val,
         });
-    }
-    saveBusinessService(val) {
-        this.setState({
-            tempBusinessServiceName: val,
-        });
-    }
-
-    updateMeta(meta, domainName, csrf, successMessage) {
-        let auditMsg = this.state.auditRef;
-        if (!auditMsg) {
-            auditMsg = 'Updated ' + domainName + ' Meta using Athenz UI';
-        }
-        this.props
-            .updateBusinessService(
-                domainName,
-                meta,
-                auditMsg,
-                csrf,
-                this.state.category
-            )
-            .then(() => {
-                this.setState({
-                    auditRef: '',
-                    errorMessage: null,
-                    errorMessageForModal: '',
-                    showBusinessService: false,
-                    businessServiceName: meta.businessService,
-                    successMessage: successMessage,
-                    showSuccess: true,
-                });
-                // this is to close the success alert
-                setTimeout(
-                    () =>
-                        this.setState({
-                            showSuccess: false,
-                        }),
-                    MODAL_TIME_OUT + 1000
-                );
-            })
-            .catch((err) => {
-                this.setState({
-                    errorMessage: RequestUtils.xhrErrorCheckHelper(err),
-                    errorMessageForModal: RequestUtils.xhrErrorCheckHelper(err),
-                });
-            });
-    }
-
-    onSubmitBusinessService() {
-        if (this.props.domainDetails.auditEnabled && !this.state.auditRef) {
-            this.setState({
-                errorMessageForModal: 'Justification is mandatory',
-            });
-            return;
-        }
-
-        if (this.state.tempBusinessServiceName) {
-            var index = this.props.businessServicesAll.findIndex(
-                (x) =>
-                    x.value ==
-                    this.state.tempBusinessServiceName.substring(
-                        0,
-                        this.state.tempBusinessServiceName.indexOf(':')
-                    )
-            );
-            if (index === -1) {
-                this.setState({
-                    errorMessageForModal: 'Invalid business service value',
-                });
-                return;
-            }
-        }
-
-        let domainName = this.props.domainDetails.name;
-        let businessServiceName = this.state.tempBusinessServiceName;
-        let domainMeta = {};
-        domainMeta.businessService = businessServiceName;
-        let successMessage = `Successfully set business service for domain ${domainName}`;
-        this.updateMeta(
-            domainMeta,
-            domainName,
-            this.props._csrf,
-            successMessage
-        );
     }
 
     onClickOnboardToAWS() {
@@ -286,7 +305,73 @@ class DomainDetails extends React.Component {
         this.setState({ showSuccess: null });
     }
 
+    expandDomain() {
+        this.setState({
+            expandedDomain: !this.state.expandedDomain,
+        });
+    }
+
+    onPocUpdateSuccessCb(contactType, pocName) {
+        let newState = {
+            showPoc: false,
+            showSecurityPoc: false,
+            showSuccess: true,
+        };
+        if (contactType === 'product-owner') {
+            newState.poc = pocName;
+            newState.successMessage = 'Successfully added Point of Contact';
+        } else {
+            newState.securityPoc = pocName;
+            newState.successMessage =
+                'Successfully added Security Point of Contact';
+        }
+        this.setState(newState);
+        setTimeout(
+            () =>
+                this.setState({
+                    showSuccess: false,
+                }),
+            MODAL_TIME_OUT + 1000
+        );
+    }
+
+    getCurrentContacts() {
+        // Start with existing contacts to preserve any other contact types
+        const currentContacts = {
+            ...(this.props.domainDetails.contacts || {}),
+        };
+
+        // Update with current local state values
+        if (this.state.poc && this.state.poc !== 'add') {
+            currentContacts['product-owner'] = this.state.poc;
+        }
+        if (this.state.securityPoc && this.state.securityPoc !== 'add') {
+            currentContacts['security-owner'] = this.state.securityPoc;
+        }
+
+        return currentContacts;
+    }
+
+    onEnvironmentUpdateSuccessCb(environmentName) {
+        this.setState({
+            showEnvironment: false,
+            showSuccess: true,
+            environmentName: environmentName,
+            successMessage: 'Successfully updated the domain environment',
+        });
+        setTimeout(
+            () =>
+                this.setState({
+                    showSuccess: false,
+                }),
+            MODAL_TIME_OUT + 1000
+        );
+    }
+
     render() {
+        const arrowup = 'arrowhead-up-circle-solid';
+        const arrowdown = 'arrowhead-down-circle';
+        let expandDomain = this.expandDomain.bind(this);
         let localDate = new DateUtils();
         let modifiedDate = localDate.getLocalDate(
             this.props.domainDetails.modified,
@@ -300,26 +385,18 @@ class DomainDetails extends React.Component {
         ) {
             showOnBoardToAWS = true;
         }
-        let businessServiceItem = this.onClickBusinessService.bind(
-            this,
-            this.props.domainDetails.name,
-            this.state.businessServiceName,
-            this.props.auditEnabled
-        );
-        let businessServiceTitle = this.state.businessServiceName
-            ? this.state.businessServiceName.substring(
-                  this.state.businessServiceName.indexOf(':') + 1
-              )
-            : 'add';
-        if (!businessServiceTitle) {
-            businessServiceTitle = this.state.businessServiceName
-                ? this.state.businessServiceName
-                : 'add';
+        let onCallTeam = this.state?.onCall || 'add';
+        let onCallTeamLink = this.state?.onCall
+            ? `${ONCALL_URL}/${onCallTeam}`
+            : '';
+
+        let organization = this.props.domainDetails.org || 'N/A';
+        let organizationRoleUrl = '';
+        const organizationDomain = getOrganizationDomain();
+        // if organizationDomain was set via config, and org is set for current domain - display as link
+        if (organizationDomain && organization !== 'N/A') {
+            organizationRoleUrl = `/domain/${organizationDomain}/role/${organization}/members`;
         }
-        let clickBusinessServiceCancel =
-            this.onClickBusinessServiceCancel.bind(this);
-        let clickBusinessServiceSubmit =
-            this.onSubmitBusinessService.bind(this);
 
         if (this.state.showError) {
             return (
@@ -331,43 +408,142 @@ class DomainDetails extends React.Component {
                 />
             );
         }
+        let pocObject = {};
+        let securityPocObject = {};
+        if ((this.state.poc || this.state.securityPoc) && this.props.userList) {
+            this.props.userList.find((user) => {
+                let fullName = 'user.' + user.login;
+                if (fullName === this.state.poc) {
+                    pocObject = user;
+                }
+                if (fullName === this.state.securityPoc) {
+                    securityPocObject = user;
+                }
+            });
+        }
+        let onClickPointOfContact = this.onClickPointOfContact.bind(
+            this,
+            this.state.poc,
+            'product-owner'
+        );
+        let onClickSecurityPointOfContact = this.onClickPointOfContact.bind(
+            this,
+            this.state.poc,
+            'security-owner'
+        );
+        let onClickSlackChannel = this.onClickSlackChannel.bind(this);
+        let contactType;
+        let pocName;
+        let openPocModal;
+        if (this.state.showPoc) {
+            openPocModal = true;
+            contactType = 'product-owner';
+            pocName = this.state.poc;
+        } else if (this.state.showSecurityPoc) {
+            openPocModal = true;
+            contactType = 'security-owner';
+            pocName = this.state.securityPoc;
+        }
+        let pocModal = openPocModal ? (
+            <AddPoc
+                domain={this.props.domainDetails.name}
+                isOpen={openPocModal}
+                onCancel={this.onClickPointOfContactCancel.bind(this)}
+                errorMessage={this.state.errorMessageForModal}
+                pocName={pocName}
+                contactType={contactType}
+                onPocUpdateSuccessCb={this.onPocUpdateSuccessCb.bind(this)}
+                csrf={this.props._csrf}
+                contacts={this.getCurrentContacts()}
+                api={this.api}
+            />
+        ) : (
+            ''
+        );
+        let environmentModal = this.state.showEnvironment ? (
+            <AddEnvironmentModal
+                domain={this.props.domainDetails.name}
+                title='Environment'
+                isOpen={this.state.showEnvironment}
+                cancel={this.onClickEnvironmentCancel.bind(this)}
+                errorMessage={this.state.errorMessageForModal}
+                onEnvironmentUpdateSuccessCb={this.onEnvironmentUpdateSuccessCb.bind(
+                    this
+                )}
+                csrf={this.props._csrf}
+                api={this.api}
+                environmentName={this.state.environmentName}
+                environment={this.props.domainDetails.environment}
+                dropDownOptions={ENVIRONMENT_DROPDOWN_OPTIONS}
+            />
+        ) : (
+            ''
+        );
+
+        let slackChannelModal = this.state.showSlackChannelModal ? (
+            <AddSlackChannelModal
+                domain={this.props.domainDetails.name}
+                title='Slack Channel'
+                isOpen={this.state.showSlackChannelModal}
+                onCancel={this.onClickSlackChannelCancel.bind(this)}
+                errorMessage={this.state.errorMessageForModal}
+                onSlackChannelUpdateSuccessCb={this.onSlackChannelUpdateSuccessCb.bind(
+                    this
+                )}
+                slackChannelName={this.state.slackChannel}
+                csrf={this.props._csrf}
+                api={this.api}
+            />
+        ) : (
+            ''
+        );
+
+        let onCallTeamModal = this.state.showOnCallModal ? (
+            <OnCallTeamModal
+                domain={this.props.domainDetails.name}
+                title='OnCall Team'
+                isOpen={this.state.showOnCallModal}
+                onCancel={this.onClickOnCallTeamCancel.bind(this)}
+                errorMessage={this.state.errorMessageForModal}
+                onUpdateOnCallTeamSuccessCb={this.onUpdateOnCallTeamSuccessCb.bind(
+                    this
+                )}
+                onCallTeamName={this.state.onCall}
+                csrf={this.props._csrf}
+                api={this.api}
+            />
+        ) : (
+            ''
+        );
 
         return (
             <DomainSectionDiv data-testid='domain-details'>
                 <DetailsDiv>
                     <SectionDiv>
+                        <DivStyledOnCallTeam>
+                            <StyledAnchor
+                                data-testid='poc-link'
+                                onClick={onClickPointOfContact}
+                            >
+                                {pocObject.name || 'add'}
+                            </StyledAnchor>
+                        </DivStyledOnCallTeam>
+                        <LabelDiv>POINT OF CONTACT</LabelDiv>
+                    </SectionDiv>
+                    <SectionDiv>
+                        <DivStyledOnCallTeam>
+                            <StyledAnchor
+                                data-testid='security-poc-link'
+                                onClick={onClickSecurityPointOfContact}
+                            >
+                                {securityPocObject.name || 'add'}
+                            </StyledAnchor>
+                        </DivStyledOnCallTeam>
+                        <LabelDiv>SECURITY POINT OF CONTACT</LabelDiv>
+                    </SectionDiv>
+                    <SectionDiv>
                         <ValueDiv>{modifiedDate}</ValueDiv>
                         <LabelDiv>MODIFIED DATE</LabelDiv>
-                    </SectionDiv>
-                    <SectionDiv>
-                        <ValueDiv>
-                            {this.props.domainDetails.productId ? (
-                                <StyledAnchorDiv
-                                    data-testid='pm-id'
-                                    onClick={() =>
-                                        window.open(
-                                            this.props.productMasterLink.url +
-                                                this.props.domainDetails
-                                                    .productId,
-                                            this.props.productMasterLink.target
-                                        )
-                                    }
-                                >
-                                    {this.props.domainDetails.productId}
-                                </StyledAnchorDiv>
-                            ) : (
-                                'N/A'
-                            )}
-                        </ValueDiv>
-                        <LabelDiv>Product ID</LabelDiv>
-                    </SectionDiv>
-                    <SectionDiv>
-                        <ValueDiv>
-                            {this.props.domainDetails.org
-                                ? this.props.domainDetails.org
-                                : 'N/A'}
-                        </ValueDiv>
-                        <LabelDiv>ORGANIZATION</LabelDiv>
                     </SectionDiv>
                     <SectionDiv>
                         <ValueDiv>
@@ -380,31 +556,50 @@ class DomainDetails extends React.Component {
                         </ValueDiv>
                         <LabelDiv>AUDIT ENABLED</LabelDiv>
                     </SectionDiv>
-                    <SectionDiv>
-                        <ValueDiv>
-                            {this.props.domainDetails.account
-                                ? this.props.domainDetails.account
-                                : 'N/A'}
-                        </ValueDiv>
-                        <LabelDiv>AWS ACCOUNT ID</LabelDiv>
-                    </SectionDiv>
-                    <SectionDiv>
-                        <ValueDiv>
-                            {this.props.domainDetails.gcpProject
-                                ? this.props.domainDetails.gcpProject
-                                : 'N/A'}
-                        </ValueDiv>
-                        <LabelDiv>GCP PROJECT ID</LabelDiv>
-                    </SectionDiv>
-                    <SectionDiv>
-                        <DivStyledBusinessService title={businessServiceTitle}>
-                            <StyledAnchor onClick={businessServiceItem}>
-                                {businessServiceTitle}
-                            </StyledAnchor>
-                        </DivStyledBusinessService>
-                        <LabelDiv>BUSINESS SERVICE</LabelDiv>
-                    </SectionDiv>
-                    {showOnBoardToAWS && (
+                    {this.props.showCloudAccountDetails && (
+                        <React.Fragment>
+                            <SectionDiv>
+                                <ValueDiv>
+                                    {this.props.domainDetails.account
+                                        ? this.props.domainDetails.account
+                                        : 'N/A'}
+                                </ValueDiv>
+                                <LabelDiv>AWS ACCOUNT ID</LabelDiv>
+                            </SectionDiv>
+                            <SectionDiv>
+                                <ValueDiv>
+                                    {this.props.domainDetails.gcpProject
+                                        ? this.props.domainDetails.gcpProject
+                                        : 'N/A'}
+                                </ValueDiv>
+                                <LabelDiv>GCP PROJECT ID</LabelDiv>
+                            </SectionDiv>
+                        </React.Fragment>
+                    )}
+                    {this.props.domainDetails.description ? (
+                        <SectionDiv>
+                            <ValueDiv data-testid='domain-description'>
+                                {this.props.domainDetails.description}
+                            </ValueDiv>
+                            <LabelDiv>DESCRIPTION</LabelDiv>
+                        </SectionDiv>
+                    ) : null}
+                    <ValueDiv>More Details</ValueDiv>
+                    <IconContainer>
+                        <Icon
+                            icon={
+                                this.state.expandedDomain ? arrowup : arrowdown
+                            }
+                            dataWdio={'domain-details-expand-icon'}
+                            onClick={expandDomain}
+                            data-testid='expand-domain-details'
+                            color={colors.icons}
+                            isLink
+                            size={'1.25em'}
+                            verticalAlign={'text-bottom'}
+                        />
+                    </IconContainer>
+                    {this.props.showCloudAccountDetails && showOnBoardToAWS ? (
                         <SectionDiv>
                             <Button
                                 secondary
@@ -413,8 +608,9 @@ class DomainDetails extends React.Component {
                                 Onboard to AWS
                             </Button>
                         </SectionDiv>
-                    )}
-                    {this.state.showOnBoardToAWSModal ? (
+                    ) : null}
+                    {this.props.showCloudAccountDetails &&
+                    this.state.showOnBoardToAWSModal ? (
                         <AddModal
                             isOpen={this.state.showOnBoardToAWSModal}
                             cancel={this.toggleOnboardToAWSModal}
@@ -432,26 +628,115 @@ class DomainDetails extends React.Component {
                             type='success'
                         />
                     ) : null}
-                    {this.state.showBusinessService ? (
-                        <BusinessServiceModal
-                            isOpen={this.state.showBusinessService}
-                            cancel={clickBusinessServiceCancel}
-                            businessServiceName={this.state.businessServiceName}
-                            domainName={this.props.domainDetails.name}
-                            submit={clickBusinessServiceSubmit}
-                            showJustification={this.props.auditEnabled}
-                            onJustification={this.saveJustification}
-                            onBusinessService={this.saveBusinessService}
-                            key={'business-service-modal'}
-                            errorMessage={this.state.errorMessageForModal}
-                            userId={this.state.userId}
-                            validBusinessServices={this.props.businessServices}
-                            validBusinessServicesAll={
-                                this.props.businessServicesAll
-                            }
-                        />
-                    ) : null}
+                    {pocModal}
+                    {onCallTeamModal}
+                    {environmentModal}
+                    {slackChannelModal}
                 </DetailsDiv>
+                {this.state.expandedDomain ? (
+                    <DetailsDiv>
+                        <SectionDiv>
+                            <ValueDiv>
+                                {this.props.domainDetails.productId ? (
+                                    <StyledAnchorDiv
+                                        data-testid='pm-id'
+                                        onClick={() =>
+                                            window.open(
+                                                this.props.productMasterLink
+                                                    .url +
+                                                    this.props.domainDetails
+                                                        .productId,
+                                                this.props.productMasterLink
+                                                    .target
+                                            )
+                                        }
+                                    >
+                                        {this.props.domainDetails.productId}
+                                    </StyledAnchorDiv>
+                                ) : (
+                                    'N/A'
+                                )}
+                            </ValueDiv>
+                            <LabelDiv>Product ID</LabelDiv>
+                        </SectionDiv>
+                        <SectionDiv>
+                            <ValueDiv data-testid='organization-name'>
+                                {organizationRoleUrl ? (
+                                    <StyledAnchor
+                                        data-testid='organization-link'
+                                        href={organizationRoleUrl}
+                                    >
+                                        {organization}
+                                    </StyledAnchor>
+                                ) : (
+                                    organization
+                                )}
+                            </ValueDiv>
+                            <LabelDiv>ORGANIZATION</LabelDiv>
+                        </SectionDiv>
+                        <SectionDiv>
+                            <DivStyledOnCallTeam title={onCallTeam}>
+                                {onCallTeam === 'add' ? (
+                                    <StyledAnchor
+                                        onClick={this.onClickOnCallTeamModal.bind(
+                                            this
+                                        )}
+                                        data-testid='add-oncall-team'
+                                    >
+                                        {onCallTeam}
+                                    </StyledAnchor>
+                                ) : (
+                                    <>
+                                        <StyledAnchor
+                                            href={onCallTeamLink}
+                                            data-testid='oncall-team-link'
+                                        >
+                                            {onCallTeam}
+                                        </StyledAnchor>
+                                        <IconContainer>
+                                            <Icon
+                                                size='16px'
+                                                icon={'pencil'}
+                                                onClick={this.onClickOnCallTeamModal.bind(
+                                                    this
+                                                )}
+                                                dataWdio='edit-oncall-team'
+                                            />
+                                        </IconContainer>
+                                    </>
+                                )}
+                            </DivStyledOnCallTeam>
+                            <LabelDiv>ONCALL TEAM</LabelDiv>
+                        </SectionDiv>
+                        <SectionDiv>
+                            <DivStyledOnCallTeam
+                                title={this.state.environmentName}
+                            >
+                                <StyledAnchor
+                                    onClick={this.onClickEnvironment.bind(this)}
+                                >
+                                    {this.state.environmentName}
+                                </StyledAnchor>
+                            </DivStyledOnCallTeam>
+                            <LabelDiv>ENVIRONMENT</LabelDiv>
+                        </SectionDiv>
+                        <SectionDiv>
+                            <DivStyledOnCallTeam
+                                title={this.state.slackChannel}
+                            >
+                                <StyledAnchor
+                                    data-testid='add-slack-channel'
+                                    onClick={this.onClickSlackChannel.bind(
+                                        this
+                                    )}
+                                >
+                                    {this.state.slackChannel}
+                                </StyledAnchor>
+                            </DivStyledOnCallTeam>
+                            <LabelDiv>SLACK CHANNEL</LabelDiv>
+                        </SectionDiv>
+                    </DetailsDiv>
+                ) : null}
             </DomainSectionDiv>
         );
     }
@@ -463,9 +748,9 @@ const mapStateToProps = (state, props) => {
         domainDetails: selectDomainData(state),
         productMasterLink: selectProductMasterLink(state),
         auditEnabled: selectDomainAuditEnabled(state),
-        businessServices: selectBusinessServices(state),
-        businessServicesAll: selectBusinessServicesAll(state),
         timeZone: selectTimeZone(state),
+        userList: selectAllUsers(state),
+        showCloudAccountDetails: selectShowCloudAccountDetails(state),
     };
 };
 
@@ -474,11 +759,7 @@ const mapDispatchToProps = (dispatch) => ({
         dispatch(makeRolesExpires());
         dispatch(makePoliciesExpires());
     },
-    updateBusinessService: (domainName, meta, auditMsg, csrf, category) =>
-        dispatch(
-            updateBusinessService(domainName, meta, auditMsg, csrf, category)
-        ),
-    getBusinessServicesAll: () => dispatch(getBusinessServicesAll()),
+    getAllUsers: () => dispatch(getAllUsers()),
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(DomainDetails);

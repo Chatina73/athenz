@@ -1,0 +1,67 @@
+/*
+ * Copyright The Athenz Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.yahoo.athenz.common.server.store.impl;
+
+import com.yahoo.athenz.common.server.store.ResourceValidator;
+import com.yahoo.athenz.zms.Assertion;
+import com.yahoo.athenz.zms.AssertionEffect;
+import org.testng.annotations.Test;
+
+import static org.testng.Assert.*;
+
+public class NoOpResourceValidatorFactoryTest {
+
+    @Test
+    public void testCreate() {
+        NoOpResourceValidatorFactory factory = new NoOpResourceValidatorFactory();
+        ResourceValidator validator = factory.create();
+        assertNotNull(validator);
+
+        // validate some members - we should always return true
+
+        assertTrue(validator.validateRoleMember("domain", "role", "user"));
+        assertTrue(validator.validateGroupMember("domain", "group", "user"));
+
+        // validate assertions
+
+        assertTrue(validator.validatePolicyAssertion("domain", "policy", new Assertion()));
+    }
+
+    @Test
+    public void testCustomResourceValidator() {
+
+        ResourceValidator validator = new ResourceValidator() {
+            @Override
+            public boolean validateRoleMember(String domainName, String roleName, String memberName) {
+                return false;
+            }
+
+            @Override
+            public boolean validateGroupMember(String domainName, String groupName, String memberName) {
+                return false;
+            }
+        };
+
+        // validate some members - we should always return false
+
+        assertFalse(validator.validateRoleMember("domain", "role", "user"));
+        assertFalse(validator.validateGroupMember("domain", "group", "user"));
+
+        // validate assertions - since we have no override it should return true
+
+        assertTrue(validator.validatePolicyAssertion("domain", "policy", new Assertion()));
+    }
+}

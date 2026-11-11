@@ -146,7 +146,9 @@ describe('ServiceRow', () => {
             getServices: jest
                 .fn()
                 .mockReturnValue(Promise.resolve([{ name: fullServiceName }])),
-            getProvider: jest.fn().mockReturnValue(Promise.resolve(toReturn)),
+            getProviderAccess: jest
+                .fn()
+                .mockReturnValue(Promise.resolve(toReturn)),
         };
         MockApi.setMockApi(api);
         const color = '';
@@ -163,6 +165,8 @@ describe('ServiceRow', () => {
                         modified={modified}
                         newService={newService}
                         timeZone={timeZone}
+                        featureFlag={true}
+                        showProviders={true}
                     />
                 </tbody>
             </table>,

@@ -5,12 +5,13 @@
 include "Names.tdl";
 
 type AccessTokenResponse Struct {
-    String access_token; //access token
+    String access_token (optional); //access token
     String token_type; //token type e.g. Bearer
     Int32 expires_in (optional); //expiration in seconds
     String scope (optional); //scope of the access token e.g. openid
     String refresh_token (optional); //refresh token
     String id_token (optional); //id token
+    String issued_token_type (optional); //issued token type
 }
 
 type JWK Struct {
@@ -28,6 +29,7 @@ type JWK Struct {
 type OpenIDConfig Struct {
     String issuer; //url using the https scheme
     String authorization_endpoint; //oauth 2.0 authorization endpoint url
+    String token_endpoint; //oauth 2.0 token endpoint url
     String jwks_uri; //public server jwk set url
     Array<String> response_types_supported; //list of supported response types
     Array<String> subject_types_supported; //list of supported subject identifier types
@@ -38,6 +40,7 @@ type OpenIDConfig Struct {
 type OAuthConfig Struct {
     String issuer; //url using the https scheme
     String authorization_endpoint; //oauth 2.0 authorization endpoint url
+    String introspection_endpoint; //oauth 2.0 introspection endpoint
     String token_endpoint; //authorization server token endpoint
     String jwks_uri; //public server jwk set url
     Array<String> response_types_supported; //list of supported response types
@@ -58,4 +61,23 @@ type OIDCResponse Struct {
     String token_type; //token type e.g. urn:ietf:params:oauth:token-type:id_token
     Bool success; //response status
     Int64 expiration_time; //expiration time in UTC
+}
+
+type IntrospectRequest String;
+
+type IntrospectResponse Struct {
+    Bool active; //token status
+    Int32 ver; //version number
+    Int64 exp (optional); //expiration time
+    Int64 iat (optional); //issued at time
+    Int64 auth_time (optional); //issued at time
+    String aud (optional); //audience
+    String iss (optional); //issuer
+    String jti (optional); //jwt id
+    String sub (optional); //subject
+    String scope (optional); //scope of the access token
+    String client_id (optional); //client id
+    String uid (optional); //user id
+    String proxy (optional); //proxy principal
+    String authorization_details (optional); //authorization details
 }

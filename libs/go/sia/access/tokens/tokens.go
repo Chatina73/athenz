@@ -17,10 +17,10 @@
 package tokens
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"gopkg.in/square/go-jose.v2/jwt"
 	"net/http"
 	"net/url"
 	"os"
@@ -32,10 +32,12 @@ import (
 
 	"github.com/AthenZ/athenz/clients/go/zts"
 	"github.com/AthenZ/athenz/libs/go/sia/access/config"
-	"github.com/AthenZ/athenz/libs/go/sia/aws/options"
+	sc "github.com/AthenZ/athenz/libs/go/sia/config"
 	siafile "github.com/AthenZ/athenz/libs/go/sia/file"
 	"github.com/AthenZ/athenz/libs/go/sia/futil"
 	tlsconfig "github.com/AthenZ/athenz/libs/go/tls/config"
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 )
 
 const (
@@ -86,19 +88,28 @@ func ToBeRefreshedBasedOnTime(opts *config.TokenOptions, currentTime time.Time) 
 				continue
 			}
 
+			// Empty or whitespace-only files (e.g. failed writes) are unusable; fetch a new token.
+			if len(bytes.TrimSpace(content)) == 0 {
+				refresh = append(refresh, t)
+				continue
+			}
+
 			atr := zts.AccessTokenResponse{}
 			err = json.Unmarshal(content, &atr)
 			if err != nil {
+				refresh = append(refresh, t)
 				errs = append(errs, fmt.Errorf("token: %s not unmarshallable, err: %v", tpath, err))
 				continue
 			}
 			if atr.Expires_in == nil {
+				refresh = append(refresh, t)
 				errs = append(errs, fmt.Errorf("invalid token: %s, expires_in key is not found", tpath))
 				continue
 			}
 			//  Extract expiration claim from token and compare with AccessTokenResponse
 			claims, err := GetClaimsFromAccessTokenUnverified(atr)
 			if err != nil {
+				refresh = append(refresh, t)
 				errs = append(errs, fmt.Errorf("token: %s exists, but failed to extract claims, err: %v", tpath, err))
 				continue
 			}
@@ -151,7 +162,7 @@ func Fetch(opts *config.TokenOptions) ([]string, []error) {
 		}
 		client.AddCredentials(UserAgent, opts.UserAgent)
 
-		res, err := client.PostAccessTokenRequest(zts.AccessTokenRequest(makeTokenRequest(t.Domain, t.Roles, t.Expiry)))
+		res, err := client.PostAccessTokenRequest(zts.AccessTokenRequest(makeTokenRequest(t.Domain, t.Roles, t.Expiry, t.ProxyPrincipalSpiffeUris, t.RoleInAudClaim, t.UseOpenIDIssuer, t.KeyType)))
 		if err != nil {
 			errs = append(errs, fmt.Errorf("unable to post access token request for domain: %q, roles: %v, err: %v", t.Domain, t.Roles, err))
 			continue
@@ -162,6 +173,8 @@ func Fetch(opts *config.TokenOptions) ([]string, []error) {
 		tokenBytesToStore := func(res *zts.AccessTokenResponse, opts *config.TokenOptions) ([]byte, error) {
 			if opts.StoreOptions == config.ZtsResponse {
 				return json.Marshal(res)
+			} else if opts.StoreOptions == config.AccessTokenWithoutQuotesProp {
+				return []byte(res.Access_token), nil
 			} else {
 				return json.Marshal(res.Access_token)
 			}
@@ -213,10 +226,22 @@ func TokenDirs(root string, tokens []config.AccessToken) []string {
 	return dirs
 }
 
-func makeTokenRequest(domain string, roles []string, expiryTime int) string {
+func makeTokenRequest(domain string, roles []string, expiryTime int, proxyPrincipalSpiffeUris string, roleInAudClaim bool, useOpenIDIssuer bool, keyType string) string {
 	params := url.Values{}
 	params.Add("grant_type", "client_credentials")
 	params.Add("expires_in", strconv.Itoa(expiryTime))
+	if proxyPrincipalSpiffeUris != "" {
+		params.Add("proxy_principal_spiffe_uris", proxyPrincipalSpiffeUris)
+	}
+	if roleInAudClaim {
+		params.Add("role_in_aud_claim", "true")
+	}
+	if useOpenIDIssuer {
+		params.Add("openid_issuer", "true")
+	}
+	if keyType != "" {
+		params.Add("key_type", keyType)
+	}
 
 	var scope string
 	if roles[0] == "*" {
@@ -233,9 +258,9 @@ func makeTokenRequest(domain string, roles []string, expiryTime int) string {
 	return params.Encode()
 }
 
-func NewTokenOptions(options *options.Options, ztsUrl string, userAgent string) (*config.TokenOptions, error) {
+func NewTokenOptions(options *sc.Options, ztsUrl string, userAgent string) (*config.TokenOptions, error) {
 	if options.AccessTokens == nil {
-		return nil, fmt.Errorf("access-token object is not presented")
+		return nil, fmt.Errorf("not configured to fetch access tokens")
 	}
 	dirs := []string{options.CertDir, options.KeyDir, options.BackupDir}
 	dirs = append(dirs, TokenDirs(options.TokenDir, options.AccessTokens)...)
@@ -266,7 +291,7 @@ func NewTokenOptions(options *options.Options, ztsUrl string, userAgent string) 
 	return tokenOpts, nil
 }
 
-func toTokenServices(services []options.Service) []config.TokenService {
+func toTokenServices(services []sc.Service) []config.TokenService {
 	var tokenServices []config.TokenService
 
 	for _, svc := range services {
@@ -284,7 +309,8 @@ func toTokenServices(services []options.Service) []config.TokenService {
 // GetClaimsFromAccessTokenUnverified extract the token claims.
 // The claims will not be verified (as the public key isn't provided)
 func GetClaimsFromAccessTokenUnverified(accessTokenResponse zts.AccessTokenResponse) (map[string]interface{}, error) {
-	tok, err := jwt.ParseSigned(accessTokenResponse.Access_token)
+	signatureAlgorithms := []jose.SignatureAlgorithm{jose.RS256, jose.RS384, jose.RS512, jose.PS256, jose.PS384, jose.PS512, jose.ES256, jose.ES384, jose.ES512, jose.EdDSA}
+	tok, err := jwt.ParseSigned(accessTokenResponse.Access_token, signatureAlgorithms)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to validate access token: %v\n", err)
 	}

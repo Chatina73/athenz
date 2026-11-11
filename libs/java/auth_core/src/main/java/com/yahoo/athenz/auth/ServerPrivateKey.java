@@ -15,7 +15,7 @@
  */
 package com.yahoo.athenz.auth;
 
-import io.jsonwebtoken.SignatureAlgorithm;
+import com.nimbusds.jose.JWSAlgorithm;
 
 import java.security.PrivateKey;
 
@@ -24,17 +24,17 @@ public class ServerPrivateKey {
     public static final String RSA   = "RSA";
     public static final String ECDSA = "ECDSA";
 
-    private String id;
-    private PrivateKey key;
-    private SignatureAlgorithm algorithm;
+    private final String id;
+    private final PrivateKey key;
+    private final String algorithm;
 
     public ServerPrivateKey(final PrivateKey key, final String id) {
 
         this.key = key;
         this.id = id;
 
-        algorithm = ECDSA.equalsIgnoreCase(key.getAlgorithm()) ?
-                SignatureAlgorithm.ES256 : SignatureAlgorithm.RS256;
+        algorithm = RSA.equalsIgnoreCase(key.getAlgorithm()) ?
+                JWSAlgorithm.RS256.getName() : JWSAlgorithm.ES256.getName();
     }
 
     public PrivateKey getKey() {
@@ -45,7 +45,7 @@ public class ServerPrivateKey {
         return id;
     }
 
-    public SignatureAlgorithm getAlgorithm() {
+    public String getAlgorithm() {
         return algorithm;
     }
 }

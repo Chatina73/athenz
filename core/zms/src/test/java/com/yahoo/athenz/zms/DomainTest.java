@@ -27,9 +27,9 @@ import org.testng.annotations.Test;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.testng.Assert.*;
-import static org.testng.Assert.assertFalse;
 
 public class DomainTest {
 
@@ -77,14 +77,19 @@ public class DomainTest {
 
         DomainMeta dm = new DomainMeta().init();
         dm.setDescription("domain desc").setOrg("org:test").setEnabled(true).setAuditEnabled(false)
-                .setAccount("aws").setYpmId(10).setApplicationId("101")
+                .setAccount("aws").setAwsAccountName("aws-name").setYpmId(10).setApplicationId("101")
                 .setCertDnsDomain("athenz.cloud").setMemberExpiryDays(30).setTokenExpiryMins(300)
                 .setServiceCertExpiryMins(120).setRoleCertExpiryMins(150).setSignAlgorithm("ec")
                 .setServiceExpiryDays(40).setUserAuthorityFilter("OnShore").setGroupExpiryDays(50)
-                .setAzureSubscription("azure").setGcpProject("gcp").setBusinessService("business-service")
+                .setAzureSubscription("azure").setAzureTenant("tenant").setAzureClient("client")
+                .setGcpProject("gcp").setBusinessService("business-service")
                 .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))))
                 .setMemberPurgeExpiryDays(10).setGcpProjectNumber("1240").setProductId("abcd-1234")
-                .setFeatureFlags(3);
+                .setFeatureFlags(3).setContacts(Map.of("pe-owner", "user.test")).setEnvironment("production")
+                .setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF"))
+                .setX509CertSignerKeyId("x509-keyid").setSshCertSignerKeyId("ssh-keyid")
+                .setSlackChannel("slack").setOnCall("oncall").setAutoDeleteTenantAssumeRoleAssertions(true)
+                .setExternalMemberValidator("ext-validator").setCostCenter("cost-center");
 
         Validator.Result result = validator.validate(dm, "DomainMeta");
         assertTrue(result.valid);
@@ -94,7 +99,10 @@ public class DomainTest {
         assertTrue(dm.getEnabled());
         assertFalse(dm.getAuditEnabled());
         assertEquals(dm.getAccount(), "aws");
+        assertEquals(dm.getAwsAccountName(), "aws-name");
         assertEquals(dm.getAzureSubscription(), "azure");
+        assertEquals(dm.getAzureTenant(), "tenant");
+        assertEquals(dm.getAzureClient(), "client");
         assertEquals(dm.getGcpProject(), "gcp");
         assertEquals(dm.getGcpProjectNumber(), "1240");
         assertEquals((int) dm.getYpmId(), 10);
@@ -114,20 +122,78 @@ public class DomainTest {
         assertEquals(dm.getMemberPurgeExpiryDays(), 10);
         assertEquals(dm.getProductId(), "abcd-1234");
         assertEquals(dm.getFeatureFlags(), 3);
+        assertEquals(dm.getContacts(), Map.of("pe-owner", "user.test"));
+        assertEquals(dm.getEnvironment(), "production");
+        assertEquals(dm.getX509CertSignerKeyId(), "x509-keyid");
+        assertEquals(dm.getSshCertSignerKeyId(), "ssh-keyid");
+        assertEquals(dm.getResourceOwnership(), new ResourceDomainOwnership().setMetaOwner("TF"));
+        assertEquals(dm.getSlackChannel(), "slack");
+        assertEquals(dm.getOnCall(), "oncall");
+        assertTrue(dm.getAutoDeleteTenantAssumeRoleAssertions());
+        assertFalse(dm.getClientIdSelfUpdate());
+        assertEquals(dm.getExternalMemberValidator(), "ext-validator");
+        assertEquals(dm.getCostCenter(), "cost-center");
 
         DomainMeta dm2 = new DomainMeta().init();
         dm2.setDescription("domain desc").setOrg("org:test").setEnabled(true).setAuditEnabled(false)
-                .setAccount("aws").setYpmId(10).setApplicationId("101")
+                .setAccount("aws").setAwsAccountName("aws-name").setYpmId(10).setApplicationId("101")
                 .setCertDnsDomain("athenz.cloud").setMemberExpiryDays(30).setTokenExpiryMins(300)
                 .setServiceCertExpiryMins(120).setRoleCertExpiryMins(150).setSignAlgorithm("ec")
                 .setServiceExpiryDays(40).setUserAuthorityFilter("OnShore").setGroupExpiryDays(50)
-                .setAzureSubscription("azure").setGcpProject("gcp").setBusinessService("business-service")
+                .setAzureSubscription("azure").setAzureTenant("tenant").setAzureClient("client")
+                .setGcpProject("gcp").setBusinessService("business-service")
                 .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))))
                 .setMemberPurgeExpiryDays(10).setGcpProjectNumber("1240").setProductId("abcd-1234")
-                .setFeatureFlags(3);
+                .setFeatureFlags(3).setContacts(Map.of("pe-owner", "user.test")).setEnvironment("production")
+                .setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF"))
+                .setX509CertSignerKeyId("x509-keyid").setSshCertSignerKeyId("ssh-keyid")
+                .setSlackChannel("slack").setOnCall("oncall").setAutoDeleteTenantAssumeRoleAssertions(true)
+                .setExternalMemberValidator("ext-validator").setCostCenter("cost-center");
 
         assertEquals(dm, dm2);
         assertEquals(dm, dm);
+
+        dm2.setCostCenter("cost-center2");
+        assertNotEquals(dm, dm2);
+        dm2.setCostCenter(null);
+        assertNotEquals(dm, dm2);
+        dm2.setCostCenter("cost-center");
+        assertEquals(dm, dm2);
+
+        dm2.setExternalMemberValidator("ext-validator2");
+        assertNotEquals(dm, dm2);
+        dm2.setExternalMemberValidator(null);
+        assertNotEquals(dm, dm2);
+        dm2.setExternalMemberValidator("ext-validator");
+        assertEquals(dm, dm2);
+
+        dm2.setX509CertSignerKeyId("x509-keyid2");
+        assertNotEquals(dm, dm2);
+        dm2.setX509CertSignerKeyId(null);
+        assertNotEquals(dm, dm2);
+        dm2.setX509CertSignerKeyId("x509-keyid");
+        assertEquals(dm, dm2);
+
+        dm2.setSshCertSignerKeyId("ssh-keyid2");
+        assertNotEquals(dm, dm2);
+        dm2.setSshCertSignerKeyId(null);
+        assertNotEquals(dm, dm2);
+        dm2.setSshCertSignerKeyId("ssh-keyid");
+        assertEquals(dm, dm2);
+
+        dm2.setEnvironment("staging");
+        assertNotEquals(dm, dm2);
+        dm2.setEnvironment(null);
+        assertNotEquals(dm, dm2);
+        dm2.setEnvironment("production");
+        assertEquals(dm, dm2);
+
+        dm2.setContacts(Map.of("product-owner", "user.test"));
+        assertNotEquals(dm, dm2);
+        dm2.setContacts(null);
+        assertNotEquals(dm, dm2);
+        dm2.setContacts(Map.of("pe-owner", "user.test"));
+        assertEquals(dm, dm2);
 
         dm2.setUserAuthorityFilter("NotOnShore");
         assertNotEquals(dm, dm2);
@@ -150,11 +216,32 @@ public class DomainTest {
         dm2.setAccount("aws");
         assertEquals(dm, dm2);
 
+        dm2.setAwsAccountName("aws-name2");
+        assertNotEquals(dm, dm2);
+        dm2.setAwsAccountName(null);
+        assertNotEquals(dm, dm2);
+        dm2.setAwsAccountName("aws-name");
+        assertEquals(dm, dm2);
+
         dm2.setAzureSubscription("azure2");
         assertNotEquals(dm, dm2);
         dm2.setAzureSubscription(null);
         assertNotEquals(dm, dm2);
         dm2.setAzureSubscription("azure");
+        assertEquals(dm, dm2);
+
+        dm2.setAzureTenant("tenant2");
+        assertNotEquals(dm, dm2);
+        dm2.setAzureTenant(null);
+        assertNotEquals(dm, dm2);
+        dm2.setAzureTenant("tenant");
+        assertEquals(dm, dm2);
+
+        dm2.setAzureClient("client2");
+        assertNotEquals(dm, dm2);
+        dm2.setAzureClient(null);
+        assertNotEquals(dm, dm2);
+        dm2.setAzureClient("client");
         assertEquals(dm, dm2);
 
         dm2.setGcpProject("gcp2");
@@ -248,6 +335,41 @@ public class DomainTest {
         dm2.setBusinessService("business-service");
         assertEquals(dm, dm2);
 
+        dm2.setSlackChannel("slack1");
+        assertNotEquals(dm, dm2);
+        dm2.setSlackChannel(null);
+        assertNotEquals(dm, dm2);
+        dm2.setSlackChannel("slack");
+        assertEquals(dm, dm2);
+
+        dm2.setOnCall("oncall1");
+        assertNotEquals(dm, dm2);
+        dm2.setOnCall(null);
+        assertNotEquals(dm, dm2);
+        dm2.setOnCall("oncall");
+        assertEquals(dm, dm2);
+
+        dm2.setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF2"));
+        assertNotEquals(dm, dm2);
+        dm2.setResourceOwnership(null);
+        assertNotEquals(dm, dm2);
+        dm2.setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF"));
+        assertEquals(dm, dm2);
+
+        dm2.setAutoDeleteTenantAssumeRoleAssertions(false);
+        assertNotEquals(dm, dm2);
+        dm2.setAutoDeleteTenantAssumeRoleAssertions(null);
+        assertNotEquals(dm, dm2);
+        dm2.setAutoDeleteTenantAssumeRoleAssertions(true);
+        assertEquals(dm, dm2);
+
+        dm2.setClientIdSelfUpdate(true);
+        assertNotEquals(dm, dm2);
+        dm2.setClientIdSelfUpdate(null);
+        assertNotEquals(dm, dm2);
+        dm2.setClientIdSelfUpdate(false);
+        assertEquals(dm, dm2);
+
         dm2.setCertDnsDomain(null);
         assertNotEquals(dm, dm2);
         dm2.setApplicationId(null);
@@ -271,9 +393,13 @@ public class DomainTest {
 
         dm2.setEnabled(false);
         dm2.setAuditEnabled(false);
+        dm2.setAutoDeleteTenantAssumeRoleAssertions(false);
+        dm2.setClientIdSelfUpdate(false);
         dm2.init();
         assertFalse(dm2.getAuditEnabled());
         assertFalse(dm2.getEnabled());
+        assertFalse(dm2.getAutoDeleteTenantAssumeRoleAssertions());
+        assertFalse(dm2.getClientIdSelfUpdate());
     }
 
     @Test
@@ -292,17 +418,24 @@ public class DomainTest {
 
         assertEquals(dtl.getTemplateNames(), templateNames);
         assertEquals(dtl, dtl);
-        assertNotEquals(new DomainTemplateList(), dtl);
+        assertNotEquals(dtl, new DomainTemplateList());
 
         // TopLevelDomain test
         TopLevelDomain tld = new TopLevelDomain().setDescription("domain desc").setOrg("org:test").setEnabled(true)
                 .setAuditEnabled(false).setAccount("aws").setYpmId(10).setName("testdomain").setAdminUsers(admins)
                 .setTemplates(dtl).setApplicationId("id1").setCertDnsDomain("athenz.cloud").setMemberExpiryDays(30)
                 .setTokenExpiryMins(300).setRoleCertExpiryMins(120).setServiceCertExpiryMins(150).setSignAlgorithm("rsa")
-                .setServiceExpiryDays(40).setUserAuthorityFilter("OnShore").setGroupExpiryDays(50).setAzureSubscription("azure")
+                .setServiceExpiryDays(40).setUserAuthorityFilter("OnShore").setGroupExpiryDays(50)
+                .setAzureSubscription("azure").setAzureTenant("tenant").setAzureClient("client")
                 .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))))
                 .setBusinessService("business-service").setMemberPurgeExpiryDays(10).setGcpProject("gcp")
-                .setGcpProjectNumber("1242").setProductId("abcd-1234").setFeatureFlags(3);
+                .setGcpProjectNumber("1242").setProductId("abcd-1234").setFeatureFlags(3)
+                .setContacts(Map.of("pe-owner", "user.test")).setEnvironment("production")
+                .setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF"))
+                .setX509CertSignerKeyId("x509-keyid").setSshCertSignerKeyId("ssh-keyid")
+                .setSlackChannel("slack").setOnCall("oncall").setAutoDeleteTenantAssumeRoleAssertions(true)
+                .setAwsAccountName("aws-name").setExternalMemberValidator("ext-validator")
+                .setCostCenter("cost-center");
 
         result = validator.validate(tld, "TopLevelDomain");
         assertTrue(result.valid);
@@ -312,7 +445,10 @@ public class DomainTest {
         assertTrue(tld.getEnabled());
         assertFalse(tld.getAuditEnabled());
         assertEquals(tld.getAccount(), "aws");
+        assertEquals(tld.getAwsAccountName(), "aws-name");
         assertEquals(tld.getAzureSubscription(), "azure");
+        assertEquals(tld.getAzureTenant(), "tenant");
+        assertEquals(tld.getAzureClient(), "client");
         assertEquals(tld.getGcpProject(), "gcp");
         assertEquals(tld.getGcpProjectNumber(), "1242");
         assertEquals((int) tld.getYpmId(), 10);
@@ -335,18 +471,78 @@ public class DomainTest {
         assertEquals(tld.getMemberPurgeExpiryDays(), 10);
         assertEquals(tld.getProductId(), "abcd-1234");
         assertEquals(tld.getFeatureFlags(), 3);
+        assertEquals(tld.getContacts(), Map.of("pe-owner", "user.test"));
+        assertEquals(tld.getEnvironment(), "production");
+        assertEquals(tld.getX509CertSignerKeyId(), "x509-keyid");
+        assertEquals(tld.getSshCertSignerKeyId(), "ssh-keyid");
+        assertEquals(tld.getResourceOwnership(), new ResourceDomainOwnership().setMetaOwner("TF"));
+        assertEquals(tld.getSlackChannel(), "slack");
+        assertEquals(tld.getOnCall(), "oncall");
+        assertTrue(tld.getAutoDeleteTenantAssumeRoleAssertions());
+        assertFalse(tld.getClientIdSelfUpdate());
+        assertEquals(tld.getExternalMemberValidator(), "ext-validator");
+        assertEquals(tld.getCostCenter(), "cost-center");
 
         TopLevelDomain tld2 = new TopLevelDomain().setDescription("domain desc").setOrg("org:test").setEnabled(true)
                 .setAuditEnabled(false).setAccount("aws").setYpmId(10).setName("testdomain").setAdminUsers(admins)
                 .setTemplates(dtl).setApplicationId("id1").setCertDnsDomain("athenz.cloud").setMemberExpiryDays(30)
                 .setTokenExpiryMins(300).setRoleCertExpiryMins(120).setServiceCertExpiryMins(150).setSignAlgorithm("rsa")
-                .setServiceExpiryDays(40).setUserAuthorityFilter("OnShore").setGroupExpiryDays(50).setAzureSubscription("azure")
+                .setServiceExpiryDays(40).setUserAuthorityFilter("OnShore").setGroupExpiryDays(50)
+                .setAzureSubscription("azure").setAzureTenant("tenant").setAzureClient("client")
                 .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))))
                 .setBusinessService("business-service").setMemberPurgeExpiryDays(10).setGcpProject("gcp")
-                .setGcpProjectNumber("1242").setProductId("abcd-1234").setFeatureFlags(3);
+                .setGcpProjectNumber("1242").setProductId("abcd-1234").setFeatureFlags(3)
+                .setContacts(Map.of("pe-owner", "user.test")).setEnvironment("production")
+                .setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF"))
+                .setX509CertSignerKeyId("x509-keyid").setSshCertSignerKeyId("ssh-keyid")
+                .setSlackChannel("slack").setOnCall("oncall").setAutoDeleteTenantAssumeRoleAssertions(true)
+                .setClientIdSelfUpdate(false).setAwsAccountName("aws-name").setExternalMemberValidator("ext-validator")
+                .setCostCenter("cost-center");
 
         assertEquals(tld, tld2);
         assertEquals(tld, tld);
+
+        tld2.setCostCenter("cost-center2");
+        assertNotEquals(tld, tld2);
+        tld2.setCostCenter(null);
+        assertNotEquals(tld, tld2);
+        tld2.setCostCenter("cost-center");
+        assertEquals(tld, tld2);
+
+        tld2.setExternalMemberValidator("ext-validator2");
+        assertNotEquals(tld, tld2);
+        tld2.setExternalMemberValidator(null);
+        assertNotEquals(tld, tld2);
+        tld2.setExternalMemberValidator("ext-validator");
+        assertEquals(tld, tld2);
+
+        tld2.setEnvironment("staging");
+        assertNotEquals(tld, tld2);
+        tld2.setEnvironment(null);
+        assertNotEquals(tld, tld2);
+        tld2.setEnvironment("production");
+        assertEquals(tld, tld2);
+
+        tld2.setX509CertSignerKeyId("x509-keyid2");
+        assertNotEquals(tld, tld2);
+        tld2.setX509CertSignerKeyId(null);
+        assertNotEquals(tld, tld2);
+        tld2.setX509CertSignerKeyId("x509-keyid");
+        assertEquals(tld, tld2);
+
+        tld2.setSshCertSignerKeyId("ssh-keyid2");
+        assertNotEquals(tld, tld2);
+        tld2.setSshCertSignerKeyId(null);
+        assertNotEquals(tld, tld2);
+        tld2.setSshCertSignerKeyId("ssh-keyid");
+        assertEquals(tld, tld2);
+
+        tld2.setContacts(Map.of("product-owner", "user.test"));
+        assertNotEquals(tld, tld2);
+        tld2.setContacts(null);
+        assertNotEquals(tld, tld2);
+        tld2.setContacts(Map.of("pe-owner", "user.test"));
+        assertEquals(tld, tld2);
 
         tld2.setUserAuthorityFilter("NotOnShore");
         assertNotEquals(tld, tld2);
@@ -362,6 +558,13 @@ public class DomainTest {
         tld2.setAccount("aws");
         assertEquals(tld, tld2);
 
+        tld2.setAwsAccountName("aws-name2");
+        assertNotEquals(tld, tld2);
+        tld2.setAwsAccountName(null);
+        assertNotEquals(tld, tld2);
+        tld2.setAwsAccountName("aws-name");
+        assertEquals(tld, tld2);
+
         tld2.setProductId("abcd-1235");
         assertNotEquals(tld, tld2);
         tld2.setProductId(null);
@@ -374,6 +577,20 @@ public class DomainTest {
         tld2.setAzureSubscription(null);
         assertNotEquals(tld, tld2);
         tld2.setAzureSubscription("azure");
+        assertEquals(tld, tld2);
+
+        tld2.setAzureTenant("tenant2");
+        assertNotEquals(tld, tld2);
+        tld2.setAzureTenant(null);
+        assertNotEquals(tld, tld2);
+        tld2.setAzureTenant("tenant");
+        assertEquals(tld, tld2);
+
+        tld2.setAzureClient("client2");
+        assertNotEquals(tld, tld2);
+        tld2.setAzureClient(null);
+        assertNotEquals(tld, tld2);
+        tld2.setAzureClient("client");
         assertEquals(tld, tld2);
 
         tld2.setGcpProject("gcp2");
@@ -467,6 +684,41 @@ public class DomainTest {
         tld2.setBusinessService("business-service");
         assertEquals(tld, tld2);
 
+        tld2.setSlackChannel("slack2");
+        assertNotEquals(tld, tld2);
+        tld2.setSlackChannel(null);
+        assertNotEquals(tld, tld2);
+        tld2.setSlackChannel("slack");
+        assertEquals(tld, tld2);
+
+        tld2.setOnCall("oncall1");
+        assertNotEquals(tld, tld2);
+        tld2.setOnCall(null);
+        assertNotEquals(tld, tld2);
+        tld2.setOnCall("oncall");
+        assertEquals(tld, tld2);
+
+        tld2.setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF2"));
+        assertNotEquals(tld, tld2);
+        tld2.setResourceOwnership(null);
+        assertNotEquals(tld, tld2);
+        tld2.setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF"));
+        assertEquals(tld, tld2);
+
+        tld2.setAutoDeleteTenantAssumeRoleAssertions(false);
+        assertNotEquals(tld, tld2);
+        tld2.setAutoDeleteTenantAssumeRoleAssertions(null);
+        assertNotEquals(tld, tld2);
+        tld2.setAutoDeleteTenantAssumeRoleAssertions(true);
+        assertEquals(tld, tld2);
+
+        tld2.setClientIdSelfUpdate(true);
+        assertNotEquals(tld, tld2);
+        tld2.setClientIdSelfUpdate(null);
+        assertNotEquals(tld, tld2);
+        tld2.setClientIdSelfUpdate(false);
+        assertEquals(tld, tld2);
+
         tld2.setTemplates(null);
         assertNotEquals(tld, tld2);
         tld2.setAdminUsers(null);
@@ -506,10 +758,17 @@ public class DomainTest {
                 .setParent("domain.parent").setApplicationId("101").setCertDnsDomain("athenz.cloud")
                 .setMemberExpiryDays(30).setTokenExpiryMins(300).setServiceCertExpiryMins(120)
                 .setRoleCertExpiryMins(150).setSignAlgorithm("rsa").setServiceExpiryDays(40)
-                .setUserAuthorityFilter("OnShore").setGroupExpiryDays(50).setAzureSubscription("azure")
+                .setUserAuthorityFilter("OnShore").setGroupExpiryDays(50)
+                .setAzureSubscription("azure").setAzureTenant("tenant").setAzureClient("client")
                 .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))))
                 .setBusinessService("business-service").setMemberPurgeExpiryDays(10).setGcpProject("gcp")
-                .setGcpProjectNumber("1244").setProductId("abcd-1234").setFeatureFlags(3);
+                .setGcpProjectNumber("1244").setProductId("abcd-1234").setFeatureFlags(3)
+                .setContacts(Map.of("pe-owner", "user.test")).setEnvironment("production")
+                .setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF"))
+                .setX509CertSignerKeyId("x509-keyid").setSshCertSignerKeyId("ssh-keyid")
+                .setSlackChannel("slack").setOnCall("oncall").setAutoDeleteTenantAssumeRoleAssertions(true)
+                .setAwsAccountName("aws-name").setExternalMemberValidator("ext-validator")
+                .setCostCenter("cost-center");
 
         Validator.Result result = validator.validate(sd, "SubDomain");
         assertTrue(result.valid, result.error);
@@ -519,7 +778,10 @@ public class DomainTest {
         assertTrue(sd.getEnabled());
         assertFalse(sd.getAuditEnabled());
         assertEquals(sd.getAccount(), "aws");
+        assertEquals(sd.getAwsAccountName(), "aws-name");
         assertEquals(sd.getAzureSubscription(), "azure");
+        assertEquals(sd.getAzureTenant(), "tenant");
+        assertEquals(sd.getAzureClient(), "client");
         assertEquals(sd.getGcpProject(), "gcp");
         assertEquals(sd.getGcpProjectNumber(), "1244");
         assertEquals((int) sd.getYpmId(), 10);
@@ -543,6 +805,17 @@ public class DomainTest {
         assertEquals(sd.getMemberPurgeExpiryDays(), 10);
         assertEquals(sd.getProductId(), "abcd-1234");
         assertEquals(sd.getFeatureFlags(), 3);
+        assertEquals(sd.getContacts(), Map.of("pe-owner", "user.test"));
+        assertEquals(sd.getEnvironment(), "production");
+        assertEquals(sd.getX509CertSignerKeyId(), "x509-keyid");
+        assertEquals(sd.getSshCertSignerKeyId(), "ssh-keyid");
+        assertEquals(sd.getResourceOwnership(), new ResourceDomainOwnership().setMetaOwner("TF"));
+        assertEquals(sd.getSlackChannel(), "slack");
+        assertEquals(sd.getOnCall(), "oncall");
+        assertTrue(sd.getAutoDeleteTenantAssumeRoleAssertions());
+        assertFalse(sd.getClientIdSelfUpdate());
+        assertEquals(sd.getExternalMemberValidator(), "ext-validator");
+        assertEquals(sd.getCostCenter(), "cost-center");
 
         SubDomain sd2 = new SubDomain().setDescription("domain desc").setOrg("org:test").setEnabled(true)
                 .setAuditEnabled(false).setAccount("aws").setYpmId(10).setName("testdomain").setAdminUsers(admins)
@@ -550,14 +823,63 @@ public class DomainTest {
                 .setParent("domain.parent").setApplicationId("101").setCertDnsDomain("athenz.cloud")
                 .setMemberExpiryDays(30).setTokenExpiryMins(300).setServiceCertExpiryMins(120)
                 .setRoleCertExpiryMins(150).setSignAlgorithm("rsa").setServiceExpiryDays(40)
-                .setUserAuthorityFilter("OnShore").setGroupExpiryDays(50).setAzureSubscription("azure")
+                .setUserAuthorityFilter("OnShore").setGroupExpiryDays(50)
+                .setAzureSubscription("azure").setAzureTenant("tenant").setAzureClient("client")
                 .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))))
                 .setBusinessService("business-service").setMemberPurgeExpiryDays(10).setGcpProject("gcp")
-                .setGcpProjectNumber("1244").setProductId("abcd-1234").setFeatureFlags(3);
+                .setGcpProjectNumber("1244").setProductId("abcd-1234").setFeatureFlags(3)
+                .setContacts(Map.of("pe-owner", "user.test")).setEnvironment("production")
+                .setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF"))
+                .setX509CertSignerKeyId("x509-keyid").setSshCertSignerKeyId("ssh-keyid")
+                .setSlackChannel("slack").setOnCall("oncall").setAutoDeleteTenantAssumeRoleAssertions(true)
+                .setClientIdSelfUpdate(false).setAwsAccountName("aws-name").setExternalMemberValidator("ext-validator")
+                .setCostCenter("cost-center");
 
         assertEquals(sd, sd2);
         assertEquals(sd, sd);
         assertNotEquals(schema, sd);
+
+        sd2.setCostCenter("cost-center2");
+        assertNotEquals(sd, sd2);
+        sd2.setCostCenter(null);
+        assertNotEquals(sd, sd2);
+        sd2.setCostCenter("cost-center");
+        assertEquals(sd, sd2);
+
+        sd2.setExternalMemberValidator("ext-validator2");
+        assertNotEquals(sd, sd2);
+        sd2.setExternalMemberValidator(null);
+        assertNotEquals(sd, sd2);
+        sd2.setExternalMemberValidator("ext-validator");
+        assertEquals(sd, sd2);
+
+        sd2.setEnvironment("staging");
+        assertNotEquals(sd, sd2);
+        sd2.setEnvironment(null);
+        assertNotEquals(sd, sd2);
+        sd2.setEnvironment("production");
+        assertEquals(sd, sd2);
+
+        sd2.setX509CertSignerKeyId("x509-keyid2");
+        assertNotEquals(sd, sd2);
+        sd2.setX509CertSignerKeyId(null);
+        assertNotEquals(sd, sd2);
+        sd2.setX509CertSignerKeyId("x509-keyid");
+        assertEquals(sd, sd2);
+
+        sd2.setSshCertSignerKeyId("ssh-keyid2");
+        assertNotEquals(sd, sd2);
+        sd2.setSshCertSignerKeyId(null);
+        assertNotEquals(sd, sd2);
+        sd2.setSshCertSignerKeyId("ssh-keyid");
+        assertEquals(sd, sd2);
+
+        sd2.setContacts(Map.of("product-owner", "user.test"));
+        assertNotEquals(sd, sd2);
+        sd2.setContacts(null);
+        assertNotEquals(sd, sd2);
+        sd2.setContacts(Map.of("pe-owner", "user.test"));
+        assertEquals(sd, sd2);
 
         sd2.setUserAuthorityFilter("NotOnShore");
         assertNotEquals(sd, sd2);
@@ -580,11 +902,32 @@ public class DomainTest {
         sd2.setAccount("aws");
         assertEquals(sd, sd2);
 
+        sd2.setAwsAccountName("aws-name2");
+        assertNotEquals(sd, sd2);
+        sd2.setAwsAccountName(null);
+        assertNotEquals(sd, sd2);
+        sd2.setAwsAccountName("aws-name");
+        assertEquals(sd, sd2);
+
         sd2.setAzureSubscription("azure2");
         assertNotEquals(sd, sd2);
         sd2.setAzureSubscription(null);
         assertNotEquals(sd, sd2);
         sd2.setAzureSubscription("azure");
+        assertEquals(sd, sd2);
+
+        sd2.setAzureTenant("tenant2");
+        assertNotEquals(sd, sd2);
+        sd2.setAzureTenant(null);
+        assertNotEquals(sd, sd2);
+        sd2.setAzureTenant("tenant");
+        assertEquals(sd, sd2);
+
+        sd2.setAzureClient("client2");
+        assertNotEquals(sd, sd2);
+        sd2.setAzureClient(null);
+        assertNotEquals(sd, sd2);
+        sd2.setAzureClient("client");
         assertEquals(sd, sd2);
 
         sd2.setGcpProject("gcp2");
@@ -678,6 +1021,41 @@ public class DomainTest {
         sd2.setBusinessService("business-service");
         assertEquals(sd, sd2);
 
+        sd2.setSlackChannel("slack2");
+        assertNotEquals(sd, sd2);
+        sd2.setSlackChannel(null);
+        assertNotEquals(sd, sd2);
+        sd2.setSlackChannel("slack");
+        assertEquals(sd, sd2);
+
+        sd2.setOnCall("oncall1");
+        assertNotEquals(sd, sd2);
+        sd2.setOnCall(null);
+        assertNotEquals(sd, sd2);
+        sd2.setOnCall("oncall");
+        assertEquals(sd, sd2);
+
+        sd2.setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF2"));
+        assertNotEquals(sd, sd2);
+        sd2.setResourceOwnership(null);
+        assertNotEquals(sd, sd2);
+        sd2.setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF"));
+        assertEquals(sd, sd2);
+
+        sd2.setAutoDeleteTenantAssumeRoleAssertions(false);
+        assertNotEquals(sd, sd2);
+        sd2.setAutoDeleteTenantAssumeRoleAssertions(null);
+        assertNotEquals(sd, sd2);
+        sd2.setAutoDeleteTenantAssumeRoleAssertions(true);
+        assertEquals(sd, sd2);
+
+        sd2.setClientIdSelfUpdate(true);
+        assertNotEquals(sd, sd2);
+        sd2.setClientIdSelfUpdate(null);
+        assertNotEquals(sd, sd2);
+        sd2.setClientIdSelfUpdate(false);
+        assertEquals(sd, sd2);
+
         sd2.setParent(null);
         assertNotEquals(sd, sd2);
         sd2.setTemplates(null);
@@ -715,11 +1093,17 @@ public class DomainTest {
                 .setTemplates(new DomainTemplateList().setTemplateNames(List.of("template")))
                 .setApplicationId("101").setCertDnsDomain("athenz.cloud").setMemberExpiryDays(30)
                 .setTokenExpiryMins(300).setServiceCertExpiryMins(120).setRoleCertExpiryMins(150)
-                .setSignAlgorithm("rsa").setServiceExpiryDays(40).setUserAuthorityFilter("OnShore")
-                .setGroupExpiryDays(50).setAzureSubscription("azure").setBusinessService("business-service")
+                .setSignAlgorithm("rsa").setServiceExpiryDays(40).setUserAuthorityFilter("OnShore").setGroupExpiryDays(50)
+                .setAzureSubscription("azure").setAzureTenant("tenant").setAzureClient("client")
+                .setBusinessService("business-service")
                 .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))))
                 .setMemberPurgeExpiryDays(10).setGcpProject("gcp").setGcpProjectNumber("1246")
-                .setProductId("abcd-1234").setFeatureFlags(3);
+                .setProductId("abcd-1234").setFeatureFlags(3).setContacts(Map.of("pe-owner", "user.test"))
+                .setEnvironment("production").setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF"))
+                .setX509CertSignerKeyId("x509-keyid").setSshCertSignerKeyId("ssh-keyid")
+                .setSlackChannel("slack").setOnCall("oncall").setAutoDeleteTenantAssumeRoleAssertions(true)
+                .setAwsAccountName("aws-name").setExternalMemberValidator("ext-validator")
+                .setCostCenter("cost-center");
 
         Validator.Result result = validator.validate(ud, "UserDomain");
         assertTrue(result.valid);
@@ -729,7 +1113,10 @@ public class DomainTest {
         assertTrue(ud.getEnabled());
         assertFalse(ud.getAuditEnabled());
         assertEquals(ud.getAccount(), "aws");
+        assertEquals(ud.getAwsAccountName(), "aws-name");
         assertEquals(ud.getAzureSubscription(), "azure");
+        assertEquals(ud.getAzureTenant(), "tenant");
+        assertEquals(ud.getAzureClient(), "client");
         assertEquals(ud.getGcpProject(), "gcp");
         assertEquals(ud.getGcpProjectNumber(), "1246");
         assertEquals((int) ud.getYpmId(), 10);
@@ -751,20 +1138,79 @@ public class DomainTest {
         assertEquals(ud.getMemberPurgeExpiryDays(), 10);
         assertEquals(ud.getProductId(), "abcd-1234");
         assertEquals(ud.getFeatureFlags(), 3);
+        assertEquals(ud.getContacts(), Map.of("pe-owner", "user.test"));
+        assertEquals(ud.getEnvironment(), "production");
+        assertEquals(ud.getX509CertSignerKeyId(), "x509-keyid");
+        assertEquals(ud.getSshCertSignerKeyId(), "ssh-keyid");
+        assertEquals(ud.getResourceOwnership(), new ResourceDomainOwnership().setMetaOwner("TF"));
+        assertEquals(ud.getSlackChannel(), "slack");
+        assertEquals(ud.getOnCall(), "oncall");
+        assertTrue(ud.getAutoDeleteTenantAssumeRoleAssertions());
+        assertFalse(ud.getClientIdSelfUpdate());
+        assertEquals(ud.getExternalMemberValidator(), "ext-validator");
+        assertEquals(ud.getCostCenter(), "cost-center");
 
         UserDomain ud2 = new UserDomain().setDescription("domain desc").setOrg("org:test").setEnabled(true)
                 .setAuditEnabled(false).setAccount("aws").setYpmId(10).setName("testuser")
                 .setTemplates(new DomainTemplateList().setTemplateNames(List.of("template")))
                 .setApplicationId("101").setCertDnsDomain("athenz.cloud").setMemberExpiryDays(30)
                 .setTokenExpiryMins(300).setServiceCertExpiryMins(120).setRoleCertExpiryMins(150)
-                .setSignAlgorithm("rsa").setServiceExpiryDays(40).setUserAuthorityFilter("OnShore")
-                .setGroupExpiryDays(50).setAzureSubscription("azure").setBusinessService("business-service")
+                .setSignAlgorithm("rsa").setServiceExpiryDays(40).setUserAuthorityFilter("OnShore").setGroupExpiryDays(50)
+                .setAzureSubscription("azure").setAzureTenant("tenant").setAzureClient("client")
+                .setBusinessService("business-service")
                 .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))))
                 .setMemberPurgeExpiryDays(10).setGcpProject("gcp").setGcpProjectNumber("1246")
-                .setProductId("abcd-1234").setFeatureFlags(3);
+                .setProductId("abcd-1234").setFeatureFlags(3).setContacts(Map.of("pe-owner", "user.test"))
+                .setEnvironment("production").setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF"))
+                .setX509CertSignerKeyId("x509-keyid").setSshCertSignerKeyId("ssh-keyid")
+                .setSlackChannel("slack").setOnCall("oncall").setAutoDeleteTenantAssumeRoleAssertions(true)
+                .setClientIdSelfUpdate(false).setAwsAccountName("aws-name").setExternalMemberValidator("ext-validator")
+                .setCostCenter("cost-center");
 
         assertEquals(ud, ud2);
         assertEquals(ud, ud);
+
+        ud2.setCostCenter("cost-center2");
+        assertNotEquals(ud, ud2);
+        ud2.setCostCenter(null);
+        assertNotEquals(ud, ud2);
+        ud2.setCostCenter("cost-center");
+        assertEquals(ud, ud2);
+
+        ud2.setExternalMemberValidator("ext-validator2");
+        assertNotEquals(ud, ud2);
+        ud2.setExternalMemberValidator(null);
+        assertNotEquals(ud, ud2);
+        ud2.setExternalMemberValidator("ext-validator");
+        assertEquals(ud, ud2);
+
+        ud2.setEnvironment("staging");
+        assertNotEquals(ud, ud2);
+        ud2.setEnvironment(null);
+        assertNotEquals(ud, ud2);
+        ud2.setEnvironment("production");
+        assertEquals(ud, ud2);
+
+        ud2.setX509CertSignerKeyId("x509-keyid2");
+        assertNotEquals(ud, ud2);
+        ud2.setX509CertSignerKeyId(null);
+        assertNotEquals(ud, ud2);
+        ud2.setX509CertSignerKeyId("x509-keyid");
+        assertEquals(ud, ud2);
+
+        ud2.setSshCertSignerKeyId("ssh-keyid2");
+        assertNotEquals(ud, ud2);
+        ud2.setSshCertSignerKeyId(null);
+        assertNotEquals(ud, ud2);
+        ud2.setSshCertSignerKeyId("ssh-keyid");
+        assertEquals(ud, ud2);
+
+        ud2.setContacts(Map.of("product-owner", "user.test"));
+        assertNotEquals(ud, ud2);
+        ud2.setContacts(null);
+        assertNotEquals(ud, ud2);
+        ud2.setContacts(Map.of("pe-owner", "user.test"));
+        assertEquals(ud, ud2);
 
         ud2.setUserAuthorityFilter("NotOnShore");
         assertNotEquals(ud, ud2);
@@ -780,6 +1226,13 @@ public class DomainTest {
         ud2.setAccount("aws");
         assertEquals(ud, ud2);
 
+        ud2.setAwsAccountName("aws-name2");
+        assertNotEquals(ud, ud2);
+        ud2.setAwsAccountName(null);
+        assertNotEquals(ud, ud2);
+        ud2.setAwsAccountName("aws-name");
+        assertEquals(ud, ud2);
+
         ud2.setProductId("abcd-1235");
         assertNotEquals(ud, ud2);
         ud2.setProductId(null);
@@ -792,6 +1245,20 @@ public class DomainTest {
         ud2.setAzureSubscription(null);
         assertNotEquals(ud, ud2);
         ud2.setAzureSubscription("azure");
+        assertEquals(ud, ud2);
+
+        ud2.setAzureTenant("tenant2");
+        assertNotEquals(ud, ud2);
+        ud2.setAzureTenant(null);
+        assertNotEquals(ud, ud2);
+        ud2.setAzureTenant("tenant");
+        assertEquals(ud, ud2);
+
+        ud2.setAzureClient("client2");
+        assertNotEquals(ud, ud2);
+        ud2.setAzureClient(null);
+        assertNotEquals(ud, ud2);
+        ud2.setAzureClient("client");
         assertEquals(ud, ud2);
 
         ud2.setGcpProject("gcp2");
@@ -885,6 +1352,41 @@ public class DomainTest {
         ud2.setBusinessService("business-service");
         assertEquals(ud, ud2);
 
+        ud2.setSlackChannel("slack2");
+        assertNotEquals(ud, ud2);
+        ud2.setSlackChannel(null);
+        assertNotEquals(ud, ud2);
+        ud2.setSlackChannel("slack");
+        assertEquals(ud, ud2);
+
+        ud2.setOnCall("oncall1");
+        assertNotEquals(ud, ud2);
+        ud2.setOnCall(null);
+        assertNotEquals(ud, ud2);
+        ud2.setOnCall("oncall");
+        assertEquals(ud, ud2);
+
+        ud2.setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF2"));
+        assertNotEquals(ud, ud2);
+        ud2.setResourceOwnership(null);
+        assertNotEquals(ud, ud2);
+        ud2.setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF"));
+        assertEquals(ud, ud2);
+
+        ud2.setAutoDeleteTenantAssumeRoleAssertions(false);
+        assertNotEquals(ud, ud2);
+        ud2.setAutoDeleteTenantAssumeRoleAssertions(null);
+        assertNotEquals(ud, ud2);
+        ud2.setAutoDeleteTenantAssumeRoleAssertions(true);
+        assertEquals(ud, ud2);
+
+        ud2.setClientIdSelfUpdate(true);
+        assertNotEquals(ud, ud2);
+        ud2.setClientIdSelfUpdate(null);
+        assertNotEquals(ud, ud2);
+        ud2.setClientIdSelfUpdate(false);
+        assertEquals(ud, ud2);
+
         ud2.setTemplates(null);
         assertNotEquals(ud, ud2);
         ud2.setName(null);
@@ -918,17 +1420,17 @@ public class DomainTest {
         domainMeta.setBusinessService("");
         ObjectMapper om = new ObjectMapper();
         String jsonString = om.writeValueAsString(domainMeta);
-        assertEquals("{\"account\":\"testAccount\",\"businessService\":\"\"}", jsonString);
+        assertEquals(jsonString, "{\"account\":\"testAccount\",\"businessService\":\"\"}");
 
         // Set business service with regular value. Will be part of Json.
         domainMeta.setBusinessService("Now with value");
         jsonString = om.writeValueAsString(domainMeta);
-        assertEquals("{\"account\":\"testAccount\",\"businessService\":\"Now with value\"}", jsonString);
+        assertEquals(jsonString, "{\"account\":\"testAccount\",\"businessService\":\"Now with value\"}");
 
         // Set business service with null. Will NOT be part of Json.
         domainMeta.setBusinessService(null);
         jsonString = om.writeValueAsString(domainMeta);
-        assertEquals("{\"account\":\"testAccount\"}", jsonString);
+        assertEquals(jsonString, "{\"account\":\"testAccount\"}");
     }
 
     @Test
@@ -942,10 +1444,17 @@ public class DomainTest {
                 .setAccount("aws").setYpmId(1).setApplicationId("101").setCertDnsDomain("athenz.cloud")
                 .setMemberExpiryDays(30).setTokenExpiryMins(300).setServiceCertExpiryMins(120)
                 .setRoleCertExpiryMins(150).setSignAlgorithm("rsa").setServiceExpiryDays(40)
-                .setUserAuthorityFilter("OnShore").setGroupExpiryDays(50).setAzureSubscription("azure")
+                .setUserAuthorityFilter("OnShore").setGroupExpiryDays(50)
+                .setAzureSubscription("azure").setAzureTenant("tenant").setAzureClient("client")
                 .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))))
                 .setBusinessService("business-service").setMemberPurgeExpiryDays(10).setGcpProject("gcp")
-                .setGcpProjectNumber("1237").setProductId("abcd-1234").setFeatureFlags(3);
+                .setGcpProjectNumber("1237").setProductId("abcd-1234").setFeatureFlags(3)
+                .setContacts(Map.of("pe-owner", "user.test")).setEnvironment("production")
+                .setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF"))
+                .setX509CertSignerKeyId("x509-keyid").setSshCertSignerKeyId("ssh-keyid")
+                .setSlackChannel("slack").setOnCall("oncall").setAutoDeleteTenantAssumeRoleAssertions(true)
+                .setAwsAccountName("aws-name").setExternalMemberValidator("ext-validator")
+                .setCostCenter("cost-center");
 
         Validator.Result result = validator.validate(d, "Domain");
         assertTrue(result.valid);
@@ -958,7 +1467,10 @@ public class DomainTest {
         assertTrue(d.getEnabled());
         assertTrue(d.getAuditEnabled());
         assertEquals(d.getAccount(), "aws");
+        assertEquals(d.getAwsAccountName(), "aws-name");
         assertEquals(d.getAzureSubscription(), "azure");
+        assertEquals(d.getAzureTenant(), "tenant");
+        assertEquals(d.getAzureClient(), "client");
         assertEquals(d.getGcpProject(), "gcp");
         assertEquals(d.getGcpProjectNumber(), "1237");
         assertEquals((int) d.getYpmId(), 1);
@@ -978,6 +1490,17 @@ public class DomainTest {
         assertEquals(d.getMemberPurgeExpiryDays(), 10);
         assertEquals(d.getProductId(), "abcd-1234");
         assertEquals(d.getFeatureFlags(), 3);
+        assertEquals(d.getContacts(), Map.of("pe-owner", "user.test"));
+        assertEquals(d.getEnvironment(), "production");
+        assertEquals(d.getX509CertSignerKeyId(), "x509-keyid");
+        assertEquals(d.getSshCertSignerKeyId(), "ssh-keyid");
+        assertEquals(d.getResourceOwnership(), new ResourceDomainOwnership().setMetaOwner("TF"));
+        assertEquals(d.getSlackChannel(), "slack");
+        assertEquals(d.getOnCall(), "oncall");
+        assertTrue(d.getAutoDeleteTenantAssumeRoleAssertions());
+        assertFalse(d.getClientIdSelfUpdate());
+        assertEquals(d.getExternalMemberValidator(), "ext-validator");
+        assertEquals(d.getCostCenter(), "cost-center");
 
         Domain d2 = new Domain();
         d2.setName("test.domain").setModified(Timestamp.fromMillis(123456789123L)).setId(UUID.fromMillis(100))
@@ -985,13 +1508,62 @@ public class DomainTest {
                 .setAccount("aws").setYpmId(1).setApplicationId("101").setCertDnsDomain("athenz.cloud")
                 .setMemberExpiryDays(30).setTokenExpiryMins(300).setServiceCertExpiryMins(120)
                 .setRoleCertExpiryMins(150).setSignAlgorithm("rsa").setServiceExpiryDays(40)
-                .setUserAuthorityFilter("OnShore").setGroupExpiryDays(50).setAzureSubscription("azure")
+                .setUserAuthorityFilter("OnShore").setGroupExpiryDays(50)
+                .setAzureSubscription("azure").setAzureTenant("tenant").setAzureClient("client")
                 .setTags(Collections.singletonMap("tagKey", new TagValueList().setList(Collections.singletonList("tagValue"))))
                 .setBusinessService("business-service").setMemberPurgeExpiryDays(10).setGcpProject("gcp")
-                .setGcpProjectNumber("1237").setProductId("abcd-1234").setFeatureFlags(3);
+                .setGcpProjectNumber("1237").setProductId("abcd-1234").setFeatureFlags(3)
+                .setContacts(Map.of("pe-owner", "user.test")).setEnvironment("production")
+                .setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF"))
+                .setX509CertSignerKeyId("x509-keyid").setSshCertSignerKeyId("ssh-keyid")
+                .setSlackChannel("slack").setOnCall("oncall").setAutoDeleteTenantAssumeRoleAssertions(true)
+                .setClientIdSelfUpdate(false).setAwsAccountName("aws-name").setExternalMemberValidator("ext-validator")
+                .setCostCenter("cost-center");
 
         assertEquals(d, d2);
         assertEquals(d, d);
+
+        d2.setCostCenter("cost-center2");
+        assertNotEquals(d, d2);
+        d2.setCostCenter(null);
+        assertNotEquals(d, d2);
+        d2.setCostCenter("cost-center");
+        assertEquals(d, d2);
+
+        d2.setExternalMemberValidator("ext-validator2");
+        assertNotEquals(d, d2);
+        d2.setExternalMemberValidator(null);
+        assertNotEquals(d, d2);
+        d2.setExternalMemberValidator("ext-validator");
+        assertEquals(d, d2);
+
+        d2.setEnvironment("staging");
+        assertNotEquals(d, d2);
+        d2.setEnvironment(null);
+        assertNotEquals(d, d2);
+        d2.setEnvironment("production");
+        assertEquals(d, d2);
+
+        d2.setX509CertSignerKeyId("x509-keyid2");
+        assertNotEquals(d, d2);
+        d2.setX509CertSignerKeyId(null);
+        assertNotEquals(d, d2);
+        d2.setX509CertSignerKeyId("x509-keyid");
+        assertEquals(d, d2);
+
+        d2.setSshCertSignerKeyId("ssh-keyid2");
+        assertNotEquals(d, d2);
+        d2.setSshCertSignerKeyId(null);
+        assertNotEquals(d, d2);
+        d2.setSshCertSignerKeyId("ssh-keyid");
+        assertEquals(d, d2);
+
+        d2.setContacts(Map.of("product-owner", "user.test"));
+        assertNotEquals(d, d2);
+        d2.setContacts(null);
+        assertNotEquals(d, d2);
+        d2.setContacts(Map.of("pe-owner", "user.test"));
+        assertEquals(d, d2);
 
         d2.setUserAuthorityFilter("NotOnShore");
         assertNotEquals(d, d2);
@@ -1014,11 +1586,32 @@ public class DomainTest {
         d2.setAccount("aws");
         assertEquals(d, d2);
 
+        d2.setAwsAccountName("aws-name2");
+        assertNotEquals(d, d2);
+        d2.setAwsAccountName(null);
+        assertNotEquals(d, d2);
+        d2.setAwsAccountName("aws-name");
+        assertEquals(d, d2);
+
         d2.setAzureSubscription("azure2");
         assertNotEquals(d, d2);
         d2.setAzureSubscription(null);
         assertNotEquals(d, d2);
         d2.setAzureSubscription("azure");
+        assertEquals(d, d2);
+
+        d2.setAzureTenant("tenant2");
+        assertNotEquals(d, d2);
+        d2.setAzureTenant(null);
+        assertNotEquals(d, d2);
+        d2.setAzureTenant("tenant");
+        assertEquals(d, d2);
+
+        d2.setAzureClient("client2");
+        assertNotEquals(d, d2);
+        d2.setAzureClient(null);
+        assertNotEquals(d, d2);
+        d2.setAzureClient("client");
         assertEquals(d, d2);
 
         d2.setGcpProject("gcp2");
@@ -1110,6 +1703,41 @@ public class DomainTest {
         d2.setBusinessService(null);
         assertNotEquals(d, d2);
         d2.setBusinessService("business-service");
+        assertEquals(d, d2);
+
+        d2.setSlackChannel("slack2");
+        assertNotEquals(d, d2);
+        d2.setSlackChannel(null);
+        assertNotEquals(d, d2);
+        d2.setSlackChannel("slack");
+        assertEquals(d, d2);
+
+        d2.setOnCall("oncall1");
+        assertNotEquals(d, d2);
+        d2.setOnCall(null);
+        assertNotEquals(d, d2);
+        d2.setOnCall("oncall");
+        assertEquals(d, d2);
+
+        d2.setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF2"));
+        assertNotEquals(d, d2);
+        d2.setResourceOwnership(null);
+        assertNotEquals(d, d2);
+        d2.setResourceOwnership(new ResourceDomainOwnership().setMetaOwner("TF"));
+        assertEquals(d, d2);
+
+        d2.setAutoDeleteTenantAssumeRoleAssertions(false);
+        assertNotEquals(d, d2);
+        d2.setAutoDeleteTenantAssumeRoleAssertions(null);
+        assertNotEquals(d, d2);
+        d2.setAutoDeleteTenantAssumeRoleAssertions(true);
+        assertEquals(d, d2);
+
+        d2.setClientIdSelfUpdate(true);
+        assertNotEquals(d, d2);
+        d2.setClientIdSelfUpdate(null);
+        assertNotEquals(d, d2);
+        d2.setClientIdSelfUpdate(false);
         assertEquals(d, d2);
 
         d2.setId(UUID.fromMillis(101));

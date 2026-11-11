@@ -6,9 +6,7 @@ package main
 import (
 	"bytes"
 	"crypto"
-	"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -18,13 +16,11 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"reflect"
 	"strings"
-
-	"github.com/ardielle/ardielle-go/rdl"
 
 	"github.com/AthenZ/athenz/clients/go/zts"
 	"github.com/AthenZ/athenz/libs/go/athenzutils"
+	"github.com/ardielle/ardielle-go/rdl"
 )
 
 type signer struct {
@@ -52,7 +48,7 @@ func main() {
 
 	var ztsURL, svcKeyFile, svcCertFile, roleKeyFile, dom, svc, oldRoleCertFile string
 	var caCertFile, roleCertFile, roleDomain, roleName, dnsDomain string
-	var subjC, subjO, subjOU, ip, uri string
+	var subjC, subjO, subjOU, ip, uri, spiffeTrustDomain string
 	var spiffe, csr, proxy, showVersion bool
 	var expiryTime int
 
@@ -77,6 +73,7 @@ func main() {
 	flag.IntVar(&expiryTime, "expiry-time", 0, "expiry time in minutes")
 	flag.BoolVar(&proxy, "proxy", true, "enable proxy mode for request")
 	flag.BoolVar(&showVersion, "version", false, "Show version")
+	flag.StringVar(&spiffeTrustDomain, "spiffe-trust-domain", "", "Trust Domain value to be included in spiffe uri")
 
 	flag.Parse()
 
@@ -110,8 +107,12 @@ func main() {
 	hyphenDomain := strings.Replace(domain, ".", "-", -1)
 	host := fmt.Sprintf("%s.%s.%s", service, hyphenDomain, dnsDomain)
 	principal := fmt.Sprintf("%s.%s", domain, service)
-	if spiffe {
-		uri = fmt.Sprintf("spiffe://%s/ra/%s", roleDomain, roleName)
+	if spiffe || spiffeTrustDomain != "" {
+		if spiffeTrustDomain != "" {
+			uri = fmt.Sprintf("spiffe://%s/ns/%s/ra/%s", spiffeTrustDomain, roleDomain, roleName)
+		} else {
+			uri = fmt.Sprintf("spiffe://%s/ra/%s", roleDomain, roleName)
+		}
 	}
 
 	//note: RFC 6125 states that if the SAN (Subject Alternative Name) exists,
@@ -289,39 +290,9 @@ func getRoleCertificate(client *zts.ZTSClient, csr, roleDomain, roleName, roleCe
 }
 
 func newSigner(privateKeyPEM []byte) (*signer, error) {
-	block, _ := pem.Decode(privateKeyPEM)
-	if block == nil {
-		return nil, fmt.Errorf("unable to load private key")
+	key, algorithm, err := athenzutils.ExtractSignerInfo(privateKeyPEM)
+	if err != nil {
+		return nil, err
 	}
-
-	switch block.Type {
-	case "EC PRIVATE KEY":
-		key, err := x509.ParseECPrivateKey(block.Bytes)
-		if err != nil {
-			return nil, err
-		}
-		return &signer{key: key, algorithm: x509.ECDSAWithSHA256}, nil
-	case "RSA PRIVATE KEY":
-		key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-		if err != nil {
-			return nil, err
-		}
-		return &signer{key: key, algorithm: x509.SHA256WithRSA}, nil
-	case "PRIVATE KEY":
-		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if err != nil {
-			return nil, err
-		}
-		switch k := key.(type) {
-		case *ecdsa.PrivateKey:
-			return &signer{key: k, algorithm: x509.ECDSAWithSHA256}, nil
-		case *rsa.PrivateKey:
-			return &signer{key: k, algorithm: x509.SHA256WithRSA}, nil
-		default:
-			// PKCS#8 format may contain multiple key types other than RSA / EC, but current ZMS / ZTS server implementation only supports RSA / EC private keys
-			return nil, fmt.Errorf("unsupported private key type: %s", reflect.TypeOf(k).Name())
-		}
-	default:
-		return nil, fmt.Errorf("unsupported private key type: %s", block.Type)
-	}
+	return &signer{key: key, algorithm: algorithm}, nil
 }

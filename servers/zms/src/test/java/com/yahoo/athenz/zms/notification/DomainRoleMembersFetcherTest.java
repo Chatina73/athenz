@@ -20,7 +20,7 @@ import com.yahoo.athenz.common.server.notification.DomainRoleMembersFetcher;
 import com.yahoo.athenz.zms.DBService;
 import com.yahoo.athenz.zms.Role;
 import com.yahoo.athenz.zms.RoleMember;
-import com.yahoo.athenz.zms.store.AthenzDomain;
+import com.yahoo.athenz.common.server.store.AthenzDomain;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
@@ -30,10 +30,9 @@ import java.util.HashSet;
 import java.util.Set;
 
 import static com.yahoo.athenz.common.ServerCommonConsts.USER_DOMAIN_PREFIX;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.testng.AssertJUnit.assertEquals;
-import static org.testng.AssertJUnit.assertTrue;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 public class DomainRoleMembersFetcherTest {
     @Test
@@ -51,6 +50,8 @@ public class DomainRoleMembersFetcherTest {
         adminRole.setRoleMembers(Arrays.asList(roleMember1, roleMember2));
         domainData.setRoles(Collections.singletonList(adminRole));
         Mockito.when(dbsvc.getRolesByDomain(eq("domain1"))).thenReturn(domainData.getRoles());
+        Mockito.when(dbsvc.getRole("domain1", "admin", Boolean.FALSE, Boolean.TRUE, Boolean.FALSE))
+                .thenReturn(adminRole);
 
         DomainRoleMembersFetcher domainRoleMembersFetcher = new DomainRoleMembersFetcher(
                 dbsvc,
@@ -60,7 +61,7 @@ public class DomainRoleMembersFetcherTest {
                 "domain1",
                 "domain1:role.admin");
 
-        assertEquals(2, domainRoleMembers.size());
+        assertEquals(domainRoleMembers.size(), 2);
         assertTrue(domainRoleMembers.contains("user.domain1rolemember1"));
         assertTrue(domainRoleMembers.contains("user.domain1rolemember2"));
     }
@@ -75,7 +76,7 @@ public class DomainRoleMembersFetcherTest {
                 "domain1",
                 "domain1:role.admin");
 
-        assertEquals(new HashSet<>(), domainRoleMembers);
+        assertEquals(domainRoleMembers, new HashSet<>());
     }
 
     @Test
@@ -89,6 +90,6 @@ public class DomainRoleMembersFetcherTest {
                 "domain1",
                 "domain1:role.admin");
 
-        assertEquals(new HashSet<>(), domainRoleMembers);
+        assertEquals(domainRoleMembers, new HashSet<>());
     }
 }

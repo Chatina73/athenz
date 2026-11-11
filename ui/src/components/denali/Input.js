@@ -125,6 +125,10 @@ const disabledCss = css`
     }
 `;
 
+const boldInputCss = css`
+    font-weight: bold;
+`;
+
 const makeIconClass = (props) => css`
     & input {
         padding-right: ${props.size === 'small' ? '28px' : '36px'};
@@ -135,6 +139,14 @@ const makeIconClass = (props) => css`
         height: ${props.size === 'small' ? '28px' : '36px'};
         position: absolute;
         right: 6px;
+        z-index: 1;
+    }
+    & .input-icon[onclick] {
+        cursor: pointer;
+        transition: opacity 0.2s ease-in-out;
+    }
+    & .input-icon[onclick]:hover {
+        opacity: 0.7;
     }
 `;
 
@@ -193,6 +205,7 @@ class Input extends React.PureComponent {
             noanim,
             renderIcon,
             size,
+            isBold,
             ...rest
         } = this.props;
 
@@ -236,6 +249,12 @@ class Input extends React.PureComponent {
             inputWrapperClass = css`
                 ${inputWrapperClass};
                 ${makeIconClass(this.props)};
+            `;
+        }
+        if (isBold) {
+            inputWrapperClass = css`
+                ${inputWrapperClass};
+                ${boldInputCss}
             `;
         }
         return (

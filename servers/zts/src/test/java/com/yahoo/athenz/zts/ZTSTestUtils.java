@@ -15,7 +15,6 @@
  */
 package com.yahoo.athenz.zts;
 
-import com.amazonaws.services.dynamodbv2.model.AttributeValue;
 import com.yahoo.athenz.auth.util.Crypto;
 import com.yahoo.athenz.common.server.util.ResourceUtils;
 import com.yahoo.athenz.common.server.workload.WorkloadRecord;
@@ -27,11 +26,11 @@ import com.yahoo.athenz.zms.ServiceIdentity;
 import com.yahoo.athenz.zms.*;
 import com.yahoo.athenz.zts.store.DataStore;
 import com.yahoo.rdl.Timestamp;
-import org.eclipse.jetty.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.security.PrivateKey;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -272,7 +271,7 @@ public class ZTSTestUtils {
                 "update", domainName1 + ":resource4", com.yahoo.athenz.zms.AssertionEffect.ALLOW);
         policies.add(policy4);
 
-        // setup our signed domains and process them
+        // set up our signed domains and process them
 
         List<Group> groups = new ArrayList<>();
         if (group1 != null) {
@@ -395,98 +394,10 @@ public class ZTSTestUtils {
         return Timestamp.fromMillis(date.millis() + TimeUnit.MILLISECONDS.convert(days, TimeUnit.DAYS));
     }
 
-    public static Map<String, AttributeValue> generateAttributeValues(String service,
-                                                                String instanceId,
-                                                                String currentTime,
-                                                                String lastNotifiedTime,
-                                                                String lastNotifiedServer,
-                                                                String expiryTime,
-                                                                String hostName) {
-        String provider = "provider";
-        String primaryKey = provider + ":" + service + ":" + instanceId;
-        Map<String, AttributeValue> item = new HashMap<>();
-        item.put("primaryKey", new AttributeValue(primaryKey));
-        item.put("service", new AttributeValue(service));
-        item.put("provider", new AttributeValue(provider));
-        item.put("instanceId", new AttributeValue(instanceId));
-        item.put("currentSerial", new AttributeValue("currentSerial"));
+    public static WorkloadRecord createWorkloadRecord(Date creationTime, Date updateTime,
+           final String provider, final String instanceId, final String hostname, final String ip,
+           final String service, Date certExpiryTime) {
 
-        AttributeValue currentTimeVal = new AttributeValue();
-        currentTimeVal.setN(currentTime);
-
-        if (!StringUtil.isEmpty(currentTime)) {
-            item.put("currentTime", currentTimeVal);
-            item.put("prevTime", currentTimeVal);
-        }
-
-        item.put("currentIP", new AttributeValue("currentIP"));
-        item.put("prevSerial", new AttributeValue("prevSerial"));
-        item.put("prevIP", new AttributeValue("prevIP"));
-
-        AttributeValue clientCertVal = new AttributeValue();
-        clientCertVal.setBOOL(false);
-        item.put("clientCert", clientCertVal);
-
-        if (!StringUtil.isEmpty(lastNotifiedTime)) {
-            AttributeValue lastNotifiedTimeVal = new AttributeValue();
-            lastNotifiedTimeVal.setN(lastNotifiedTime);
-            item.put("lastNotifiedTime", lastNotifiedTimeVal);
-        }
-
-        if (!StringUtil.isEmpty(lastNotifiedServer)) {
-            item.put("lastNotifiedServer", new AttributeValue(lastNotifiedServer));
-        }
-
-        if (!StringUtil.isEmpty(expiryTime)) {
-            AttributeValue expiryTimeVal = new AttributeValue();
-            expiryTimeVal.setN(expiryTime);
-            item.put("expiryTime", expiryTimeVal);
-        }
-
-        if (!StringUtil.isEmpty(hostName)) {
-            item.put("hostName", new AttributeValue(hostName));
-        }
-
-        return item;
-    }
-
-    public static Map<String, AttributeValue> generateWorkloadAttributeValues(String service,
-                                                                              String instanceId,
-                                                                              String provider,
-                                                                              String ip,
-                                                                              String hostname,
-                                                                              String creationTime,
-                                                                              String updateTime,
-                                                                              String certExpiryTime) {
-        String primaryKey = service + "#" + instanceId + "#" + ip;
-        Map<String, AttributeValue> item = new HashMap<>();
-        item.put("primaryKey", new AttributeValue(primaryKey));
-        item.put("service", new AttributeValue(service));
-        item.put("provider", new AttributeValue(provider));
-        item.put("instanceId", new AttributeValue(instanceId));
-        item.put("ip", new AttributeValue(ip));
-        item.put("hostname", new AttributeValue(hostname));
-        AttributeValue creationTimeVal = new AttributeValue();
-        creationTimeVal.setN(creationTime);
-        AttributeValue updateTimeVal = new AttributeValue();
-        updateTimeVal.setN(updateTime);
-        AttributeValue certExpiryTimeVal = new AttributeValue();
-        certExpiryTimeVal.setN(certExpiryTime);
-        item.put("creationTime", creationTimeVal);
-        item.put("updateTime", updateTimeVal);
-        item.put("certExpiryTime", certExpiryTimeVal);
-
-        return item;
-    }
-
-    public static WorkloadRecord createWorkloadRecord(Date creationTime,
-                                                      Date updateTime,
-                                                      String provider,
-                                                      String instanceId,
-                                                      String hostname,
-                                                      String ip,
-                                                      String service,
-                                                      Date certExpiryTime) {
         WorkloadRecord workloadRecord = new WorkloadRecord();
         workloadRecord.setCreationTime(creationTime);
         workloadRecord.setUpdateTime(updateTime);
@@ -500,7 +411,7 @@ public class ZTSTestUtils {
     }
 
     public static String getAssumeRoleResource(final String domainName, final String roleName,
-                                         boolean wildCardRole, boolean wildCardDomain) {
+            boolean wildCardRole, boolean wildCardDomain) {
         if (wildCardRole && wildCardDomain) {
             return "*:role.*";
         } else if (wildCardDomain) {
@@ -592,5 +503,90 @@ public class ZTSTestUtils {
         roles.add(role);
 
         return ZTSTestUtils.createSignedDomain(domainName, roles, null, null, null, null);
+    }
+
+    public static boolean validArrayMember(String[] array, String member) {
+        for (String item : array) {
+            if (item.equals(member)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static SignedDomain signedAuthorizedProviderDomain(PrivateKey privateKey) {
+
+        SignedDomain signedDomain = new SignedDomain();
+
+        List<Role> roles = new ArrayList<>();
+
+        Role role = new Role();
+        role.setName(ResourceUtils.roleResourceName("sys.auth", "providers"));
+        List<RoleMember> members = new ArrayList<>();
+        members.add(new RoleMember().setMemberName("athenz.provider"));
+        members.add(new RoleMember().setMemberName("sys.auth.zts"));
+        role.setRoleMembers(members);
+        roles.add(role);
+
+        List<com.yahoo.athenz.zms.Policy> policies = new ArrayList<>();
+
+        com.yahoo.athenz.zms.Policy policy = new com.yahoo.athenz.zms.Policy();
+        com.yahoo.athenz.zms.Assertion assertion1 = new com.yahoo.athenz.zms.Assertion();
+        assertion1.setResource("sys.auth:instance");
+        assertion1.setAction("launch");
+        assertion1.setRole("sys.auth:role.providers");
+
+        com.yahoo.athenz.zms.Assertion assertion2 = new com.yahoo.athenz.zms.Assertion();
+        assertion2.setResource("sys.auth:dns.ostk.athenz.cloud");
+        assertion2.setAction("launch");
+        assertion2.setRole("sys.auth:role.providers");
+
+        com.yahoo.athenz.zms.Assertion assertion3 = new com.yahoo.athenz.zms.Assertion();
+        assertion3.setResource("sys.auth:hostname.athenz.cloud");
+        assertion3.setAction("launch");
+        assertion3.setRole("sys.auth:role.providers");
+
+        com.yahoo.athenz.zms.Assertion assertion4 = new com.yahoo.athenz.zms.Assertion();
+        assertion4.setResource("sys.auth:hostname.athenz.info");
+        assertion4.setAction("launch");
+        assertion4.setRole("sys.auth:role.providers");
+
+        List<com.yahoo.athenz.zms.Assertion> assertions = new ArrayList<>();
+        assertions.add(assertion1);
+        assertions.add(assertion2);
+        assertions.add(assertion3);
+        assertions.add(assertion4);
+
+        policy.setAssertions(assertions);
+        policy.setName("sys.auth:policy.providers");
+        policies.add(policy);
+
+        com.yahoo.athenz.zms.DomainPolicies domainPolicies = new com.yahoo.athenz.zms.DomainPolicies();
+        domainPolicies.setDomain("sys.auth");
+        domainPolicies.setPolicies(policies);
+
+        com.yahoo.athenz.zms.SignedPolicies signedPolicies = new com.yahoo.athenz.zms.SignedPolicies();
+        signedPolicies.setContents(domainPolicies);
+        signedPolicies.setSignature(Crypto.sign(SignUtils.asCanonicalString(domainPolicies), privateKey));
+        signedPolicies.setKeyId("0");
+
+        DomainData domain = new DomainData();
+        domain.setName("sys.auth");
+        domain.setRoles(roles);
+        domain.setPolicies(signedPolicies);
+        domain.setModified(Timestamp.fromCurrentTime());
+
+        signedDomain.setDomain(domain);
+
+        signedDomain.setSignature(Crypto.sign(SignUtils.asCanonicalString(domain), privateKey));
+        signedDomain.setKeyId("0");
+
+        return signedDomain;
+    }
+
+    public static void setStaticField(Class<?> clazz, String fieldName, Object value) throws Exception {
+        Field field = clazz.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(null, value);
     }
 }

@@ -14,11 +14,10 @@ import (
 	"github.com/AthenZ/athenz/clients/go/zts"
 	"github.com/AthenZ/athenz/libs/go/athenz-common/log"
 	siautil "github.com/AthenZ/athenz/libs/go/sia/util"
-	"github.com/ardielle/ardielle-go/rdl"
-	"gopkg.in/square/go-jose.v2"
-
 	"github.com/AthenZ/athenz/libs/go/zmssvctoken"
 	"github.com/AthenZ/athenz/utils/zpe-updater/util"
+	"github.com/ardielle/ardielle-go/rdl"
+	"github.com/go-jose/go-jose/v4"
 )
 
 // Default and maximal startup delay values.
@@ -204,7 +203,7 @@ func (config ZpuConfiguration) loadAthenzJwks() {
 	jwkConf := &zts.AthenzJWKConfig{}
 	err := siautil.ReadAthenzJwkConf(jwkConfFile, jwkConf)
 	if err != nil {
-		log.Printf(err.Error())
+		log.Printf("%s\n", err.Error())
 		return
 	}
 	loadJwkList(jwkConf.Zts.Keys, config.ZtsKeysmap)

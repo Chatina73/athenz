@@ -18,65 +18,73 @@ package com.yahoo.athenz.zms.utils;
 import com.yahoo.athenz.auth.Authority;
 import com.yahoo.athenz.auth.Principal;
 import com.yahoo.athenz.auth.impl.SimplePrincipal;
+import com.yahoo.athenz.common.ServerCommonConsts;
 import com.yahoo.athenz.common.metrics.Metric;
+import com.yahoo.athenz.common.server.ServerResourceException;
 import com.yahoo.athenz.common.server.log.AuditLogMsgBuilder;
 import com.yahoo.athenz.common.server.log.AuditLogger;
 import com.yahoo.athenz.common.server.log.AuditLoggerFactory;
 import com.yahoo.athenz.common.server.log.impl.DefaultAuditLoggerFactory;
 import com.yahoo.athenz.zms.*;
+import com.yahoo.athenz.zms.config.AuditTemplate;
+import com.yahoo.rdl.Timestamp;
+import com.yahoo.rdl.Validator;
 import jakarta.servlet.http.HttpServletRequestWrapper;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 import static com.yahoo.athenz.zms.utils.ZMSUtils.emptyIfNull;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.testng.Assert.*;
 
 public class ZMSUtilsTest {
 
     @Test
+    public void testZMSUtils() {
+        new ZMSUtils();
+    }
+
+    @Test
     public void testRemoveDomainPrefix() {
-        assertEquals("role1", ZMSUtils.removeDomainPrefix("role1", "domain1", "role."));
-        assertEquals("role1", ZMSUtils.removeDomainPrefix("domain1:role.role1", "domain1", "role."));
-        assertEquals("domain1:role.role1", ZMSUtils.removeDomainPrefix("domain1:role.role1", "domain2", "role."));
-        assertEquals("domain1:role.role1", ZMSUtils.removeDomainPrefix("domain1:role.role1", "domain1", "policy."));
-        assertEquals("policy1", ZMSUtils.removeDomainPrefix("domain1:policy.policy1", "domain1", "policy."));
+        assertEquals(ZMSUtils.removeDomainPrefix("role1", "domain1", "role."), "role1");
+        assertEquals(ZMSUtils.removeDomainPrefix("domain1:role.role1", "domain1", "role."), "role1");
+        assertEquals(ZMSUtils.removeDomainPrefix("domain1:role.role1", "domain2", "role."), "domain1:role.role1");
+        assertEquals(ZMSUtils.removeDomainPrefix("domain1:role.role1", "domain1", "policy."), "domain1:role.role1");
+        assertEquals(ZMSUtils.removeDomainPrefix("domain1:policy.policy1", "domain1", "policy."), "policy1");
     }
 
     @Test
     public void testGetTenantResourceGroupRolePrefix() {
 
-        assertEquals("storage.tenant.sports.api.",
-                ZMSUtils.getTenantResourceGroupRolePrefix("storage", "sports.api", null));
-        assertEquals("storage.tenant.sports.api.res_group.",
-                ZMSUtils.getTenantResourceGroupRolePrefix("storage", "sports.api", ""));
-        assertEquals("storage.tenant.sports.api.res_group.Group1.",
-                ZMSUtils.getTenantResourceGroupRolePrefix("storage", "sports.api", "Group1"));
+        assertEquals(ZMSUtils.getTenantResourceGroupRolePrefix("storage", "sports.api", null),
+                "storage.tenant.sports.api.");
+        assertEquals(ZMSUtils.getTenantResourceGroupRolePrefix("storage", "sports.api", ""),
+                "storage.tenant.sports.api.res_group.");
+        assertEquals(ZMSUtils.getTenantResourceGroupRolePrefix("storage", "sports.api", "Group1"),
+                "storage.tenant.sports.api.res_group.Group1.");
     }
 
     @Test
     public void testGetTrustedResourceGroupRolePrefix() {
-        assertEquals("coretech:role.storage.tenant.sports.api.",
-                ZMSUtils.getTrustedResourceGroupRolePrefix("coretech", "storage", "sports.api", null));
-        assertEquals("coretech:role.storage.tenant.sports.api.",
-                ZMSUtils.getTrustedResourceGroupRolePrefix("coretech", "storage", "sports.api", ""));
-        assertEquals("coretech:role.storage.tenant.sports.api.res_group.group1.",
-                ZMSUtils.getTrustedResourceGroupRolePrefix("coretech", "storage", "sports.api", "group1"));
+        assertEquals(ZMSUtils.getTrustedResourceGroupRolePrefix("coretech", "storage", "sports.api", null),
+                "coretech:role.storage.tenant.sports.api.");
+        assertEquals(ZMSUtils.getTrustedResourceGroupRolePrefix("coretech", "storage", "sports.api", ""),
+                "coretech:role.storage.tenant.sports.api.");
+        assertEquals(ZMSUtils.getTrustedResourceGroupRolePrefix("coretech", "storage", "sports.api", "group1"),
+                "coretech:role.storage.tenant.sports.api.res_group.group1.");
     }
 
     @Test
     public void testGetProviderResourceGroupRolePrefix() {
-        assertEquals("sports.hosted.res_group.hockey.",
-                ZMSUtils.getProviderResourceGroupRolePrefix("sports", "hosted", "hockey"));
-        assertEquals("sports.hosted.",
-                ZMSUtils.getProviderResourceGroupRolePrefix("sports", "hosted", null));
-        assertEquals("sports.hosted.",
-                ZMSUtils.getProviderResourceGroupRolePrefix("sports", "hosted", ""));
+        assertEquals(ZMSUtils.getProviderResourceGroupRolePrefix("sports", "hosted", "hockey"),
+                "sports.hosted.res_group.hockey.");
+        assertEquals(ZMSUtils.getProviderResourceGroupRolePrefix("sports", "hosted", null),
+                "sports.hosted.");
+        assertEquals(ZMSUtils.getProviderResourceGroupRolePrefix("sports", "hosted", ""),
+                "sports.hosted.");
     }
 
     @Test
@@ -137,8 +145,8 @@ public class ZMSUtilsTest {
     @Test
     public void testExtractRoleName() {
 
-        assertEquals("role1", ZMSUtils.extractRoleName("my-domain1", "my-domain1:role.role1"));
-        assertEquals("role1.role2", ZMSUtils.extractRoleName("my-domain1", "my-domain1:role.role1.role2"));
+        assertEquals(ZMSUtils.extractRoleName("my-domain1", "my-domain1:role.role1"), "role1");
+        assertEquals(ZMSUtils.extractRoleName("my-domain1", "my-domain1:role.role1.role2"), "role1.role2");
 
         // invalid roles names
         assertNull(ZMSUtils.extractRoleName("my-domain1", "my-domain1:role1"));
@@ -152,8 +160,8 @@ public class ZMSUtilsTest {
     @Test
     public void testExtractEntityName() {
 
-        assertEquals("entity1", ZMSUtils.extractEntityName("my-domain1", "my-domain1:entity.entity1"));
-        assertEquals("entity1.entity2", ZMSUtils.extractEntityName("my-domain1", "my-domain1:entity.entity1.entity2"));
+        assertEquals(ZMSUtils.extractEntityName("my-domain1", "my-domain1:entity.entity1"), "entity1");
+        assertEquals(ZMSUtils.extractEntityName("my-domain1", "my-domain1:entity.entity1.entity2"), "entity1.entity2");
 
         // invalid entity names
         assertNull(ZMSUtils.extractEntityName("my-domain1", "my-domain1:entity1"));
@@ -167,8 +175,8 @@ public class ZMSUtilsTest {
     @Test
     public void testExtractServiceName() {
 
-        assertEquals("service1", ZMSUtils.extractServiceName("my-domain1", "my-domain1.service1"));
-        assertEquals("service1", ZMSUtils.extractServiceName("my-domain1.domain2", "my-domain1.domain2.service1"));
+        assertEquals(ZMSUtils.extractServiceName("my-domain1", "my-domain1.service1"), "service1");
+        assertEquals(ZMSUtils.extractServiceName("my-domain1.domain2", "my-domain1.domain2.service1"), "service1");
 
         // invalid service names
         assertNull(ZMSUtils.extractServiceName("my-domain1", "my-domain1:service1"));
@@ -182,8 +190,8 @@ public class ZMSUtilsTest {
     @Test
     public void testExtractPolicyName() {
 
-        assertEquals("policy1", ZMSUtils.extractPolicyName("my-domain1", "my-domain1:policy.policy1"));
-        assertEquals("policy1.policy2", ZMSUtils.extractPolicyName("my-domain1", "my-domain1:policy.policy1.policy2"));
+        assertEquals(ZMSUtils.extractPolicyName("my-domain1", "my-domain1:policy.policy1"), "policy1");
+        assertEquals(ZMSUtils.extractPolicyName("my-domain1", "my-domain1:policy.policy1.policy2"), "policy1.policy2");
 
         // invalid policies names
         assertNull(ZMSUtils.extractPolicyName("my-domain1", "my-domain1:policy1"));
@@ -197,24 +205,66 @@ public class ZMSUtilsTest {
     @Test
     public void testIsUserAuthorityFilterValid() {
 
+        StringBuilder failedAuthorityFilter = new StringBuilder();
         Authority mockAuthority = Mockito.mock(Authority.class);
         Mockito.when(mockAuthority.isAttributeSet("user.john", "contractor")).thenReturn(true);
         Mockito.when(mockAuthority.isAttributeSet("user.john", "employee")).thenReturn(false);
         Mockito.when(mockAuthority.isAttributeSet("user.john", "local")).thenReturn(true);
+        Mockito.when(mockAuthority.isAttributeRevocable(anyString())).thenReturn(true);
 
         // non-users are always false
-        assertFalse(ZMSUtils.isUserAuthorityFilterValid(mockAuthority, "filterList", "athenz.test"));
+        failedAuthorityFilter.setLength(0);
+        assertFalse(ZMSUtils.isUserAuthorityFilterValid(mockAuthority, Set.of("filterList"), "athenz.test",
+                failedAuthorityFilter));
+        assertEquals(failedAuthorityFilter.toString(), "filterList");
 
         // single filter value
-        assertTrue(ZMSUtils.isUserAuthorityFilterValid(mockAuthority, "contractor", "user.john"));
-        assertFalse(ZMSUtils.isUserAuthorityFilterValid(mockAuthority, "employee", "user.john"));
+        failedAuthorityFilter.setLength(0);
+        assertTrue(ZMSUtils.isUserAuthorityFilterValid(mockAuthority, Set.of("contractor"), "user.john",
+                failedAuthorityFilter));
+        assertEquals(failedAuthorityFilter.length(), 0);
+
+        failedAuthorityFilter.setLength(0);
+        assertFalse(ZMSUtils.isUserAuthorityFilterValid(mockAuthority, Set.of("employee"), "user.john",
+                failedAuthorityFilter));
+        assertEquals(failedAuthorityFilter.toString(), "employee");
+
+        // passing null for the filter authority failure
+
+        assertTrue(ZMSUtils.isUserAuthorityFilterValid(mockAuthority, Set.of("contractor"), "user.john", null));
+        assertFalse(ZMSUtils.isUserAuthorityFilterValid(mockAuthority, Set.of("employee"), "user.john", null));
 
         // multiple values
-        assertTrue(ZMSUtils.isUserAuthorityFilterValid(mockAuthority, "contractor,local", "user.john"));
-        assertTrue(ZMSUtils.isUserAuthorityFilterValid(mockAuthority, "local,contractor", "user.john"));
-        assertFalse(ZMSUtils.isUserAuthorityFilterValid(mockAuthority, "local,contractor,employee", "user.john"));
-        assertFalse(ZMSUtils.isUserAuthorityFilterValid(mockAuthority, "local,employee,contractor", "user.john"));
-        assertFalse(ZMSUtils.isUserAuthorityFilterValid(mockAuthority, "employee,contractor", "user.john"));
+        failedAuthorityFilter.setLength(0);
+        assertTrue(ZMSUtils.isUserAuthorityFilterValid(mockAuthority,
+                Set.of("contractor", "local"), "user.john", failedAuthorityFilter));
+        assertEquals(failedAuthorityFilter.length(), 0);
+
+        failedAuthorityFilter.setLength(0);
+        assertTrue(ZMSUtils.isUserAuthorityFilterValid(mockAuthority,
+                Set.of("local", "contractor"), "user.john", failedAuthorityFilter));
+        assertEquals(failedAuthorityFilter.length(), 0);
+
+        failedAuthorityFilter.setLength(0);
+        assertFalse(ZMSUtils.isUserAuthorityFilterValid(mockAuthority,
+                Set.of("local", "contractor", "employee"), "user.john", failedAuthorityFilter));
+        assertEquals(failedAuthorityFilter.toString(), "employee");
+
+        failedAuthorityFilter.setLength(0);
+        assertFalse(ZMSUtils.isUserAuthorityFilterValid(mockAuthority,
+                Set.of("local", "employee" , "contractor"), "user.john", failedAuthorityFilter));
+        assertEquals(failedAuthorityFilter.toString(), "employee");
+
+        failedAuthorityFilter.setLength(0);
+        assertFalse(ZMSUtils.isUserAuthorityFilterValid(mockAuthority,
+                Set.of("employee", "contractor"), "user.john", failedAuthorityFilter));
+        assertEquals(failedAuthorityFilter.toString(), "employee");
+
+        // passing null for the filter name
+        assertFalse(ZMSUtils.isUserAuthorityFilterValid(mockAuthority,
+                Set.of("local", "employee" , "contractor"), "user.john", null));
+        assertFalse(ZMSUtils.isUserAuthorityFilterValid(mockAuthority,
+                Set.of("employee", "contractor"), "user.john", null));
     }
 
     @Test
@@ -225,29 +275,14 @@ public class ZMSUtilsTest {
         assertNull(ZMSUtils.combineUserAuthorityFilters("", null));
         assertNull(ZMSUtils.combineUserAuthorityFilters("", ""));
 
-        assertEquals("role", ZMSUtils.combineUserAuthorityFilters("role", null));
-        assertEquals("role", ZMSUtils.combineUserAuthorityFilters("role", ""));
+        assertEquals(ZMSUtils.combineUserAuthorityFilters("role", null), "role");
+        assertEquals(ZMSUtils.combineUserAuthorityFilters("role", ""), "role");
 
-        assertEquals("domain", ZMSUtils.combineUserAuthorityFilters(null, "domain"));
-        assertEquals("domain", ZMSUtils.combineUserAuthorityFilters("", "domain"));
+        assertEquals(ZMSUtils.combineUserAuthorityFilters(null, "domain"), "domain");
+        assertEquals(ZMSUtils.combineUserAuthorityFilters("", "domain"), "domain");
 
-        assertEquals("role,domain", ZMSUtils.combineUserAuthorityFilters("role", "domain"));
-        assertEquals("same,same", ZMSUtils.combineUserAuthorityFilters("same", "same"));
-    }
-
-    @Test
-    public void testLowerDomainInResource() {
-        assertEquals(ZMSUtils.lowerDomainInResource("DOMAIN:ResourcE1"), "domain:ResourcE1");
-        assertEquals(ZMSUtils.lowerDomainInResource("domain:ResOurcE1"), "domain:ResOurcE1");
-        assertEquals(ZMSUtils.lowerDomainInResource("domain:resource1"), "domain:resource1");
-        assertEquals(ZMSUtils.lowerDomainInResource("DOMAIN:ResourcE2(ResourcE3)"), "domain:ResourcE2(ResourcE3)");
-        assertEquals(ZMSUtils.lowerDomainInResource("DOMAIN:ResourcE1/ResourcE2"), "domain:ResourcE1/ResourcE2");
-        assertEquals(ZMSUtils.lowerDomainInResource("DOMAIN:resource4[*]/data1"), "domain:resource4[*]/data1");
-        assertEquals(ZMSUtils.lowerDomainInResource("justResource"), "justResource");
-        assertEquals(ZMSUtils.lowerDomainInResource("WrongDelimiter.NoOp"), "WrongDelimiter.NoOp");
-        assertEquals(ZMSUtils.lowerDomainInResource("DOMAIN:Many:Delimiters:THIS:TIME"), "domain:Many:Delimiters:THIS:TIME");
-        assertEquals(ZMSUtils.lowerDomainInResource(""), "");
-        assertNull(ZMSUtils.lowerDomainInResource(null));
+        assertEquals(ZMSUtils.combineUserAuthorityFilters("role", "domain"), "role,domain");
+        assertEquals(ZMSUtils.combineUserAuthorityFilters("same", "same"), "same,same");
     }
 
     @Test
@@ -255,7 +290,7 @@ public class ZMSUtilsTest {
 
         // empty role filter cases
 
-        assertFalse(ZMSUtils.userAuthorityAttrMissing(null, "test1"));
+        assertFalse(ZMSUtils.userAuthorityAttrMissing((String) null, "test1"));
         assertFalse(ZMSUtils.userAuthorityAttrMissing("", "test1"));
 
         // if role filter is not empty but group is - then failure
@@ -281,51 +316,6 @@ public class ZMSUtilsTest {
 
         assertTrue(ZMSUtils.userAuthorityAttrMissing("test1", "test2"));
         assertTrue(ZMSUtils.userAuthorityAttrMissing("test2,test3,test1", "test4,test3,test2"));
-    }
-
-    @Test
-    public void testCreatePrincipalForName() {
-
-        String userDomain = "user";
-        String userDomainAlias = null;
-
-        Principal principal = ZMSUtils.createPrincipalForName("joe", userDomain, userDomainAlias);
-        assertEquals(principal.getFullName(), "user.joe");
-
-        principal = ZMSUtils.createPrincipalForName("joe-smith", userDomain, userDomainAlias);
-        assertEquals(principal.getFullName(), "user.joe-smith");
-
-        principal = ZMSUtils.createPrincipalForName("user.joe", userDomain, userDomainAlias);
-        assertEquals(principal.getFullName(), "user.joe");
-
-        principal = ZMSUtils.createPrincipalForName("user.joe.storage", userDomain, userDomainAlias);
-        assertEquals(principal.getFullName(), "user.joe.storage");
-
-        principal = ZMSUtils.createPrincipalForName("alias.joe", userDomain, userDomainAlias);
-        assertEquals(principal.getFullName(), "alias.joe");
-
-        principal = ZMSUtils.createPrincipalForName("alias.joe.storage", userDomain, userDomainAlias);
-        assertEquals(principal.getFullName(), "alias.joe.storage");
-
-        userDomainAlias = "alias";
-
-        principal = ZMSUtils.createPrincipalForName("joe", userDomain, userDomainAlias);
-        assertEquals(principal.getFullName(), "user.joe");
-
-        principal = ZMSUtils.createPrincipalForName("joe-smith", userDomain, userDomainAlias);
-        assertEquals(principal.getFullName(), "user.joe-smith");
-
-        principal = ZMSUtils.createPrincipalForName("user.joe", userDomain, userDomainAlias);
-        assertEquals(principal.getFullName(), "user.joe");
-
-        principal = ZMSUtils.createPrincipalForName("user.joe.storage", userDomain, userDomainAlias);
-        assertEquals(principal.getFullName(), "user.joe.storage");
-
-        principal = ZMSUtils.createPrincipalForName("alias.joe", userDomain, userDomainAlias);
-        assertEquals(principal.getFullName(), "user.joe");
-
-        principal = ZMSUtils.createPrincipalForName("alias.joe.storage", userDomain, userDomainAlias);
-        assertEquals(principal.getFullName(), "alias.joe.storage");
     }
 
     @Test
@@ -359,33 +349,48 @@ public class ZMSUtilsTest {
     @Test
     public void testConfiguredExpiryMillis() {
 
-        assertEquals(ZMSUtils.configuredDueDateMillis(null, null), 0);
-        assertEquals(ZMSUtils.configuredDueDateMillis(null, -3), 0);
-        assertEquals(ZMSUtils.configuredDueDateMillis(null, 0), 0);
-        assertEquals(ZMSUtils.configuredDueDateMillis(-3, null), 0);
-        assertEquals(ZMSUtils.configuredDueDateMillis(0, null), 0);
-        assertEquals(ZMSUtils.configuredDueDateMillis(-3, -3), 0);
-        assertEquals(ZMSUtils.configuredDueDateMillis(0, 0), 0);
+        assertEquals(ZMSUtils.configuredDueDateMillis(0, null, null), 0);
+        assertEquals(ZMSUtils.configuredDueDateMillis(0, null, -3), 0);
+        assertEquals(ZMSUtils.configuredDueDateMillis(0, null, 0), 0);
+        assertEquals(ZMSUtils.configuredDueDateMillis(0, -3, null), 0);
+        assertEquals(ZMSUtils.configuredDueDateMillis(0, 0, null), 0);
+        assertEquals(ZMSUtils.configuredDueDateMillis(0, -3, -3), 0);
+        assertEquals(ZMSUtils.configuredDueDateMillis(0, 0, 0), 0);
 
         long extMillis = TimeUnit.MILLISECONDS.convert(10, TimeUnit.DAYS);
-        long millis = ZMSUtils.configuredDueDateMillis(null, 10);
+        long millis = ZMSUtils.configuredDueDateMillis(0, null, 10);
         assertTrue(ZMSTestUtils.validateDueDate(millis, extMillis));
-        millis = ZMSUtils.configuredDueDateMillis(null, 10);
+        millis = ZMSUtils.configuredDueDateMillis(0, null, 10);
         assertTrue(ZMSTestUtils.validateDueDate(millis, extMillis));
-        millis = ZMSUtils.configuredDueDateMillis(-1, 10);
+        millis = ZMSUtils.configuredDueDateMillis(0, -1, 10);
         assertTrue(ZMSTestUtils.validateDueDate(millis, extMillis));
-        millis = ZMSUtils.configuredDueDateMillis(0, 10);
+        millis = ZMSUtils.configuredDueDateMillis(0, 0, 10);
         assertTrue(ZMSTestUtils.validateDueDate(millis, extMillis));
-        millis = ZMSUtils.configuredDueDateMillis(5, 10);
+        millis = ZMSUtils.configuredDueDateMillis(0, 5, 10);
         assertTrue(ZMSTestUtils.validateDueDate(millis, extMillis));
-        millis = ZMSUtils.configuredDueDateMillis(20, 10);
+        millis = ZMSUtils.configuredDueDateMillis(0, 20, 10);
         assertTrue(ZMSTestUtils.validateDueDate(millis, extMillis));
 
-        millis = ZMSUtils.configuredDueDateMillis(10, null);
+        millis = ZMSUtils.configuredDueDateMillis(0, 10, null);
         assertTrue(ZMSTestUtils.validateDueDate(millis, extMillis));
-        millis = ZMSUtils.configuredDueDateMillis(10, -1);
+        millis = ZMSUtils.configuredDueDateMillis(0, 10, -1);
         assertTrue(ZMSTestUtils.validateDueDate(millis, extMillis));
-        millis = ZMSUtils.configuredDueDateMillis(10, 0);
+        millis = ZMSUtils.configuredDueDateMillis(0, 10, 0);
+        assertTrue(ZMSTestUtils.validateDueDate(millis, extMillis));
+
+        millis = ZMSUtils.configuredDueDateMillis(10, 0, 0);
+        assertTrue(ZMSTestUtils.validateDueDate(millis, extMillis));
+        millis = ZMSUtils.configuredDueDateMillis(20, 10, 0);
+        assertTrue(ZMSTestUtils.validateDueDate(millis, extMillis));
+        millis = ZMSUtils.configuredDueDateMillis(10, 100, 0);
+        assertTrue(ZMSTestUtils.validateDueDate(millis, extMillis));
+        millis = ZMSUtils.configuredDueDateMillis(10, 100, 20);
+        assertTrue(ZMSTestUtils.validateDueDate(millis, extMillis));
+        millis = ZMSUtils.configuredDueDateMillis(20, 0, 10);
+        assertTrue(ZMSTestUtils.validateDueDate(millis, extMillis));
+        millis = ZMSUtils.configuredDueDateMillis(10, 0, 100);
+        assertTrue(ZMSTestUtils.validateDueDate(millis, extMillis));
+        millis = ZMSUtils.configuredDueDateMillis(10, 20, 100);
         assertTrue(ZMSTestUtils.validateDueDate(millis, extMillis));
     }
 
@@ -399,5 +404,181 @@ public class ZMSUtilsTest {
 
         l = emptyIfNull(Collections.singletonList("s"));
         assertEquals(l.size(), 1);
+    }
+
+    @Test
+    public void testSmallestExpiry() {
+
+        Timestamp currentExpiry = Timestamp.fromCurrentTime();
+        assertEquals(ZMSUtils.smallestExpiry(null, null), null);
+        assertEquals(ZMSUtils.smallestExpiry(currentExpiry, null), currentExpiry);
+        assertEquals(ZMSUtils.smallestExpiry(null, currentExpiry), currentExpiry);
+
+        Timestamp expiry1 = Timestamp.fromMillis(System.currentTimeMillis() + 1000);
+        Timestamp expiry2 = Timestamp.fromMillis(System.currentTimeMillis() - 1000);
+
+        assertEquals(ZMSUtils.smallestExpiry(expiry1, expiry2), expiry2);
+        assertEquals(ZMSUtils.smallestExpiry(expiry2, expiry1), expiry2);
+    }
+
+    @Test
+    public void testEnforceUserAuthorityFilterCheck() {
+        Authority mockAuthority = Mockito.mock(Authority.class);
+        Mockito.when(mockAuthority.isAttributeRevocable("attr1")).thenReturn(true);
+        Mockito.when(mockAuthority.isAttributeRevocable("attr2")).thenReturn(false);
+        Mockito.when(mockAuthority.isAttributeRevocable("attr3")).thenReturn(true);
+        Mockito.when(mockAuthority.isAttributeRevocable("attr4")).thenReturn(false);
+
+        assertTrue(ZMSUtils.enforceUserAuthorityFilterCheck(mockAuthority, Set.of("attr1")));
+        assertFalse(ZMSUtils.enforceUserAuthorityFilterCheck(mockAuthority, Set.of("attr2")));
+        assertTrue(ZMSUtils.enforceUserAuthorityFilterCheck(mockAuthority, Set.of("attr3")));
+        assertFalse(ZMSUtils.enforceUserAuthorityFilterCheck(mockAuthority, Set.of("attr4")));
+
+        assertTrue(ZMSUtils.enforceUserAuthorityFilterCheck(mockAuthority, Set.of("attr1", "attr3")));
+        assertTrue(ZMSUtils.enforceUserAuthorityFilterCheck(mockAuthority, Set.of("attr1", "attr2")));
+        assertTrue(ZMSUtils.enforceUserAuthorityFilterCheck(mockAuthority, Set.of("attr2", "attr3")));
+        assertTrue(ZMSUtils.enforceUserAuthorityFilterCheck(mockAuthority, Set.of("attr1", "attr2", "attr3")));
+
+        assertFalse(ZMSUtils.enforceUserAuthorityFilterCheck(mockAuthority, Set.of("attr2", "attr4")));
+    }
+
+    @Test
+    public void testIsAuditTemplateEnforced() {
+
+        AuditTemplate auditTemplate = new AuditTemplate();
+
+        // without a template configured we never enforce anything
+
+        assertFalse(ZMSUtils.isAuditTemplateEnforced(null, false, new Domain().setAuditEnabled(true)));
+        assertFalse(ZMSUtils.isAuditTemplateEnforced(null, true, new Domain().setAuditEnabled(true)
+                .setFeatureFlags(ServerCommonConsts.ZMS_DOMAIN_FEATURE_ENFORCE_AUDIT_TEMPLATE)));
+
+        // with the domain feature flag check disabled we always enforce
+        // the template regardless of the domain settings
+
+        assertTrue(ZMSUtils.isAuditTemplateEnforced(auditTemplate, false, null));
+        assertTrue(ZMSUtils.isAuditTemplateEnforced(auditTemplate, false, new Domain()));
+        assertTrue(ZMSUtils.isAuditTemplateEnforced(auditTemplate, false, new Domain().setAuditEnabled(true)));
+
+        // with the domain feature flag check enabled the domain must be
+        // audit enabled and have the enforce audit template bit set
+
+        assertFalse(ZMSUtils.isAuditTemplateEnforced(auditTemplate, true, null));
+        assertFalse(ZMSUtils.isAuditTemplateEnforced(auditTemplate, true, new Domain()));
+        assertFalse(ZMSUtils.isAuditTemplateEnforced(auditTemplate, true, new Domain().setAuditEnabled(false)
+                .setFeatureFlags(ServerCommonConsts.ZMS_DOMAIN_FEATURE_ENFORCE_AUDIT_TEMPLATE)));
+        assertFalse(ZMSUtils.isAuditTemplateEnforced(auditTemplate, true, new Domain().setAuditEnabled(true)));
+        assertFalse(ZMSUtils.isAuditTemplateEnforced(auditTemplate, true, new Domain().setAuditEnabled(true)
+                .setFeatureFlags(ServerCommonConsts.ZMS_DOMAIN_FEATURE_ALLOW_SERVICE_UNDERSCORE)));
+
+        assertTrue(ZMSUtils.isAuditTemplateEnforced(auditTemplate, true, new Domain().setAuditEnabled(true)
+                .setFeatureFlags(ServerCommonConsts.ZMS_DOMAIN_FEATURE_ENFORCE_AUDIT_TEMPLATE)));
+        assertTrue(ZMSUtils.isAuditTemplateEnforced(auditTemplate, true, new Domain().setAuditEnabled(true)
+                .setFeatureFlags(ServerCommonConsts.ZMS_DOMAIN_FEATURE_ENFORCE_AUDIT_TEMPLATE |
+                        ServerCommonConsts.ZMS_DOMAIN_FEATURE_ALLOW_SERVICE_UNDERSCORE)));
+    }
+
+    @Test
+    public void testConflictError() {
+        RuntimeException ex = ZMSUtils.conflictError("object already exists", "unittest");
+        assertTrue(ex instanceof ResourceException);
+        assertEquals(((ResourceException) ex).getCode(), ResourceException.CONFLICT);
+        assertTrue(ex.getMessage().contains("object already exists"));
+    }
+
+    @Test
+    public void testValidateObject() {
+
+        Validator validator = new Validator(ZMSSchema.instance());
+
+        // valid object - no exception
+
+        ZMSUtils.validateObject(validator, "athenz", ZMSConsts.TYPE_DOMAIN_NAME, "getdomain");
+
+        // null object
+
+        try {
+            ZMSUtils.validateObject(validator, null, ZMSConsts.TYPE_DOMAIN_NAME, "getdomain");
+            fail();
+        } catch (ResourceException ex) {
+            assertEquals(ex.getCode(), ResourceException.BAD_REQUEST);
+            assertTrue(ex.getMessage().contains("getdomain: Missing or malformed DomainName"), ex.getMessage());
+        }
+
+        // invalid simple value - the message must include the value
+
+        try {
+            ZMSUtils.validateObject(validator, "unknown_domain!", ZMSConsts.TYPE_DOMAIN_NAME, "getdomain");
+            fail();
+        } catch (ResourceException ex) {
+            assertEquals(ex.getCode(), ResourceException.BAD_REQUEST);
+            assertTrue(ex.getMessage().contains("getdomain: Invalid DomainName value: unknown_domain! "
+                    + "error: String pattern mismatch"), ex.getMessage());
+        }
+
+        // invalid complex object - the message must not include the value
+
+        Role role = new Role().setName("bad role name");
+        try {
+            ZMSUtils.validateObject(validator, role, ZMSConsts.TYPE_ROLE, "putrole");
+            fail();
+        } catch (ResourceException ex) {
+            assertEquals(ex.getCode(), ResourceException.BAD_REQUEST);
+            assertTrue(ex.getMessage().contains("putrole: Invalid Role error: String pattern mismatch"),
+                    ex.getMessage());
+            assertFalse(ex.getMessage().contains(" value: "), ex.getMessage());
+        }
+    }
+
+    @Test
+    public void testValidateObjectValidatorException() {
+
+        Validator validator = Mockito.mock(Validator.class);
+        Mockito.when(validator.validate(Mockito.any(), anyString()))
+                .thenThrow(new IllegalArgumentException("unexpected validator failure"));
+
+        try {
+            ZMSUtils.validateObject(validator, "athenz", ZMSConsts.TYPE_DOMAIN_NAME, "getdomain");
+            fail();
+        } catch (ResourceException ex) {
+            assertEquals(ex.getCode(), ResourceException.BAD_REQUEST);
+            assertTrue(ex.getMessage().contains("getdomain: Invalid DomainName value: athenz error: "
+                    + "unexpected validator failure"), ex.getMessage());
+        }
+    }
+
+    @Test
+    public void testValidationErrorMessage() {
+        assertEquals(ZMSUtils.validationErrorMessage("getdomain", "bad.domain!", "DomainName", "pattern mismatch"),
+                "getdomain: Invalid DomainName value: bad.domain! error: pattern mismatch");
+        assertEquals(ZMSUtils.validationErrorMessage("getdomain", 42, "Int32", "out of range"),
+                "getdomain: Invalid Int32 value: 42 error: out of range");
+        assertEquals(ZMSUtils.validationErrorMessage("getdomain", Boolean.TRUE, "Bool", "unexpected"),
+                "getdomain: Invalid Bool value: true error: unexpected");
+        assertEquals(ZMSUtils.validationErrorMessage("putrole", new Role(), "Role", "missing field"),
+                "putrole: Invalid Role error: missing field");
+    }
+
+    @Test
+    public void testSanitizeLogValue() {
+        assertEquals(ZMSUtils.sanitizeLogValue("athenz.api"), "athenz.api");
+        // control characters are replaced so log entries cannot be forged
+        assertEquals(ZMSUtils.sanitizeLogValue("bad\r\nforged log line\tvalue\u0000"), "bad??forged log line?value?");
+        // oversized values are truncated
+        String longValue = "a".repeat(ZMSUtils.MAX_LOG_VALUE_LENGTH + 100);
+        String sanitized = ZMSUtils.sanitizeLogValue(longValue);
+        assertEquals(sanitized.length(), ZMSUtils.MAX_LOG_VALUE_LENGTH + 3);
+        assertTrue(sanitized.endsWith("..."));
+        assertEquals(ZMSUtils.sanitizeLogValue("a".repeat(ZMSUtils.MAX_LOG_VALUE_LENGTH)).length(),
+                ZMSUtils.MAX_LOG_VALUE_LENGTH);
+    }
+
+    @Test
+    public void testValidationErrorMessageSanitized() {
+        assertEquals(ZMSUtils.validationErrorMessage("getdomain", "bad\ndomain", "DomainName", "pattern mismatch"),
+                "getdomain: Invalid DomainName value: bad?domain error: pattern mismatch");
+        String msg = ZMSUtils.validationErrorMessage("getdomain", "x".repeat(10000), "DomainName", "pattern mismatch");
+        assertTrue(msg.length() < 400, msg);
+        assertTrue(msg.contains("... error: pattern mismatch"), msg);
     }
 }

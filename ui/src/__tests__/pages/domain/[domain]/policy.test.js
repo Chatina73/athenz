@@ -22,6 +22,7 @@ import {
     renderWithRedux,
 } from '../../../../tests_utils/ComponentsTestUtils';
 import MockApi from '../../../../mock/MockApi';
+import { listUserDomains_response } from '../../../../mock/MockData';
 
 afterEach(() => {
     MockApi.cleanMockApi();
@@ -38,11 +39,8 @@ describe('PolicyPage', () => {
         const query = {
             domain: 'dom',
         };
-        let domains = [];
-        domains.push({ name: 'athens' });
-        domains.push({ name: 'athens.ci' });
-        const userId = 'pgote';
-        const domain = 'home.pgote';
+        const userId = 'user1';
+        const domain = 'home.user1';
         const domainDetails = {
             description: 'test',
             org: 'athenz',
@@ -50,7 +48,7 @@ describe('PolicyPage', () => {
             auditEnabled: false,
             account: '1231243134',
             ypmId: 0,
-            name: 'home.pgote',
+            name: 'home.user1',
             modified: '2020-01-24T18:14:51.939Z',
             id: 'a48cb050-e4fa-11e7-9d38-9d13efb959d1',
         };
@@ -74,7 +72,7 @@ describe('PolicyPage', () => {
             ),
             listUserDomains: jest.fn().mockReturnValue(
                 new Promise((resolve, reject) => {
-                    resolve(domains);
+                    resolve(listUserDomains_response);
                 })
             ),
             getPolicies: jest.fn().mockReturnValue(
@@ -82,6 +80,9 @@ describe('PolicyPage', () => {
                     resolve([]);
                 })
             ),
+            getReviewGroups: jest.fn().mockReturnValue([]),
+            getReviewRoles: jest.fn().mockReturnValue([]),
+            getPageFeatureFlag: jest.fn().mockResolvedValue({}),
         };
 
         MockApi.setMockApi(mockApi);

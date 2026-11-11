@@ -20,9 +20,9 @@ import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.style.BCStyle;
 import org.bouncycastle.asn1.x500.style.IETFUtils;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLServerSocket;
@@ -40,9 +40,7 @@ import java.security.cert.Certificate;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.X509Certificate;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
-import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.*;
 
 /**
  * this test validates that when the server changes the keyManager on the fly, no existing connections are broken
@@ -50,16 +48,17 @@ import static org.testng.Assert.assertTrue;
  */
 public class SocketTest {
 
+    private final ClassLoader classLoader = this.getClass().getClassLoader();
+
     private final int listenPort = 2000;
     private boolean running = true;
     private KeyRefresher keyRefresher;
 
-    @Before
+    @BeforeClass
     public void setup() throws Exception {
-        ClassLoader classLoader = this.getClass().getClassLoader();
         keyRefresher = Utils.generateKeyRefresher(
                 classLoader.getResource("truststore.jks").getPath(), //trust store
-                "123456".toCharArray(),
+                "secret".toCharArray(),
                 classLoader.getResource("gdpr.aws.core.cert.pem").getPath(), //public
                 classLoader.getResource("unit_test_gdpr.aws.core.key.pem").getPath() //private
         );
@@ -71,7 +70,7 @@ public class SocketTest {
         }
     }
 
-    @After
+    @AfterClass
     public void shutdown() {
         running = false;
     }
@@ -141,11 +140,10 @@ public class SocketTest {
         //send first call
         s.getOutputStream().write("ping\n".getBytes());
         String response = new BufferedReader(new InputStreamReader(s.getInputStream())).readLine();
-        assertEquals("pong", response);
-        assertEquals("athenz.production", getCN(s.getSession().getPeerCertificates()));
+        assertEquals(response, "pong");
+        assertEquals(getCN(s.getSession().getPeerCertificates()), "athenz.production");
 
         //update the ssl context on the server
-        ClassLoader classLoader = this.getClass().getClassLoader();
         keyRefresher.getKeyManagerProxy().setKeyManager(Utils.getKeyManagers(
                 classLoader.getResource("gdpr.aws.core.cert.pem").getPath(),
                 classLoader.getResource("unit_test_gdpr.aws.core.key.pem").getPath()));
@@ -159,14 +157,14 @@ public class SocketTest {
         //send second call
         s2.getOutputStream().write("ping\n".getBytes());
         response = new BufferedReader(new InputStreamReader(s2.getInputStream())).readLine();
-        assertEquals("pong", response);
-        assertEquals("athenz.production", getCN(s2.getSession().getPeerCertificates()));
+        assertEquals(response, "pong");
+        assertEquals(getCN(s2.getSession().getPeerCertificates()), "athenz.production");
 
         //retry the first call, it should still pass
         s.getOutputStream().write("ping\n".getBytes());
         response = new BufferedReader(new InputStreamReader(s.getInputStream())).readLine();
-        assertEquals("pong", response);
-        assertEquals("athenz.production", getCN(s.getSession().getPeerCertificates()));
+        assertEquals(response, "pong");
+        assertEquals(getCN(s.getSession().getPeerCertificates()), "athenz.production");
     }
 
     private void testBuildSSLContextWithBadSpecifiedVersion() {

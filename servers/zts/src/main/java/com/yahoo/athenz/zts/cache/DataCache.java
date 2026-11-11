@@ -23,10 +23,12 @@ import com.yahoo.athenz.auth.util.Crypto;
 import com.yahoo.athenz.auth.util.CryptoException;
 import com.yahoo.athenz.common.config.AuthzDetailsEntity;
 import com.yahoo.athenz.common.config.AuthzDetailsField;
+import com.yahoo.athenz.common.server.ServerResourceException;
 import com.yahoo.athenz.common.server.util.AuthzHelper;
 import com.yahoo.athenz.common.server.util.ResourceUtils;
 import com.yahoo.athenz.zms.*;
 import com.yahoo.athenz.zts.transportrules.TransportRulesProcessor;
+import org.eclipse.jetty.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,6 +50,8 @@ public class DataCache {
     private final Map<String, RoleMeta> roleMetaCache;
     private final Map<String, Set<String>> awsRoleCache;
     private final Map<String, String> publicKeyCache;
+    private final Map<String, String> svcCredsCache;
+    private final Map<String, String> svcClientIdCache;
     private final Map<String, List<String>> providerDnsSuffixCache;
     private final Map<String, List<String>> providerHostnameAllowedSuffixCache;
     private final Map<String, List<String>> providerHostnameDeniedSuffixCache;
@@ -74,6 +78,8 @@ public class DataCache {
         awsRoleCache = new HashMap<>();
         roleMetaCache = new HashMap<>();
         publicKeyCache = new HashMap<>();
+        svcCredsCache = new HashMap<>();
+        svcClientIdCache = new HashMap<>();
         providerDnsSuffixCache = new HashMap<>();
         providerHostnameAllowedSuffixCache = new HashMap<>();
         providerHostnameDeniedSuffixCache = new HashMap<>();
@@ -209,8 +215,11 @@ public class DataCache {
         }
 
         for (RoleMember roleMember : roleMembers) {
-            if (roleMember.getMemberName().contains(AuthorityConsts.GROUP_SEP)) {
-                roleMember.setPrincipalType(Principal.Type.GROUP.getValue());
+            int idx = roleMember.getMemberName().indexOf(AuthorityConsts.ATHENZ_PRINCIPAL_ENTITY_CHAR);
+            if (idx != -1) {
+                if (roleMember.getMemberName().regionMatches(idx, AuthorityConsts.GROUP_SEP, 0, AuthorityConsts.GROUP_SEP.length())) {
+                    roleMember.setPrincipalType(Principal.Type.GROUP.getValue());
+                }
             }
         }
     }
@@ -414,13 +423,41 @@ public class DataCache {
                 publicKey.getKey());
         }
     }
-    
+
+    void processServiceIdentityCreds(String serviceName, String creds) {
+
+        if (StringUtil.isEmpty(creds)) {
+            svcCredsCache.remove(serviceName);
+            return;
+        }
+
+        svcCredsCache.put(serviceName, creds);
+    }
+
+    public String getServiceIdentityCreds(final String serviceName) {
+        return svcCredsCache.get(serviceName);
+    }
+
+    void processServiceIdentityClientId(String serviceName, String clientId) {
+
+        if (StringUtil.isEmpty(clientId)) {
+            svcClientIdCache.remove(serviceName);
+            return;
+        }
+
+        svcClientIdCache.put(serviceName, clientId);
+    }
+
+    public String getServiceIdentityClientId(final String serviceName) {
+        return svcClientIdCache.get(serviceName);
+    }
+
     public void processServiceIdentity(com.yahoo.athenz.zms.ServiceIdentity service) {
 
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("Processing service identity: {}", service.getName());
         }
-        
+
         // first process the hosts for the service
 
         processServiceIdentityHosts(service.getName(), service.getHosts());
@@ -428,6 +465,14 @@ public class DataCache {
         // now process the public keys
 
         processServiceIdentityPublicKeys(service.getName(), service.getPublicKeys());
+
+        // next process the client id
+
+        processServiceIdentityClientId(service.getName(), service.getClientId());
+
+        // finally process service creds if enabled
+
+        processServiceIdentityCreds(service.getName(), service.getCreds());
     }
 
     public void processEntity(com.yahoo.athenz.zms.Entity entity, final String domainName) {
@@ -450,7 +495,7 @@ public class DataCache {
         AuthzDetailsEntity detailsEntity;
         try {
             detailsEntity = AuthzHelper.convertEntityToAuthzDetailsEntity(entity);
-        } catch (JsonProcessingException ex) {
+        } catch (JsonProcessingException | ServerResourceException ex) {
             LOGGER.error("Unable to process entity {}, error {}", entity, ex.getMessage());
             return;
         }
@@ -473,7 +518,7 @@ public class DataCache {
     /**
      * Return roles belonging to a member
      * @param member whose roles we want
-     * @return the list of roles
+     * @return the set of roles
      */
     public Set<MemberRole> getMemberRoleSet(final String member) {
         return memberRoleCache.get(member);
@@ -508,7 +553,7 @@ public class DataCache {
 
     /**
      * Return roles configured for all access
-     * @return the list of roles
+     * @return the set of roles
      */
     public Set<MemberRole> getAllMemberRoleSet() {
         return memberAllRoleCache;
@@ -516,7 +561,7 @@ public class DataCache {
     
     /**
      * Return roles configured for wildcard access
-     * @return the list of roles
+     * @return a map of roles
      */
     public Map<String, Set<MemberRole>> getPrefixMemberRoleSetMap() {
         return memberPrefixRoleCache;

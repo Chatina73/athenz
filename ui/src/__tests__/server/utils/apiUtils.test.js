@@ -16,6 +16,8 @@
 'use strict';
 
 const apiUtils = require('../../../server/utils/apiUtils');
+const testdata = require('../../../config/config')().testdata;
+const humanUser = testdata.user1;
 
 describe('apiUtils test', () => {
     test('should return pending member data', () => {
@@ -23,10 +25,10 @@ describe('apiUtils test', () => {
             {
                 domainGroupMembersList: [
                     {
-                        domainName: 'home.craman',
+                        domainName: humanUser.domain,
                         members: [
                             {
-                                memberName: 'user.craman',
+                                memberName: humanUser.id,
                                 memberGroups: [
                                     {
                                         groupName: 'testgroup',
@@ -34,7 +36,10 @@ describe('apiUtils test', () => {
                                         active: false,
                                         auditRef: 'test',
                                         requestTime: '2022-02-15T19:03:52.620Z',
-                                        requestPrincipal: 'user.craman',
+                                        requestPrincipal: humanUser.id,
+                                        reviewReminder:
+                                            '2022-02-16T18:14:12.999Z',
+                                        pendingState: 'DELETE',
                                     },
                                 ],
                             },
@@ -45,17 +50,20 @@ describe('apiUtils test', () => {
             {
                 domainRoleMembersList: [
                     {
-                        domainName: 'home.craman.subdom',
+                        domainName: `${humanUser.domain}.subdom`,
                         members: [
                             {
-                                memberName: 'user.craman',
+                                memberName: humanUser.id,
                                 memberRoles: [
                                     {
                                         roleName: 'testrole1',
                                         active: false,
                                         auditRef: 'testing1',
-                                        requestPrincipal: 'user.craman',
+                                        requestPrincipal: humanUser.id,
                                         requestTime: '2022-02-15T18:14:12.999Z',
+                                        reviewReminder:
+                                            '2022-02-17T18:14:12.999Z',
+                                        pendingState: 'ADD',
                                     },
                                 ],
                             },
@@ -68,29 +76,33 @@ describe('apiUtils test', () => {
         let data = apiUtils.getPendingDomainMemberData(values);
         expect(data).not.toBeNull;
         expect(data).toEqual({
-            'home.craman.subdomuser.cramantestrole1': {
+            [`${humanUser.domain}.subdomuser.${humanUser.id_short}testrole1`]: {
                 auditRef: '',
                 category: 'role',
-                domainName: 'home.craman.subdom',
+                domainName: `${humanUser.domain}.subdom`,
                 expiryDate: null,
-                memberName: 'user.craman',
+                memberName: humanUser.id,
                 memberNameFull: null,
-                requestPrincipal: 'user.craman',
+                requestPrincipal: humanUser.id,
                 requestPrincipalFull: null,
                 requestTime: '2022-02-15T18:14:12.999Z',
+                reviewReminder: '2022-02-17T18:14:12.999Z',
+                pendingState: 'ADD',
                 roleName: 'testrole1',
                 userComment: 'testing1',
             },
-            'home.cramanuser.cramantestgroup': {
+            [`${humanUser.domain}${humanUser.id}testgroup`]: {
                 auditRef: '',
                 category: 'group',
-                domainName: 'home.craman',
+                domainName: humanUser.domain,
                 expiryDate: '2022-09-15T19:03:52.609Z',
-                memberName: 'user.craman',
+                memberName: humanUser.id,
                 memberNameFull: null,
-                requestPrincipal: 'user.craman',
+                requestPrincipal: humanUser.id,
                 requestPrincipalFull: null,
                 requestTime: '2022-02-15T19:03:52.620Z',
+                reviewReminder: '2022-02-16T18:14:12.999Z',
+                pendingState: 'DELETE',
                 roleName: 'testgroup',
                 userComment: 'test',
             },
@@ -106,7 +118,7 @@ describe('apiUtils test', () => {
             },
         };
         let params = {
-            domainName: 'home.craman',
+            domainName: humanUser.domain,
         };
         let promises = apiUtils.getPendingDomainMembersPromise(params, req);
         expect(promises).not.toBeNull;

@@ -32,8 +32,8 @@ import (
 	"io"
 	"log"
 	"math/big"
-	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/user"
@@ -48,43 +48,20 @@ import (
 
 	"github.com/AthenZ/athenz/clients/go/zts"
 	"github.com/AthenZ/athenz/libs/go/sia/access/config"
-	"github.com/dimfeld/httptreemux"
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+type ConfirmClaim struct {
+	SpiffeUris string `json:"proxy-principals#spiffe"`
+}
+
 type AccessTokenClaims struct {
-	Audience string   `json:"aud"`
-	Scopes   []string `json:"scp"`
-	jwt.StandardClaims
-}
-
-type testServer struct {
-	listener net.Listener
-	addr     string
-}
-
-func (t *testServer) start(h http.Handler) {
-	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		log.Panicln("Unable to serve on randomly assigned port")
-	}
-	s := &http.Server{Handler: h}
-	t.listener = listener
-	t.addr = listener.Addr().String()
-
-	go func() {
-		s.Serve(listener)
-	}()
-}
-
-func (t *testServer) stop() {
-	t.listener.Close()
-}
-
-func (t *testServer) baseUrl(version string) string {
-	return "http://" + t.addr + "/" + version
+	Audience string       `json:"aud"`
+	Scopes   []string     `json:"scp"`
+	Confirm  ConfirmClaim `json:"cnf"`
+	jwt.RegisteredClaims
 }
 
 func TestToBeRefreshed(t *testing.T) {
@@ -147,6 +124,7 @@ func TestToBeRefreshed(t *testing.T) {
 	err = os.WriteFile(tpath, token(360, currentUnixTime), 0400)
 	require.Nilf(t, err, fmt.Sprintf("should be able to create token: %s", tpath))
 	err = os.Chtimes(tpath, time.Now(), time.Now().Add(-time.Minute*90))
+	require.NoError(t, err, "error changing os time on file %q: %v", tpath, err)
 
 	tpath = filepath.Join(tokenDir, domain, "reader-fail1")
 	log.Printf("Creating a token at: %s\n", tpath)
@@ -163,22 +141,62 @@ func TestToBeRefreshed(t *testing.T) {
 	err = os.WriteFile(tpath, []byte(fmt.Sprintf("{%q: %q, %q: %q}", "access_token", "signed-string", "token_type", "Bearer")), 0400)
 	require.Nilf(t, err, fmt.Sprintf("should be able to create token: %s", tpath))
 	opts := config.TokenOptions{
-		TokenDir: tokenDir,
-		Tokens:   tokens,
+		TokenDir:     tokenDir,
+		Tokens:       tokens,
+		StoreOptions: config.ZtsResponse,
 	}
 	// Valid token was issued with 1 hour validity. We will set the current time to a bit less than half an hour in the future so it will still be valid
 	// (hasn't passed "half-life").
 	// "Aged" tokens (passed their "half-life" but hasn't expired) will require refresh
 	currentTime := time.Now().Add(time.Duration(28) * time.Minute)
 	toRefresh, errors := ToBeRefreshedBasedOnTime(&opts, currentTime)
-	assert.True(t, len(errors) == 3, fmt.Sprintf("there shoud be 3 errors in fetching ToBeRefreshedBasedOnTime tokend, err: %v", err))
+	assert.True(t, len(errors) == 3, fmt.Sprintf("there shoud be 3 errors in fetching ToBeRefreshedBasedOnTime tokend, err: %v", errors))
 	log.Printf("errors so far: %+v\n", errors)
 
 	log.Printf("toRefresh: %#v\n", toRefresh)
 	assert.NotNil(t, toRefresh, "list of tokens to be refreshed should not be empty")
-	assert.True(t, len(toRefresh) == 2, fmt.Sprintf("there should be 2 tokens to be refreshed not %d", len(toRefresh)))
-	assert.Equalf(t, toRefresh[0].FileName, "writer", fmt.Sprintf("first item: %+v should be %q", toRefresh[0], "writer"))
-	assert.Equalf(t, toRefresh[1].FileName, "reader-aged", fmt.Sprintf("second item: %+v should be %q", toRefresh[0], "reader-aged"))
+	assert.True(t, len(toRefresh) == 4, fmt.Sprintf("there should be 4 tokens to be refreshed not %d", len(toRefresh)))
+	assert.Equalf(t, "writer", toRefresh[0].FileName, "first item: %+v", toRefresh[0])
+	assert.Equalf(t, "reader-aged", toRefresh[1].FileName, "second item: %+v", toRefresh[1])
+	assert.Equalf(t, "reader-fail2", toRefresh[2].FileName, "third item: %+v", toRefresh[2])
+	assert.Equalf(t, "reader-fail3", toRefresh[3].FileName, "fourth item: %+v", toRefresh[3])
+}
+
+func TestToBeRefreshedEmptyOrWhitespaceOnlyTokenFile(t *testing.T) {
+	domain := "athenz.examples"
+	service := "httpd"
+
+	cases := []struct {
+		name    string
+		content []byte
+	}{
+		{"zero_byte_file", nil},
+		{"spaces_tabs_newlines", []byte("  \t \n  \r\n")},
+		{"newlines_only", []byte("\n\n")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tokenDir := t.TempDir()
+			tokens := []config.AccessToken{
+				{FileName: "token-file", Domain: domain, Service: service},
+			}
+			domainDir := filepath.Join(tokenDir, domain)
+			require.NoError(t, os.Mkdir(domainDir, 0755))
+
+			tpath := filepath.Join(domainDir, "token-file")
+			require.NoError(t, os.WriteFile(tpath, tc.content, 0400))
+
+			opts := config.TokenOptions{
+				TokenDir:     tokenDir,
+				Tokens:       tokens,
+				StoreOptions: config.ZtsResponse,
+			}
+			toRefresh, errs := ToBeRefreshedBasedOnTime(&opts, time.Now())
+			assert.Empty(t, errs)
+			require.Len(t, toRefresh, 1)
+			assert.Equal(t, "token-file", toRefresh[0].FileName)
+		})
+	}
 }
 
 func TestToBeRefreshedWithStoreOption(t *testing.T) {
@@ -207,7 +225,7 @@ func TestToBeRefreshedWithStoreOption(t *testing.T) {
 	err = os.WriteFile(tpath, token(360000, currentUnixTime), 0400)
 	require.Nilf(t, err, fmt.Sprintf("should be able to create token: %s", tpath))
 	err = os.Chtimes(tpath, time.Now(), time.Now().Add(-time.Minute*90))
-
+	require.NoError(t, err, "error changing os time on file %q: %v", tpath, err)
 	opts := config.TokenOptions{
 		TokenDir: tokenDir,
 		Tokens:   tokens,
@@ -226,20 +244,24 @@ func TestToBeRefreshedWithStoreOption(t *testing.T) {
 func TestTokenWithStoreOption(t *testing.T) {
 	siaDir, err := os.MkdirTemp("", "sia.")
 	require.Nil(t, err, "should be able to create temp folder for sia")
-
-	// Mock ZTS AccessTokens api
-	ztsRouter := httptreemux.New()
 	eckey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
+	// Mock ZTS AccessTokens api
+	ztsRouter := http.NewServeMux()
+
 	// Mock Access Tokens
-	ztsRouter.POST("/zts/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	ztsRouter.HandleFunc("/zts/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request) {
+		// Verify the request
+		if r.Method != http.MethodPost {
+			t.Errorf("Expected POST request, got %s", r.Method)
+		}
+
 		log.Println("Called /zts/v1/instance")
 		io.WriteString(w, makeAccessToken(r, eckey))
 	})
 
-	ztsServer := &testServer{}
-	ztsServer.start(ztsRouter)
-	defer ztsServer.stop()
+	ztsServer := httptest.NewServer(ztsRouter)
+	defer ztsServer.Close()
 
 	tokenServices := []config.TokenService{
 		{Name: "httpd"},
@@ -254,7 +276,7 @@ func TestTokenWithStoreOption(t *testing.T) {
 		Tokens: []config.AccessToken{
 			{FileName: "token1", Service: "httpd", Domain: "athenz.demo", Roles: []string{"role1"}, User: username(t), Uid: uid(t), Gid: gid(t), Expiry: 7200},
 		},
-		ZtsUrl:       ztsServer.baseUrl("zts/v1"),
+		ZtsUrl:       ztsServer.URL + "/zts/v1",
 		StoreOptions: config.AccessTokenProp,
 	}
 
@@ -301,18 +323,22 @@ func TestAccessTokensSuccess(t *testing.T) {
 	siaDir := t.TempDir()
 
 	// Mock ZTS AccessTokens api
-	ztsRouter := httptreemux.New()
+	ztsRouter := http.NewServeMux()
 	eckey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
 	// Mock Access Tokens
-	ztsRouter.POST("/zts/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	ztsRouter.HandleFunc("/zts/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request) {
+		// Verify the request
+		if r.Method != http.MethodPost {
+			t.Errorf("Expected POST request, got %s", r.Method)
+		}
+
 		log.Println("Called /zts/v1/instance")
 		io.WriteString(w, makeAccessToken(r, eckey))
 	})
 
-	ztsServer := &testServer{}
-	ztsServer.start(ztsRouter)
-	defer ztsServer.stop()
+	ztsServer := httptest.NewServer(ztsRouter)
+	defer ztsServer.Close()
 
 	tokenServices := []config.TokenService{
 		{Name: "httpd"},
@@ -329,9 +355,9 @@ func TestAccessTokensSuccess(t *testing.T) {
 			{FileName: "token2", Service: "httpd", Domain: "athenz.demo", Roles: []string{"role1", "role2"}, User: username(t), Uid: uid(t), Gid: gid(t), Expiry: 7200},
 			{FileName: "token3", Service: "httpd", Domain: "athenz.demo", Roles: []string{"*"}, User: username(t), Uid: uid(t), Gid: gid(t), Expiry: 7200},
 			{FileName: "token4", Service: "httpd", Domain: "athenz.demo", Roles: []string{"token4"}, User: username(t), Uid: uid(t), Gid: gid(t), Expiry: 7200},
-			{FileName: "token1", Service: "httpd", Domain: "athenz.examples", Roles: []string{"token1"}, User: username(t), Uid: uid(t), Gid: gid(t), Expiry: 7200},
+			{FileName: "token1", Service: "httpd", Domain: "athenz.examples", Roles: []string{"token1"}, User: username(t), Uid: uid(t), Gid: gid(t), Expiry: 7200, ProxyPrincipalSpiffeUris: "spiffe://athenz/sa/proxy"},
 		},
-		ZtsUrl: ztsServer.baseUrl("zts/v1"),
+		ZtsUrl: ztsServer.URL + "/zts/v1",
 	}
 
 	log.Printf("Options fed are: %+v\n", opts)
@@ -340,12 +366,27 @@ func TestAccessTokensSuccess(t *testing.T) {
 	makeIdentity(t, opts)
 
 	// 1) Normal Fetch Tokens
+	opts.StoreOptions = config.ZtsResponse
 	refreshed, errs := Fetch(opts)
 	assert.Lenf(t, errs, 0, "should be able to create access tokens, errs: %v", errs)
 	assert.Lenf(t, refreshed, 5, "expected 5 refreshed access tokens but the number was %v: %v", len(refreshed), refreshed)
 	assertAccessTokens(t, opts, true)
 
-	// 2) Write token errors
+	// 2) Save tokens with quotes
+	opts.StoreOptions = config.AccessTokenProp
+	refreshed, errs = Fetch(opts)
+	assert.Lenf(t, errs, 0, "should be able to create access tokens, errs: %v", errs)
+	assert.Lenf(t, refreshed, 5, "expected 5 refreshed access tokens but the number was %v: %v", len(refreshed), refreshed)
+	assertAccessTokens(t, opts, true)
+
+	// 3) Save tokens without quotes
+	opts.StoreOptions = config.AccessTokenWithoutQuotesProp
+	refreshed, errs = Fetch(opts)
+	assert.Lenf(t, errs, 0, "should be able to create access tokens, errs: %v", errs)
+	assert.Lenf(t, refreshed, 5, "expected 5 refreshed access tokens but the number was %v: %v", len(refreshed), refreshed)
+	assertAccessTokens(t, opts, true)
+
+	// 4) Write token errors
 	// Set old time stamp on a token
 	tpath := filepath.Join(opts.TokenDir, "athenz.demo", "token1")
 	err := os.Chtimes(tpath, time.Now(), time.Now().Add(-90*time.Minute))
@@ -361,18 +402,23 @@ func TestAccessTokensRerun(t *testing.T) {
 	siaDir := t.TempDir()
 
 	// Mock ZTS AccessTokens api
-	ztsRouter := httptreemux.New()
+	ztsRouter := http.NewServeMux()
 	eckey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
 	// Mock Access Tokens
-	ztsRouter.POST("/zts/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	ztsRouter.HandleFunc("/zts/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request) {
+
+		// Verify the request
+		if r.Method != http.MethodPost {
+			t.Errorf("Expected POST request, got %s", r.Method)
+		}
+
 		log.Println("Called /zts/v1/instance")
 		io.WriteString(w, makeAccessToken(r, eckey))
 	})
 
-	ztsServer := &testServer{}
-	ztsServer.start(ztsRouter)
-	defer ztsServer.stop()
+	ztsServer := httptest.NewServer(ztsRouter)
+	defer ztsServer.Close()
 
 	tokenServices := []config.TokenService{
 		{Name: "httpd"},
@@ -388,7 +434,7 @@ func TestAccessTokensRerun(t *testing.T) {
 		Tokens: []config.AccessToken{
 			{FileName: "token1", Service: "httpd", Domain: "athenz.demo", Roles: []string{"role1"}, User: username(t), Uid: uid(t), Gid: gid(t), Expiry: tokenExpiryMins},
 		},
-		ZtsUrl: ztsServer.baseUrl("zts/v1"),
+		ZtsUrl: ztsServer.URL + "/zts/v1",
 	}
 
 	log.Printf("Options fed are: %+v\n", opts)
@@ -433,7 +479,7 @@ func TestAccessTokensRerun(t *testing.T) {
 
 	// Sequence 3: Force an older time stamp, and then attempt a rerun, and the token should be refreshed
 	hourAgo := time.Now().Add(-65 * time.Minute).Unix()
-	accessTokenShorterValidity := makeAccessTokenImpl(3600, hourAgo, "athenz.demo", []string{"role1"}, eckey)
+	accessTokenShorterValidity := makeAccessTokenImpl(3600, hourAgo, "athenz.demo", []string{"role1"}, "", eckey)
 	siafile.Update(tpath, []byte(accessTokenShorterValidity), uid(t), gid(t), 0440, nil)
 
 	before, err = os.Stat(tpath)
@@ -457,11 +503,17 @@ func TestAccessTokensUserAgent(t *testing.T) {
 	userAgent := "tokencli-1.0.0 colo-a"
 
 	// Mock ZTS AccessTokens api
-	ztsRouter := httptreemux.New()
+	ztsRouter := http.NewServeMux()
 	eckey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
 	// Mock Access Tokens
-	ztsRouter.POST("/zts/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	ztsRouter.HandleFunc("/zts/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request) {
+
+		// Verify the request
+		if r.Method != http.MethodPost {
+			t.Errorf("Expected POST request, got %s", r.Method)
+		}
+
 		log.Println("Called /zts/v1/instance")
 		if r.Header.Get(UserAgent) != userAgent {
 			panic("User-Agent is not set")
@@ -469,9 +521,8 @@ func TestAccessTokensUserAgent(t *testing.T) {
 		io.WriteString(w, makeAccessToken(r, eckey))
 	})
 
-	ztsServer := &testServer{}
-	ztsServer.start(ztsRouter)
-	defer ztsServer.stop()
+	ztsServer := httptest.NewServer(ztsRouter)
+	defer ztsServer.Close()
 
 	tokenServices := []config.TokenService{
 		{Name: "httpd"},
@@ -486,7 +537,7 @@ func TestAccessTokensUserAgent(t *testing.T) {
 		Tokens: []config.AccessToken{
 			{FileName: "token1", Service: "httpd", Domain: "athenz.demo", Roles: []string{"role1"}, User: username(t), Uid: uid(t), Gid: gid(t), Expiry: 7200},
 		},
-		ZtsUrl:    ztsServer.baseUrl("zts/v1"),
+		ZtsUrl:    ztsServer.URL + "/zts/v1",
 		UserAgent: userAgent,
 	}
 
@@ -507,18 +558,23 @@ func TestAccessTokensMixedTokenErrors(t *testing.T) {
 	currentUnixTime := time.Now().Unix()
 
 	// Mock ZTS AccessTokens api
-	ztsRouter := httptreemux.New()
+	ztsRouter := http.NewServeMux()
 	eckey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
 	// Mock Access Tokens
-	ztsRouter.POST("/zts/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	ztsRouter.HandleFunc("/zts/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request) {
+
+		// Verify the request
+		if r.Method != http.MethodPost {
+			t.Errorf("Expected POST request, got %s", r.Method)
+		}
+
 		log.Println("Called /zts/v1/instance")
 		io.WriteString(w, makeAccessToken(r, eckey))
 	})
 
-	ztsServer := &testServer{}
-	ztsServer.start(ztsRouter)
-	defer ztsServer.stop()
+	ztsServer := httptest.NewServer(ztsRouter)
+	defer ztsServer.Close()
 
 	tokenServices := []config.TokenService{
 		{Name: "httpd"},
@@ -534,7 +590,7 @@ func TestAccessTokensMixedTokenErrors(t *testing.T) {
 			{FileName: "token1", Service: "httpd", Domain: "athenz.demo", Roles: []string{"role1"}, User: username(t), Uid: uid(t), Gid: gid(t), Expiry: 7200},
 			{FileName: "token2", Service: "httpd", Domain: "athenz.demo", Roles: []string{"role1"}, User: username(t), Uid: uid(t), Gid: gid(t), Expiry: 7200},
 		},
-		ZtsUrl: ztsServer.baseUrl("zts/v1"),
+		ZtsUrl: ztsServer.URL + "/zts/v1",
 	}
 
 	log.Printf("Options fed are: %+v\n", opts)
@@ -549,7 +605,7 @@ func TestAccessTokensMixedTokenErrors(t *testing.T) {
 
 	// Force an older time stamp on token1
 	tpath := filepath.Join(opts.TokenDir, opts.Tokens[0].Domain, opts.Tokens[0].FileName)
-	accessTokenShorterValidity := makeAccessTokenImpl(0, currentUnixTime, "athenz.demo", []string{"role1"}, eckey)
+	accessTokenShorterValidity := makeAccessTokenImpl(0, currentUnixTime, "athenz.demo", []string{"role1"}, "", eckey)
 	siafile.Update(tpath, []byte(accessTokenShorterValidity), uid(t), gid(t), 0440, nil)
 
 	_, errs = Fetch(opts)
@@ -569,12 +625,18 @@ func TestAccessTokensApiErrors(t *testing.T) {
 	currentUnixTime := time.Now().Unix()
 
 	// Mock ZTS AccessTokens api
-	ztsRouter := httptreemux.New()
+	ztsRouter := http.NewServeMux()
 	eckey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
 	// Mock Access Tokens
 	c := 0
-	ztsRouter.POST("/zts/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	ztsRouter.HandleFunc("/zts/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request) {
+
+		// Verify the request
+		if r.Method != http.MethodPost {
+			t.Errorf("Expected POST request, got %s", r.Method)
+		}
+
 		log.Println("Called /zts/v1/token")
 		// Success the first time, api error second time, json error the third time
 		switch c {
@@ -590,9 +652,8 @@ func TestAccessTokensApiErrors(t *testing.T) {
 		c = c + 1
 	})
 
-	ztsServer := &testServer{}
-	ztsServer.start(ztsRouter)
-	defer ztsServer.stop()
+	ztsServer := httptest.NewServer(ztsRouter)
+	defer ztsServer.Close()
 
 	tokenServices := []config.TokenService{
 		{Name: "httpd"},
@@ -607,7 +668,7 @@ func TestAccessTokensApiErrors(t *testing.T) {
 		Tokens: []config.AccessToken{
 			{FileName: "token1", Service: "httpd", Domain: "athenz.demo", Roles: []string{"role1"}, User: username(t), Uid: uid(t), Gid: gid(t), Expiry: 7200},
 		},
-		ZtsUrl: ztsServer.baseUrl("zts/v1"),
+		ZtsUrl: ztsServer.URL + "/zts/v1",
 	}
 
 	log.Printf("Options fed are: %+v\n", opts)
@@ -622,7 +683,7 @@ func TestAccessTokensApiErrors(t *testing.T) {
 
 	// Handling ZTS 500s
 	tpath := filepath.Join(opts.TokenDir, opts.Tokens[0].Domain, opts.Tokens[0].FileName)
-	accessTokenShorterValidity := makeAccessTokenImpl(0, currentUnixTime, "athenz.demo", []string{"role1"}, eckey)
+	accessTokenShorterValidity := makeAccessTokenImpl(0, currentUnixTime, "athenz.demo", []string{"role1"}, "", eckey)
 	siafile.Update(tpath, []byte(accessTokenShorterValidity), uid(t), gid(t), 0440, nil)
 	before, err := os.Stat(tpath)
 	assert.NoErrorf(t, err, "should be able to stat file: %s, err: %v", tpath, err)
@@ -696,24 +757,29 @@ func TestNewTokenOptions(t *testing.T) {
 	fixGidUid(opts.AccessTokens)
 
 	// Mock ZTS AccessTokens api
-	ztsRouter := httptreemux.New()
+	ztsRouter := http.NewServeMux()
 	eckey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
 	// Mock Access Tokens
-	ztsRouter.POST("/zts/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	ztsRouter.HandleFunc("/zts/v1/oauth2/token", func(w http.ResponseWriter, r *http.Request) {
+
+		// Verify the request
+		if r.Method != http.MethodPost {
+			t.Errorf("Expected POST request, got %s", r.Method)
+		}
+
 		log.Println("Called /zts/v1/instance")
 		io.WriteString(w, makeAccessToken(r, eckey))
 	})
 
-	ztsServer := &testServer{}
-	ztsServer.start(ztsRouter)
-	defer ztsServer.stop()
+	ztsServer := httptest.NewServer(ztsRouter)
+	defer ztsServer.Close()
 
 	defer os.RemoveAll(siaDir + "/certs")
 	defer os.RemoveAll(siaDir + "/keys")
 	defer os.RemoveAll(siaDir + "/tokens")
 
-	tokenOpts, err := NewTokenOptions(opts, ztsServer.baseUrl("zts/v1"), "mock-ua")
+	tokenOpts, err := NewTokenOptions(opts, ztsServer.URL + "/zts/v1", "mock-ua")
 	require.Nilf(t, err, "error should not be thrown, error: %v", err)
 
 	makeIdentity(t, tokenOpts)
@@ -724,18 +790,20 @@ func TestNewTokenOptions(t *testing.T) {
 }
 
 func TestTokenRefreshOption(t *testing.T) {
-	ztsServer := &testServer{}
+	ztsRouter := http.NewServeMux()	
+	ztsServer := httptest.NewServer(ztsRouter)
 	cfg, configAccount, _ := options.InitFileConfig("data/sia_config.with-access-tokens", "http://localhost:80", false, "us-west-2", "")
 	siaDir := "/tmp"
 
 	opts, err := options.NewOptions(cfg, configAccount, nil, siaDir, "1.0.0", false, "us-west-2")
-	tokenOpts, err := NewTokenOptions(opts, ztsServer.baseUrl("zts/v1"), "mock-ua")
+	require.NoError(t, err, "error creating new options: %v", err)
+	tokenOpts, err := NewTokenOptions(opts, ztsServer.URL + "/zts/v1", "mock-ua")
 	require.Nilf(t, err, "error should not be thrown, error: %v", err)
 	dur, _ := time.ParseDuration(DefaultRefreshDuration)
 	assert.Equal(t, float64(90), dur.Minutes(), "token refresh should be default")
 
 	_ = os.Setenv(TokenRefreshPeriodProp, "1ms")
-	tokenOpts, err = NewTokenOptions(opts, ztsServer.baseUrl("zts/v1"), "mock-ua")
+	tokenOpts, err = NewTokenOptions(opts, ztsServer.URL + "/zts/v1", "mock-ua")
 	require.Nilf(t, err, "error should not be thrown, error: %v", err)
 	assert.Equal(t, int64(1), tokenOpts.TokenRefresh.Milliseconds(), "token refresh should not be specified")
 	_ = os.Unsetenv(TokenRefreshPeriodProp)
@@ -752,7 +820,7 @@ func fixGidUid(tokens []config.AccessToken) {
 
 func token(expiry int, issuedAt int64) []byte {
 	eckey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	accessToken := makeAccessTokenImpl(expiry, issuedAt, "athenz.demo", []string{"role1"}, eckey)
+	accessToken := makeAccessTokenImpl(expiry, issuedAt, "athenz.demo", []string{"role1"}, "", eckey)
 	return []byte(accessToken)
 }
 
@@ -781,7 +849,7 @@ func makeAccessToken(r *http.Request, key crypto.PrivateKey) string {
 		}
 
 		domain := parts[0]
-		roles := []string{}
+		roles := make([]string, 0)
 
 		if len(parts) == 1 {
 			// only domain specified, mint some roles
@@ -821,21 +889,28 @@ func makeAccessToken(r *http.Request, key crypto.PrivateKey) string {
 		panic(err)
 	}
 
+	spiffeUris := values.Get("proxy_principal_spiffe_uris")
 	currentUnixTime := time.Now().Unix()
-	return makeAccessTokenImpl(expiry, currentUnixTime, audience, roles, key)
+	return makeAccessTokenImpl(expiry, currentUnixTime, audience, roles, spiffeUris, key)
 }
 
-func makeAccessTokenImpl(expiry int, issuedAt int64, audience string, roles []string, key crypto.PrivateKey) string {
+func makeAccessTokenImpl(expiry int, issuedAt int64, audience string, roles []string, spiffeUris string, key crypto.PrivateKey) string {
 
 	claims := &AccessTokenClaims{
 		Audience: audience,
 		Scopes:   roles,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(time.Duration(expiry) * time.Second).Unix(),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expiry) * time.Second)),
 			Issuer:    "athenz",
 			Subject:   "principal.test",
-			IssuedAt:  issuedAt,
+			IssuedAt:  jwt.NewNumericDate(time.Unix(issuedAt, 0)),
 		},
+	}
+
+	if spiffeUris != "" {
+		claims.Confirm = ConfirmClaim{
+			SpiffeUris: spiffeUris,
+		}
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
@@ -948,8 +1023,8 @@ func assertAccessTokenPropOnly(t *testing.T, opts *config.TokenOptions, assertGi
 }
 
 // assertAccessTokens verifies the token files as per the information in options.AccessTokens
-func assertAccessTokens(t *testing.T, opts *config.TokenOptions, assertGidUid bool) {
-	a := assert.New(t)
+func assertAccessTokens(test *testing.T, opts *config.TokenOptions, assertGidUid bool) {
+	a := assert.New(test)
 
 	for _, t := range opts.Tokens {
 		fname := filepath.Join(opts.TokenDir, t.Domain, t.FileName)
@@ -965,16 +1040,83 @@ func assertAccessTokens(t *testing.T, opts *config.TokenOptions, assertGidUid bo
 			}
 		}
 
-		// Todo: parse the token and verify the scopes and expiry
 		bytes, err := os.ReadFile(fname)
 		a.Nilf(err, "should be able to read the file, %q", fname)
 
-		token := zts.AccessTokenResponse{}
-		err = json.Unmarshal(bytes, &token)
-		a.Nilf(err, "should be able to parse the token bytes into AccessTokenResponse type, bytes: %q", string(bytes))
+		if opts.StoreOptions == config.ZtsResponse {
+			token := zts.AccessTokenResponse{}
+			err = json.Unmarshal(bytes, &token)
+			a.Nilf(err, "should be able to parse the token bytes into AccessTokenResponse type, bytes: %q", string(bytes))
 
-		a.Equal(int32(t.Expiry), *token.Expires_in)
+			a.Equal(int32(t.Expiry), *token.Expires_in)
+		} else {
+			var claims jwt.MapClaims
+			// default behavior is access token in quotes
+			if opts.StoreOptions == config.AccessTokenProp {
+				a.Equal(bytes[0], byte('"'))
+				a.Equal(bytes[len(bytes)-1], byte('"'))
+				claims = assertParseJwt(a, bytes[1:len(bytes)-1])
+			} else {
+				claims = assertParseJwt(a, bytes)
+			}
+			if t.ProxyPrincipalSpiffeUris != "" {
+				a.NotNil(claims["cnf"])
+				cnf := claims["cnf"].(map[string]interface{})
+				a.Equal(cnf["proxy-principals#spiffe"], t.ProxyPrincipalSpiffeUris)
+			}
+		}
 	}
+}
+
+func assertParseJwt(a *assert.Assertions, token []byte) jwt.MapClaims {
+	parser := new(jwt.Parser)
+	claims := jwt.MapClaims{}
+	t, _, err := parser.ParseUnverified(string(token), claims)
+	a.Nil(err)
+	a.NotNil(t)
+	return claims
+}
+
+func TestMakeTokenRequestRoleInAudClaim(t *testing.T) {
+	a := assert.New(t)
+
+	withoutFlag := makeTokenRequest("athenz.demo", []string{"role1"}, 3600, "", false, false, "")
+	v, err := url.ParseQuery(withoutFlag)
+	a.NoError(err)
+	a.Empty(v.Get("role_in_aud_claim"), "role_in_aud_claim should be absent when flag is false")
+
+	withFlag := makeTokenRequest("athenz.demo", []string{"role1"}, 3600, "", true, false, "")
+	v, err = url.ParseQuery(withFlag)
+	a.NoError(err)
+	a.Equal("true", v.Get("role_in_aud_claim"), "role_in_aud_claim should be 'true' when flag is set")
+}
+
+func TestMakeTokenRequestOpenIDIssuer(t *testing.T) {
+	a := assert.New(t)
+
+	withoutFlag := makeTokenRequest("athenz.demo", []string{"role1"}, 3600, "", false, false, "")
+	v, err := url.ParseQuery(withoutFlag)
+	a.NoError(err)
+	a.Empty(v.Get("openid_issuer"), "openid_issuer should be absent when flag is false")
+
+	withFlag := makeTokenRequest("athenz.demo", []string{"role1"}, 3600, "", false, true, "")
+	v, err = url.ParseQuery(withFlag)
+	a.NoError(err)
+	a.Equal("true", v.Get("openid_issuer"), "openid_issuer should be 'true' when flag is set")
+}
+
+func TestMakeTokenRequestKeyType(t *testing.T) {
+	a := assert.New(t)
+
+	withoutKeyType := makeTokenRequest("athenz.demo", []string{"role1"}, 3600, "", false, false, "")
+	v, err := url.ParseQuery(withoutKeyType)
+	a.NoError(err)
+	a.Empty(v.Get("key_type"), "key_type should be absent when not set")
+
+	withKeyType := makeTokenRequest("athenz.demo", []string{"role1"}, 3600, "", false, false, "EC")
+	v, err = url.ParseQuery(withKeyType)
+	a.NoError(err)
+	a.Equal("EC", v.Get("key_type"), "key_type should match the requested value when set")
 }
 
 // uid returns current user's uid

@@ -20,35 +20,47 @@ public class ZMSSchema {
 
         sb.stringType("SimpleName")
             .comment("Copyright The Athenz Authors Licensed under the terms of the Apache version 2.0 license. See LICENSE file for terms. Common name types used by several API definitions A simple identifier, an element of compound name.")
-            .pattern("[a-zA-Z0-9_][a-zA-Z0-9_-]*");
+            .pattern("[a-zA-Z0-9_][a-zA-Z0-9_-]*")
+            .maxSize(512);
 
         sb.stringType("CompoundName")
             .comment("A compound name. Most names in this API are compound names.")
-            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*");
+            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*")
+            .maxSize(512);
 
         sb.stringType("DomainName")
             .comment("A domain name is the general qualifier prefix, as its uniqueness is managed.")
-            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*");
+            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*")
+            .maxSize(512);
 
         sb.stringType("EntityName")
             .comment("An entity name is a short form of a resource name, including only the domain and entity.")
-            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*");
+            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*")
+            .maxSize(512);
+
+        sb.stringType("EntityNameList")
+            .comment("A comma separated list of entity names")
+            .pattern("(([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*,)*([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*");
 
         sb.stringType("ServiceName")
             .comment("A service name will generally be a unique subdomain.")
-            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*");
+            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*")
+            .maxSize(1024);
 
         sb.stringType("LocationName")
             .comment("A location name is not yet defined, but will be a dotted name like everything else.")
-            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*");
+            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*")
+            .maxSize(512);
 
         sb.stringType("ActionName")
             .comment("An action (operation) name.")
-            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*");
+            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*")
+            .maxSize(128);
 
         sb.stringType("ResourceName")
             .comment("A resource name Note that the EntityName part is optional, that is, a domain name followed by a colon is valid resource name.")
-            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*(:([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*)?");
+            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*(:([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*)?")
+            .maxSize(512);
 
         sb.stringType("ResourceNames")
             .comment("A comma separated list of resource names")
@@ -64,23 +76,37 @@ public class ZMSSchema {
 
         sb.stringType("AuthorityName")
             .comment("Used as the prefix in a signed assertion. This uniquely identifies a signing authority.")
-            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*");
+            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*")
+            .maxSize(512);
 
         sb.stringType("SignedToken")
             .comment("A signed assertion if identity. i.e. the user cookie value. This token will only make sense to the authority that generated it, so it is beneficial to have something in the value that is cheaply recognized to quickly reject if it belongs to another authority. In addition to the YEncoded set our token includes ; to separate components and , to separate roles and : for IPv6 addresses")
             .pattern("[a-zA-Z0-9\\._%=:;,-]*");
 
+        sb.stringType("ExternalMemberName")
+            .comment("External Member name. Even though the pattern is open to support all possible external members, the server only supports '*' for wildcard matches only if it's provided as the last character.")
+            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*:ext\\..+")
+            .maxSize(512);
+
         sb.stringType("GroupName")
             .comment("A group name")
-            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*:group\\.([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*");
+            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*:group\\.([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*")
+            .maxSize(512);
 
         sb.stringType("GroupMemberName")
             .comment("A group member name")
-            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*");
+            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*|([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*:ext\\..+")
+            .maxSize(512);
+
+        sb.stringType("PrincipalName")
+            .comment("A principal name for role/group membership queries")
+            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*(:([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*)?|([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*:ext\\..+")
+            .maxSize(512);
 
         sb.stringType("MemberName")
             .comment("Role Member name - could be one of four values: *, DomainName.* or ServiceName[*], or GroupNames")
-            .pattern("\\*|([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*\\.\\*|([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*(\\*)?|([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*:group\\.([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*");
+            .pattern("\\*|([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*\\.\\*|([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*(\\*)?|([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*:group\\.([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*|([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*:ext\\..+")
+            .maxSize(512);
 
         sb.stringType("AuthorityKeyword")
             .comment("A comma separated list of authority keywords")
@@ -89,28 +115,47 @@ public class ZMSSchema {
         sb.stringType("AuthorityKeywords")
             .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*,)*[a-zA-Z0-9_][a-zA-Z0-9_-]*");
 
+        sb.stringType("TagKey")
+            .pattern("([a-zA-Z0-9_][a-zA-Z0-9_-]*[:\\.])*[a-zA-Z0-9_][a-zA-Z0-9_-]*")
+            .maxSize(64);
+
         sb.stringType("TagValue")
             .comment("TagValue to contain generic string patterns")
-            .pattern("[a-zA-Z0-9_:,\\/][a-zA-Z0-9_:,\\/-]*");
+            .pattern("[a-zA-Z0-9_:,\\/][a-zA-Z0-9_:%,\\/-]*")
+            .maxSize(256);
 
         sb.stringType("TagCompoundValue")
             .comment("A compound value of TagValue")
-            .pattern("([a-zA-Z0-9_:,\\/][a-zA-Z0-9_:,\\/-]*\\.)*[a-zA-Z0-9_:,\\/][a-zA-Z0-9_:,\\/-]*");
+            .pattern("([a-zA-Z0-9_:,\\/][a-zA-Z0-9_:%,\\/-]*\\.)*[a-zA-Z0-9_:,\\/][a-zA-Z0-9_:%,\\/-]*")
+            .maxSize(256);
 
         sb.structType("TagValueList")
             .arrayField("list", "TagCompoundValue", false, "list of tag values");
 
         sb.stringType("AssertionConditionKeyPattern")
-            .pattern("[a-zA-Z][a-zA-Z0-9_-]+");
+            .pattern("[a-zA-Z][a-zA-Z0-9_-]+")
+            .maxSize(64);
 
         sb.stringType("AssertionConditionKey")
-            .pattern("([a-zA-Z][a-zA-Z0-9_-]+\\.)*[a-zA-Z][a-zA-Z0-9_-]+");
+            .pattern("([a-zA-Z][a-zA-Z0-9_-]+\\.)*[a-zA-Z][a-zA-Z0-9_-]+")
+            .maxSize(64);
 
         sb.stringType("AssertionConditionValuePattern")
-            .pattern("[a-zA-Z0-9\\*][a-zA-Z0-9_\\.\\*-]*");
+            .pattern("[a-zA-Z0-9\\*][a-zA-Z0-9_\\.\\*-]*")
+            .maxSize(2048);
 
         sb.stringType("AssertionConditionValue")
-            .pattern("([a-zA-Z0-9\\*][a-zA-Z0-9_\\.\\*-]*,)*[a-zA-Z0-9\\*][a-zA-Z0-9_\\.\\*-]*");
+            .pattern("([a-zA-Z0-9\\*][a-zA-Z0-9_\\.\\*-]*,)*[a-zA-Z0-9\\*][a-zA-Z0-9_\\.\\*-]*")
+            .maxSize(2048);
+
+        sb.stringType("ResourceOwnerName")
+            .pattern("[a-zA-Z0-9_][a-zA-Z0-9_:-]*")
+            .maxSize(256);
+
+        sb.structType("ResourceDomainOwnership")
+            .comment("The representation of the domain ownership object")
+            .field("metaOwner", "SimpleName", true, "owner of the object's meta attribute")
+            .field("objectOwner", "SimpleName", true, "owner of the object itself - checked for object deletion");
 
         sb.structType("DomainMeta")
             .comment("Set of metadata attributes that all domains may have and can be changed.")
@@ -119,6 +164,7 @@ public class ZMSSchema {
             .field("enabled", "Bool", true, "Future use only, currently not used", true)
             .field("auditEnabled", "Bool", true, "Flag indicates whether or not domain modifications should be logged for SOX+Auditing. If true, the auditRef parameter must be supplied(not empty) for any API defining it.", false)
             .field("account", "String", true, "associated aws account id (system attribute - uniqueness check - if enabled)")
+            .field("awsAccountName", "String", true, "associated aws account name (system attribute)")
             .field("ypmId", "Int32", true, "associated product id (system attribute - uniqueness check - if enabled)")
             .field("applicationId", "String", true, "associated application id")
             .field("certDnsDomain", "String", true, "domain certificate dns domain (system attribute)")
@@ -126,18 +172,31 @@ public class ZMSSchema {
             .field("tokenExpiryMins", "Int32", true, "tokens issued for this domain will have specified max timeout in mins")
             .field("serviceCertExpiryMins", "Int32", true, "service identity certs issued for this domain will have specified max timeout in mins")
             .field("roleCertExpiryMins", "Int32", true, "role certs issued for this domain will have specified max timeout in mins")
-            .field("signAlgorithm", "SimpleName", true, "rsa or ec signing algorithm to be used for tokens")
+            .field("signAlgorithm", "String", true, "rsa or ec signing algorithm to be used for tokens")
             .field("serviceExpiryDays", "Int32", true, "all services in the domain roles will have specified max expiry days")
             .field("groupExpiryDays", "Int32", true, "all groups in the domain roles will have specified max expiry days")
             .field("userAuthorityFilter", "String", true, "membership filtered based on user authority configured attributes")
             .field("azureSubscription", "String", true, "associated azure subscription id (system attribute - uniqueness check - if enabled)")
+            .field("azureTenant", "String", true, "associated azure tenant id (system attribute)")
+            .field("azureClient", "String", true, "associated azure client id (system attribute)")
             .field("gcpProject", "String", true, "associated gcp project id (system attribute - uniqueness check - if enabled)")
             .field("gcpProjectNumber", "String", true, "associated gcp project number (system attribute)")
-            .mapField("tags", "CompoundName", "TagValueList", true, "key-value pair tags, tag might contain multiple values")
+            .mapField("tags", "TagKey", "TagValueList", true, "key-value pair tags, tag might contain multiple values")
             .field("businessService", "String", true, "associated business service with domain")
             .field("memberPurgeExpiryDays", "Int32", true, "purge role/group members with expiry date configured days in the past")
             .field("productId", "String", true, "associated product id (system attribute - uniqueness check - if enabled)")
-            .field("featureFlags", "Int32", true, "features enabled per domain (system attribute)");
+            .field("featureFlags", "Int32", true, "features enabled per domain (system attribute)")
+            .mapField("contacts", "SimpleName", "String", true, "list of domain contacts (PE-Owner, Product-Owner, etc), each type can have a single value")
+            .field("environment", "String", true, "domain environment e.g. production, staging, etc")
+            .field("resourceOwnership", "ResourceDomainOwnership", true, "ownership information for the domain (read-only attribute)")
+            .field("x509CertSignerKeyId", "String", true, "requested x509 cert signer key id (system attribute)")
+            .field("sshCertSignerKeyId", "String", true, "requested ssh cert signer key id (system attribute)")
+            .field("slackChannel", "String", true, "slack channel for any notifications in this domain")
+            .field("onCall", "String", true, "oncall team name/id for any incidents in this domain")
+            .field("autoDeleteTenantAssumeRoleAssertions", "Bool", true, "Indicates whether to automatically delete assertions for a tenant's assume role", false)
+            .field("clientIdSelfUpdate", "Bool", true, "Indicates whether client ID self-update is enabled for services in this domain", false)
+            .field("externalMemberValidator", "String", true, "class name responsible for validating external members")
+            .field("costCenter", "String", true, "cost center for this domain for any chargebacks");
 
         sb.structType("Domain", "DomainMeta")
             .comment("A domain is an independent partition of users, roles, and resources. Its name represents the definition of a namespace; the only way a new namespace can be created, from the top, is by creating Domains. Administration of a domain is governed by the parent domain (using reverse-DNS namespaces). The top level domains are governed by the special \"sys.auth\" domain.")
@@ -163,7 +222,8 @@ public class ZMSSchema {
             .field("enforceUniqueProductIds", "Bool", false, "enforce domains are associated with unique product ids")
             .field("enforceUniqueAWSAccounts", "Bool", false, "enforce domains are associated with unique aws accounts")
             .field("enforceUniqueAzureSubscriptions", "Bool", false, "enforce domains are associated with unique azure subscriptions")
-            .field("enforceUniqueGCPProjects", "Bool", false, "enforce domains are associated with unique gcp projects");
+            .field("enforceUniqueGCPProjects", "Bool", false, "enforce domains are associated with unique gcp projects")
+            .field("allowMultipleAWSAccounts", "Bool", false, "allow a domain's account field to contain multiple comma-separated aws accounts");
 
         sb.structType("RoleList")
             .comment("The representation for an enumeration of roles in the namespace, with pagination.")
@@ -190,8 +250,14 @@ public class ZMSSchema {
             .field("requestPrincipal", "ResourceName", true, "pending members only - name of the principal requesting the change")
             .field("reviewLastNotifiedTime", "Timestamp", true, "for pending membership requests, time when last notification was sent (for file store)")
             .field("systemDisabled", "Int32", true, "user disabled by system based on configured role setting")
-            .field("principalType", "Int32", true, "server use only - principal type: unknown(0), user(1), service(2), or group(3)")
+            .field("principalType", "Int32", true, "server use only - principal type: unknown(0), user(1), service(2), group(3), headless(4), or external(5)")
             .field("pendingState", "String", true, "for pending membership requests, the request state - e.g. add, delete");
+
+        sb.structType("ResourceRoleOwnership")
+            .comment("The representation of the role ownership object")
+            .field("metaOwner", "SimpleName", true, "owner of the object's meta attribute")
+            .field("membersOwner", "SimpleName", true, "owner of the object's members attribute")
+            .field("objectOwner", "SimpleName", true, "owner of the object itself - checked for object deletion");
 
         sb.structType("RoleMeta")
             .comment("Set of metadata attributes that all roles may have and can be changed by domain admins.")
@@ -199,7 +265,7 @@ public class ZMSSchema {
             .field("memberExpiryDays", "Int32", true, "all user members in the role will have specified max expiry days")
             .field("tokenExpiryMins", "Int32", true, "tokens issued for this role will have specified max timeout in mins")
             .field("certExpiryMins", "Int32", true, "certs issued for this role will have specified max timeout in mins")
-            .field("signAlgorithm", "SimpleName", true, "rsa or ec signing algorithm to be used for tokens")
+            .field("signAlgorithm", "String", true, "rsa or ec signing algorithm to be used for tokens")
             .field("serviceExpiryDays", "Int32", true, "all services in the role will have specified max expiry days")
             .field("memberReviewDays", "Int32", true, "all user members in the role will have specified max review days")
             .field("serviceReviewDays", "Int32", true, "all services in the role will have specified max review days")
@@ -209,10 +275,17 @@ public class ZMSSchema {
             .field("userAuthorityExpiration", "String", true, "expiration enforced by a user authority configured attribute")
             .field("groupExpiryDays", "Int32", true, "all groups in the domain roles will have specified max expiry days")
             .field("groupReviewDays", "Int32", true, "all groups in the domain roles will have specified max review days")
-            .mapField("tags", "CompoundName", "TagValueList", true, "key-value pair tags, tag might contain multiple values")
+            .mapField("tags", "TagKey", "TagValueList", true, "key-value pair tags, tag might contain multiple values")
             .field("description", "String", true, "a description of the role")
             .field("auditEnabled", "Bool", true, "Flag indicates whether or not role updates should be approved by GRC. If true, the auditRef parameter must be supplied(not empty) for any API defining it.", false)
-            .field("deleteProtection", "Bool", true, "If true, ask for delete confirmation in audit and review enabled roles.", false);
+            .field("deleteProtection", "Bool", true, "If true, ask for delete confirmation in audit and review enabled roles.", false)
+            .field("lastReviewedDate", "Timestamp", true, "last review timestamp of the role")
+            .field("selfRenew", "Bool", true, "Flag indicates whether to allow expired members to renew their membership")
+            .field("selfRenewMins", "Int32", true, "Number of minutes members can renew their membership if self review option is enabled")
+            .field("maxMembers", "Int32", true, "Maximum number of members allowed in the group")
+            .field("resourceOwnership", "ResourceRoleOwnership", true, "ownership information for the role (read-only attribute)")
+            .field("principalDomainFilter", "String", true, "membership filtered based on configured principal domains")
+            .field("notifyDetails", "String", true, "additional details included in the notifications");
 
         sb.structType("Role", "RoleMeta")
             .comment("The representation for a Role with set of members. The members (Array<MemberName>) field is deprecated and not used in role objects since it incorrectly lists all the members in the role without taking into account if the member is expired or possibly disabled. Thus, using this attribute will result in incorrect authorization checks by the client and, thus, it's no longer being populated. All applications must use the roleMembers field and take into account all the attributes of the member.")
@@ -221,8 +294,7 @@ public class ZMSSchema {
             .arrayField("members", "MemberName", true, "deprecated and not used")
             .arrayField("roleMembers", "RoleMember", true, "members with expiration and other member attributes. might be empty or null, if trust is set")
             .field("trust", "DomainName", true, "a trusted domain to delegate membership decisions to")
-            .arrayField("auditLog", "RoleAuditLog", true, "an audit log for role membership changes")
-            .field("lastReviewedDate", "Timestamp", true, "last review timestamp of the role");
+            .arrayField("auditLog", "RoleAuditLog", true, "an audit log for role membership changes");
 
         sb.structType("Roles")
             .comment("The representation for a list of roles with full details")
@@ -258,7 +330,9 @@ public class ZMSSchema {
             .field("requestTime", "Timestamp", true, "for pending membership requests, the request time")
             .field("systemDisabled", "Int32", true, "user disabled by system based on configured role setting")
             .field("pendingState", "String", true, "for pending membership requests, the request state - e.g. add, delete")
-            .field("trustRoleName", "ResourceName", true, "name of the role that handles the membership delegation for the role specified in roleName");
+            .field("trustRoleName", "ResourceName", true, "name of the role that handles the membership delegation for the role specified in roleName")
+            .field("notifyRoles", "String", true, "list of roles whose members should be notified for member review/approval/expiry")
+            .field("notifyDetails", "String", true, "additional details included in the notifications");
 
         sb.structType("DomainRoleMember")
             .field("memberName", "MemberName", false, "name of the member")
@@ -305,6 +379,11 @@ public class ZMSSchema {
             .field("caseSensitive", "Bool", true, "If true, we should store action and resource in their original case")
             .field("conditions", "AssertionConditions", true, "optional list of assertion conditions associated with given assertion");
 
+        sb.structType("ResourcePolicyOwnership")
+            .comment("The representation of the policy ownership object")
+            .field("assertionsOwner", "SimpleName", true, "owner of the object's assertions attribute")
+            .field("objectOwner", "SimpleName", true, "owner of the object itself - checked for object deletion");
+
         sb.structType("Policy")
             .comment("The representation for a Policy with set of assertions.")
             .field("name", "ResourceName", false, "name of the policy")
@@ -314,7 +393,8 @@ public class ZMSSchema {
             .field("version", "SimpleName", true, "optional version string, defaults to 0")
             .field("active", "Bool", true, "if multi-version policy then indicates active version")
             .field("description", "String", true, "a description of the policy")
-            .mapField("tags", "CompoundName", "TagValueList", true, "key-value pair tags, tag might contain multiple values");
+            .mapField("tags", "TagKey", "TagValueList", true, "key-value pair tags, tag might contain multiple values")
+            .field("resourceOwnership", "ResourcePolicyOwnership", true, "ownership information for the policy (read-only attribute)");
 
         sb.structType("Policies")
             .comment("The representation of list of policy objects")
@@ -330,6 +410,16 @@ public class ZMSSchema {
             .field("key", "String", false, "the public key for the service")
             .field("id", "String", false, "the key identifier (version or zone name)");
 
+        sb.structType("CredsEntry")
+            .comment("The representation of the credentials for a service identity object.")
+            .field("value", "String", true, "the secret for the service");
+
+        sb.structType("ResourceServiceIdentityOwnership")
+            .comment("The representation of the service identity ownership object")
+            .field("publicKeysOwner", "SimpleName", true, "owner of the object's public keys attribute")
+            .field("hostsOwner", "SimpleName", true, "owner of the object's host list attribute")
+            .field("objectOwner", "SimpleName", true, "owner of the object itself - checked for object deletion");
+
         sb.structType("ServiceIdentity")
             .comment("The representation of the service identity object.")
             .field("name", "ServiceName", false, "the full name of the service, i.e. \"sports.storage\"")
@@ -341,11 +431,18 @@ public class ZMSSchema {
             .arrayField("hosts", "String", true, "list of host names that this service can run on")
             .field("user", "String", true, "local (unix) user name this service can run as")
             .field("group", "String", true, "local (unix) group name this service can run as")
-            .mapField("tags", "CompoundName", "TagValueList", true, "key-value pair tags, tag might contain multiple values");
+            .mapField("tags", "TagKey", "TagValueList", true, "key-value pair tags, tag might contain multiple values")
+            .field("resourceOwnership", "ResourceServiceIdentityOwnership", true, "ownership information for the service (read-only attribute)")
+            .field("x509CertSignerKeyId", "String", true, "requested x509 cert signer key id (system attribute)")
+            .field("sshCertSignerKeyId", "String", true, "requested ssh cert signer key id (system attribute)")
+            .field("creds", "String", true, "the credentials for the service")
+            .field("clientId", "String", true, "the OAuth2 client id for the service (system attribute)")
+            .field("featureFlags", "Int32", true, "features enabled per service (system attribute)");
 
         sb.structType("ServiceIdentities")
             .comment("The representation of list of services")
-            .arrayField("list", "ServiceIdentity", false, "list of services");
+            .arrayField("list", "ServiceIdentity", false, "list of services")
+            .field("serviceMatchCount", "Int64", false, "if set, the value indicates the total number of services in the system that match the query criteria but not returned due to limit constraints; thus, the result in the list is a partial set.");
 
         sb.structType("ServiceIdentityList")
             .comment("The representation for an enumeration of services in the namespace, with pagination.")
@@ -354,7 +451,102 @@ public class ZMSSchema {
 
         sb.structType("ServiceIdentitySystemMeta")
             .comment("Set of system metadata attributes that all services may have and can be changed by system admins.")
-            .field("providerEndpoint", "String", true, "provider callback endpoint");
+            .field("providerEndpoint", "String", true, "provider callback endpoint")
+            .field("x509CertSignerKeyId", "String", true, "requested x509 cert signer key id")
+            .field("sshCertSignerKeyId", "String", true, "requested ssh cert signer key id")
+            .field("clientId", "String", true, "the OAuth2 client id for the service")
+            .field("featureFlags", "Int32", true, "features enabled per service");
+
+        sb.structType("GroupAuditLog")
+            .comment("An audit log entry for group membership change.")
+            .field("member", "GroupMemberName", false, "name of the group member")
+            .field("admin", "ResourceName", false, "name of the principal executing the change")
+            .field("created", "Timestamp", false, "timestamp of the entry")
+            .field("action", "String", false, "log action - e.g. add, delete, approve, etc")
+            .field("auditRef", "String", true, "audit reference string for the change as supplied by admin");
+
+        sb.structType("GroupMember")
+            .field("memberName", "GroupMemberName", true, "name of the member")
+            .field("groupName", "ResourceName", true, "name of the group")
+            .field("domainName", "DomainName", true, "name of the domain")
+            .field("expiration", "Timestamp", true, "the expiration timestamp")
+            .field("active", "Bool", true, "Flag to indicate whether membership is active", true)
+            .field("approved", "Bool", true, "Flag to indicate whether membership is approved either by delegates ( in case of auditEnabled groups ) or by domain admins ( in case of selfserve groups )", true)
+            .field("auditRef", "String", true, "audit reference string for the change as supplied by admin")
+            .field("requestTime", "Timestamp", true, "for pending membership requests, the request time")
+            .field("lastNotifiedTime", "Timestamp", true, "for pending membership requests, time when last notification was sent")
+            .field("requestPrincipal", "ResourceName", true, "pending members only - name of the principal requesting the change")
+            .field("reviewLastNotifiedTime", "Timestamp", true, "for pending membership requests, time when last notification was sent (for file store)")
+            .field("systemDisabled", "Int32", true, "user disabled by system based on configured group setting")
+            .field("principalType", "Int32", true, "server use only - principal type: unknown(0), user(1), service(2), headless(4), or external(5)")
+            .field("pendingState", "String", true, "for pending membership requests, the request state - e.g. add, delete")
+            .field("notifyRoles", "String", true, "list of roles whose members should be notified for member review/approval/expiry")
+            .field("notifyDetails", "String", true, "additional details included in the notifications");
+
+        sb.structType("GroupMembership")
+            .comment("The representation for a group membership.")
+            .field("memberName", "GroupMemberName", false, "name of the member")
+            .field("isMember", "Bool", true, "flag to indicate whether or the user is a member or not", true)
+            .field("groupName", "ResourceName", true, "name of the group")
+            .field("expiration", "Timestamp", true, "the expiration timestamp")
+            .field("active", "Bool", true, "Flag to indicate whether membership is active", true)
+            .field("approved", "Bool", true, "Flag to indicate whether membership is approved either by delegates ( in case of auditEnabled groups ) or by domain admins ( in case of selfserve groups )", true)
+            .field("auditRef", "String", true, "audit reference string for the change as supplied by admin")
+            .field("requestPrincipal", "ResourceName", true, "pending members only - name of the principal requesting the change")
+            .field("systemDisabled", "Int32", true, "user disabled by system based on configured group setting")
+            .field("pendingState", "String", true, "for pending membership requests, the request state - e.g. add, delete");
+
+        sb.structType("ResourceGroupOwnership")
+            .comment("The representation of the group ownership object")
+            .field("metaOwner", "SimpleName", true, "owner of the object's meta attribute")
+            .field("membersOwner", "SimpleName", true, "owner of the object's members attribute")
+            .field("objectOwner", "SimpleName", true, "owner of the object itself - checked for object deletion");
+
+        sb.structType("GroupMeta")
+            .comment("Set of metadata attributes that all groups may have and can be changed by domain admins.")
+            .field("selfServe", "Bool", true, "Flag indicates whether or not group allows self service. Users can add themselves in the group, but it has to be approved by domain admins to be effective.", false)
+            .field("reviewEnabled", "Bool", true, "Flag indicates whether or not group updates require another review and approval", false)
+            .field("notifyRoles", "String", true, "list of roles whose members should be notified for member review/approval")
+            .field("userAuthorityFilter", "String", true, "membership filtered based on user authority configured attributes")
+            .field("userAuthorityExpiration", "String", true, "expiration enforced by a user authority configured attribute")
+            .field("memberExpiryDays", "Int32", true, "all user members in the group will have specified max expiry days")
+            .field("serviceExpiryDays", "Int32", true, "all services in the group will have specified max expiry days")
+            .mapField("tags", "TagKey", "TagValueList", true, "key-value pair tags, tag might contain multiple values")
+            .field("auditEnabled", "Bool", true, "Flag indicates whether or not group updates should require GRC approval. If true, the auditRef parameter must be supplied(not empty) for any API defining it", false)
+            .field("deleteProtection", "Bool", true, "If true, ask for delete confirmation in audit and review enabled groups.", false)
+            .field("lastReviewedDate", "Timestamp", true, "last review timestamp of the group")
+            .field("selfRenew", "Bool", true, "Flag indicates whether to allow expired members to renew their membership")
+            .field("selfRenewMins", "Int32", true, "Number of minutes members can renew their membership if self review option is enabled")
+            .field("maxMembers", "Int32", true, "Maximum number of members allowed in the group")
+            .field("resourceOwnership", "ResourceGroupOwnership", true, "ownership information for the group (read-only attribute)")
+            .field("principalDomainFilter", "String", true, "membership filtered based on configured principal domains")
+            .field("notifyDetails", "String", true, "additional details included in the notifications");
+
+        sb.structType("Group", "GroupMeta")
+            .comment("The representation for a Group with set of members.")
+            .field("name", "ResourceName", false, "name of the group")
+            .field("modified", "Timestamp", true, "last modification timestamp of the group")
+            .arrayField("groupMembers", "GroupMember", true, "members with expiration")
+            .arrayField("auditLog", "GroupAuditLog", true, "an audit log for group membership changes");
+
+        sb.structType("Groups")
+            .comment("The representation for a list of groups with full details")
+            .arrayField("list", "Group", false, "list of group objects");
+
+        sb.structType("DomainGroupMember")
+            .field("memberName", "GroupMemberName", false, "name of the member")
+            .arrayField("memberGroups", "GroupMember", false, "groups for this member");
+
+        sb.structType("DomainGroupMembers")
+            .field("domainName", "DomainName", false, "name of the domain")
+            .arrayField("members", "DomainGroupMember", false, "group members");
+
+        sb.structType("DomainGroupMembership")
+            .arrayField("domainGroupMembersList", "DomainGroupMembers", false, "");
+
+        sb.structType("GroupSystemMeta")
+            .comment("Set of system metadata attributes that all groups may have and can be changed by system admins.")
+            .field("auditEnabled", "Bool", true, "Flag indicates whether or not group updates should be approved by GRC. If true, the auditRef parameter must be supplied(not empty) for any API defining it.", false);
 
         sb.structType("TemplateMetaData")
             .comment("MetaData for template.")
@@ -364,12 +556,14 @@ public class ZMSSchema {
             .field("latestVersion", "Int32", true, "Bumped up version from solutions-template.json when there is a change")
             .field("keywordsToReplace", "String", true, "placeholders in the template roles/policies to replace (ex:_service_)")
             .field("timestamp", "Timestamp", true, "the updated timestamp of the template(solution_templates.json)")
-            .field("autoUpdate", "Bool", true, "flag to automatically update the roles/policies that belongs to the template");
+            .field("autoUpdate", "Bool", true, "flag to automatically update the roles/policies that belongs to the template")
+            .field("preserveAdminAccess", "Bool", true, "require existing direct admins to retain delegated access; omitted inherits the ZMS default");
 
         sb.structType("Template")
             .comment("Solution Template object defined on the server")
             .arrayField("roles", "Role", false, "list of roles in the template")
             .arrayField("policies", "Policy", false, "list of policies defined in this template")
+            .arrayField("groups", "Group", true, "list of groups defined in this template")
             .arrayField("services", "ServiceIdentity", true, "list of services defined in this template")
             .field("metadata", "TemplateMetaData", true, "list of services defined in this template");
 
@@ -379,7 +573,7 @@ public class ZMSSchema {
 
         sb.structType("TemplateParam")
             .field("name", "SimpleName", false, "name of the parameter")
-            .field("value", "CompoundName", false, "value of the parameter");
+            .field("value", "String", false, "value of the parameter");
 
         sb.structType("DomainTemplate", "TemplateList")
             .comment("solution template(s) to be applied to a domain")
@@ -415,16 +609,31 @@ public class ZMSSchema {
             .arrayField("validValues", "String", false, "list of valid values for attribute");
 
         sb.structType("AuthHistory")
-            .field("uriDomain", "DomainName", false, "Name of the domain from URI")
-            .field("principalDomain", "DomainName", false, "Principal domain")
-            .field("principalName", "SimpleName", false, "Principal name")
-            .field("timestamp", "Timestamp", false, "Last authorization event timestamp")
-            .field("endpoint", "String", false, "Last authorization endpoint used")
+            .field("uriDomain", "DomainName", true, "Name of the domain from URI")
+            .field("principalDomain", "DomainName", true, "Principal domain")
+            .field("principalName", "SimpleName", true, "Principal name")
+            .field("timestamp", "Timestamp", true, "Last authorization event timestamp")
+            .field("endpoint", "String", true, "Last authorization endpoint used")
             .field("ttl", "Int64", false, "Time until the record will expire");
 
         sb.structType("AuthHistoryDependencies")
             .arrayField("incomingDependencies", "AuthHistory", false, "list of incoming auth dependencies for domain")
             .arrayField("outgoingDependencies", "AuthHistory", false, "list of incoming auth dependencies for domain");
+
+        sb.structType("DomainAuditLogEntry")
+            .comment("A single audit log record for a change made in the domain")
+            .field("api", "String", false, "name of the api that made the change e.g. putRole")
+            .field("entity", "String", true, "name of the entity that was changed e.g. role, group, policy name")
+            .field("principal", "String", false, "principal that made the change")
+            .field("clientIp", "String", true, "IP address of the client that made the change")
+            .field("timestamp", "Timestamp", false, "timestamp when the change was made")
+            .field("justification", "String", true, "audit reference/justification provided with the change")
+            .field("details", "String", true, "details of the change, typically a json formatted string");
+
+        sb.structType("DomainAuditLog")
+            .comment("The list of audit log records for the domain")
+            .arrayField("entries", "DomainAuditLogEntry", false, "list of audit log records sorted by timestamp, most recent first")
+            .field("partial", "Bool", true, "true if the result set was limited and additional records matching the query are available");
 
         sb.structType("ExpiryMember")
             .field("domainName", "DomainName", false, "name of the domain")
@@ -459,83 +668,6 @@ public class ZMSSchema {
         sb.structType("EntityList")
             .comment("The representation for an enumeration of entities in the namespace")
             .arrayField("names", "EntityName", false, "list of entity names");
-
-        sb.structType("GroupAuditLog")
-            .comment("An audit log entry for group membership change.")
-            .field("member", "GroupMemberName", false, "name of the group member")
-            .field("admin", "ResourceName", false, "name of the principal executing the change")
-            .field("created", "Timestamp", false, "timestamp of the entry")
-            .field("action", "String", false, "log action - e.g. add, delete, approve, etc")
-            .field("auditRef", "String", true, "audit reference string for the change as supplied by admin");
-
-        sb.structType("GroupMember")
-            .field("memberName", "GroupMemberName", true, "name of the member")
-            .field("groupName", "ResourceName", true, "name of the group")
-            .field("domainName", "DomainName", true, "name of the domain")
-            .field("expiration", "Timestamp", true, "the expiration timestamp")
-            .field("active", "Bool", true, "Flag to indicate whether membership is active", true)
-            .field("approved", "Bool", true, "Flag to indicate whether membership is approved either by delegates ( in case of auditEnabled groups ) or by domain admins ( in case of selfserve groups )", true)
-            .field("auditRef", "String", true, "audit reference string for the change as supplied by admin")
-            .field("requestTime", "Timestamp", true, "for pending membership requests, the request time")
-            .field("lastNotifiedTime", "Timestamp", true, "for pending membership requests, time when last notification was sent")
-            .field("requestPrincipal", "ResourceName", true, "pending members only - name of the principal requesting the change")
-            .field("reviewLastNotifiedTime", "Timestamp", true, "for pending membership requests, time when last notification was sent (for file store)")
-            .field("systemDisabled", "Int32", true, "user disabled by system based on configured group setting")
-            .field("principalType", "Int32", true, "server use only - principal type: unknown(0), user(1) or service(2)")
-            .field("pendingState", "String", true, "for pending membership requests, the request state - e.g. add, delete");
-
-        sb.structType("GroupMembership")
-            .comment("The representation for a group membership.")
-            .field("memberName", "GroupMemberName", false, "name of the member")
-            .field("isMember", "Bool", true, "flag to indicate whether or the user is a member or not", true)
-            .field("groupName", "ResourceName", true, "name of the group")
-            .field("expiration", "Timestamp", true, "the expiration timestamp")
-            .field("active", "Bool", true, "Flag to indicate whether membership is active", true)
-            .field("approved", "Bool", true, "Flag to indicate whether membership is approved either by delegates ( in case of auditEnabled groups ) or by domain admins ( in case of selfserve groups )", true)
-            .field("auditRef", "String", true, "audit reference string for the change as supplied by admin")
-            .field("requestPrincipal", "ResourceName", true, "pending members only - name of the principal requesting the change")
-            .field("systemDisabled", "Int32", true, "user disabled by system based on configured group setting")
-            .field("pendingState", "String", true, "for pending membership requests, the request state - e.g. add, delete");
-
-        sb.structType("GroupMeta")
-            .comment("Set of metadata attributes that all groups may have and can be changed by domain admins.")
-            .field("selfServe", "Bool", true, "Flag indicates whether or not group allows self service. Users can add themselves in the group, but it has to be approved by domain admins to be effective.", false)
-            .field("reviewEnabled", "Bool", true, "Flag indicates whether or not group updates require another review and approval", false)
-            .field("notifyRoles", "String", true, "list of roles whose members should be notified for member review/approval")
-            .field("userAuthorityFilter", "String", true, "membership filtered based on user authority configured attributes")
-            .field("userAuthorityExpiration", "String", true, "expiration enforced by a user authority configured attribute")
-            .field("memberExpiryDays", "Int32", true, "all user members in the group will have specified max expiry days")
-            .field("serviceExpiryDays", "Int32", true, "all services in the group will have specified max expiry days")
-            .mapField("tags", "CompoundName", "TagValueList", true, "key-value pair tags, tag might contain multiple values")
-            .field("auditEnabled", "Bool", true, "Flag indicates whether or not group updates should require GRC approval. If true, the auditRef parameter must be supplied(not empty) for any API defining it", false)
-            .field("deleteProtection", "Bool", true, "If true, ask for delete confirmation in audit and review enabled groups.", false);
-
-        sb.structType("Group", "GroupMeta")
-            .comment("The representation for a Group with set of members.")
-            .field("name", "ResourceName", false, "name of the group")
-            .field("modified", "Timestamp", true, "last modification timestamp of the group")
-            .arrayField("groupMembers", "GroupMember", true, "members with expiration")
-            .arrayField("auditLog", "GroupAuditLog", true, "an audit log for group membership changes")
-            .field("lastReviewedDate", "Timestamp", true, "last review timestamp of the group");
-
-        sb.structType("Groups")
-            .comment("The representation for a list of groups with full details")
-            .arrayField("list", "Group", false, "list of group objects");
-
-        sb.structType("DomainGroupMember")
-            .field("memberName", "GroupMemberName", false, "name of the member")
-            .arrayField("memberGroups", "GroupMember", false, "groups for this member");
-
-        sb.structType("DomainGroupMembers")
-            .field("domainName", "DomainName", false, "name of the domain")
-            .arrayField("members", "DomainGroupMember", false, "group members");
-
-        sb.structType("DomainGroupMembership")
-            .arrayField("domainGroupMembersList", "DomainGroupMembers", false, "");
-
-        sb.structType("GroupSystemMeta")
-            .comment("Set of system metadata attributes that all groups may have and can be changed by system admins.")
-            .field("auditEnabled", "Bool", true, "Flag indicates whether or not group updates should be approved by GRC. If true, the auditRef parameter must be supplied(not empty) for any API defining it.", false);
 
         sb.structType("PolicyList")
             .comment("The representation for an enumeration of policies in the namespace, with pagination.")
@@ -698,12 +830,57 @@ public class ZMSSchema {
         sb.structType("DependentServiceResourceGroupList")
             .arrayField("serviceAndResourceGroups", "DependentServiceResourceGroup", false, "collection of dependent services and resource groups for tenant domain");
 
+        sb.structType("ReviewObject")
+            .comment("Details for the roles and/or groups that need to be reviewed")
+            .field("domainName", "DomainName", false, "name of the domain")
+            .field("name", "EntityName", false, "name of the role and/or group")
+            .field("memberExpiryDays", "Int32", false, "all user members in the object have specified max expiry days")
+            .field("memberReviewDays", "Int32", false, "all user members in the object have specified max review days")
+            .field("serviceExpiryDays", "Int32", false, "all services in the object have specified max expiry days")
+            .field("serviceReviewDays", "Int32", false, "all services in the object have specified max review days")
+            .field("groupExpiryDays", "Int32", false, "all groups in the object have specified max expiry days")
+            .field("groupReviewDays", "Int32", false, "all groups in the object have specified max review days")
+            .field("lastReviewedDate", "Timestamp", true, "last review timestamp of the object")
+            .field("created", "Timestamp", false, "creation time of the object");
+
+        sb.structType("ReviewObjects")
+            .comment("The representation for a list of objects with full details")
+            .arrayField("list", "ReviewObject", false, "list of review objects");
+
+        sb.structType("SelfServeObject")
+            .comment("Details for a self-service role or group that a principal may request access to.")
+            .field("domainName", "DomainName", false, "name of the domain")
+            .field("name", "EntityName", false, "name of the role or group")
+            .field("description", "String", true, "description of the role or group (roles only - groups do not carry a description)")
+            .field("selfRenew", "Bool", true, "flag indicates whether expired members can renew their own membership")
+            .field("selfRenewMins", "Int32", true, "number of minutes members can renew their membership if self renew is enabled")
+            .field("reviewEnabled", "Bool", true, "flag indicates whether membership changes require review and approval")
+            .field("auditEnabled", "Bool", true, "flag indicates whether membership changes require GRC approval")
+            .field("deleteProtection", "Bool", true, "flag indicates whether member removal requires confirmation")
+            .field("memberStatus", "String", true, "membership state of the calling principal for this object: member, pending or none")
+            .field("expiration", "Timestamp", true, "expiration timestamp of the calling principal's membership, if any")
+            .field("inheritedFrom", "ResourceName", true, "if the caller's membership is inherited through a group, the full name of that group (roles only)")
+            .field("memberExpiryDays", "Int32", true, "maximum membership duration in days configured on this role or group (0 means no limit); callers derive the effective cap")
+            .field("domainMemberExpiryDays", "Int32", true, "maximum membership duration in days configured on the owning domain (0 means no limit); callers derive the effective cap");
+
+        sb.structType("SelfServeObjects")
+            .comment("The representation for a list of self-service objects.")
+            .arrayField("list", "SelfServeObject", false, "list of self-service objects");
+
         sb.structType("Info")
             .comment("Copyright The Athenz Authors Licensed under the terms of the Apache version 2.0 license. See LICENSE file for terms. The representation for an info object")
             .field("buildJdkSpec", "String", true, "jdk build version")
             .field("implementationTitle", "String", true, "implementation title - e.g. athenz-zms-server")
             .field("implementationVersion", "String", true, "implementation version - e.g. 1.11.1")
             .field("implementationVendor", "String", true, "implementation vendor - Athenz");
+
+        sb.structType("PrincipalMember")
+            .field("principalName", "MemberName", false, "name of the principal")
+            .field("suspendedState", "Int32", false, "current system suspended state of the principal");
+
+        sb.structType("PrincipalState")
+            .comment("A principal state entry")
+            .field("suspended", "Bool", false, "athenz suspended state for the principal");
 
         sb.stringType("rdl.Identifier")
             .comment("All names need to be of this restricted string type")
@@ -930,8 +1107,8 @@ public class ZMSSchema {
             .queryParam("role", "roleName", "ResourceName", null, "restrict the domain names where the specified user is in this role - see roleMember")
             .queryParam("azure", "subscription", "String", null, "restrict to domain names that have specified azure subscription name")
             .queryParam("gcp", "project", "String", null, "restrict to domain names that have specified gcp project name")
-            .queryParam("tagKey", "tagKey", "CompoundName", null, "flag to query all domains that have a given tagName")
-            .queryParam("tagValue", "tagValue", "CompoundName", null, "flag to query all domains that have a given tag name and value")
+            .queryParam("tagKey", "tagKey", "TagKey", null, "flag to query all domains that have a given tagName")
+            .queryParam("tagValue", "tagValue", "TagCompoundValue", null, "flag to query all domains that have a given tag name and value")
             .queryParam("businessService", "businessService", "String", null, "restrict to domain names that have specified business service name")
             .queryParam("productId", "productId", "String", null, "restrict the domain names that have specified product id")
             .headerParam("If-Modified-Since", "modifiedSince", "String", null, "This header specifies to the server to return any domains modified since this HTTP date")
@@ -945,6 +1122,7 @@ public class ZMSSchema {
         sb.resource("TopLevelDomain", "POST", "/domain")
             .comment("Create a new top level domain. This is a privileged action for the \"sys.auth\" administrators.")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("detail", "TopLevelDomain", "TopLevelDomain object to be created")
             .auth("create", "sys.auth:domain")
             .expected("OK")
@@ -961,6 +1139,7 @@ public class ZMSSchema {
             .comment("Create a new subdomain. The domain administrators of the {parent} domain have the privilege to create subdomains.")
             .pathParam("parent", "DomainName", "name of the parent domain")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("detail", "SubDomain", "Subdomain object to be created")
             .auth("create", "{parent}:domain")
             .expected("OK")
@@ -979,6 +1158,7 @@ public class ZMSSchema {
             .comment("Create a new user domain. The user domain will be created in the user top level domain and the user himself will be set as the administrator for this domain.")
             .pathParam("name", "SimpleName", "name of the domain which will be the user id")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("detail", "UserDomain", "UserDomain object to be created")
             .auth("create", "user.{name}:domain")
             .expected("OK")
@@ -997,6 +1177,7 @@ public class ZMSSchema {
             .comment("Delete the specified domain.  This is a privileged action for the \"sys.auth\" administrators. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned).")
             .pathParam("name", "SimpleName", "name of the domain to be deleted")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .auth("delete", "sys.auth:domain")
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -1011,11 +1192,12 @@ public class ZMSSchema {
 ;
 
         sb.resource("SubDomain", "DELETE", "/subdomain/{parent}/{name}")
-            .comment("Delete the specified subdomain. Caller must have domain delete permissions in parent. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned).")
+            .comment("Delete the specified subdomain. Caller must have domain delete permissions in parent or in the domain itself. Therefore, the RDL requires authentication only and the server will perform the authorization check based on the caller's identity. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned).")
             .pathParam("parent", "DomainName", "name of the parent domain")
             .pathParam("name", "SimpleName", "name of the subdomain to be deleted")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
-            .auth("delete", "{parent}:domain")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
+            .auth("", "", true)
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
 
@@ -1032,6 +1214,7 @@ public class ZMSSchema {
             .comment("Delete the specified userdomain. Caller must have domain delete permissions in the domain. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned).")
             .pathParam("name", "SimpleName", "name of the domain to be deleted which will be the user id")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .auth("delete", "user.{name}:domain")
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -1049,6 +1232,7 @@ public class ZMSSchema {
             .comment("Update the specified top level domain metadata. Note that entities in the domain are not affected. Caller must have update privileges on the domain itself.")
             .pathParam("name", "DomainName", "name of the domain to be updated")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("detail", "DomainMeta", "DomainMeta object with updated attribute values")
             .auth("update", "{name}:")
             .expected("NO_CONTENT")
@@ -1066,13 +1250,13 @@ public class ZMSSchema {
 ;
 
         sb.resource("DomainMeta", "PUT", "/domain/{name}/meta/system/{attribute}")
-            .comment("Set the specified top level domain metadata. Note that entities in the domain are not affected. Caller must have update privileges on the domain itself. If the system attribute is one of the string attributes, then the caller must also have delete action on the same resource in order to reset the configured value")
+            .comment("Set the specified top level domain metadata. Note that entities in the domain are not affected. Caller must have update privileges on the domain itself. If the system attribute is one of the string attributes, then the caller must also have delete action on the same resource in order to reset the configured value. The authorization will be carried out in the server side based on the attribute. For all attributes, the system admin will have full access with authorize (\"update\", \"sys.auth:meta.domain.{attribute}.{name}\") but for \"enabled\" attribute we'll allow domain admins to enable/disable as well with authorize (\"update\", \"{name}:\"). We're handling the enabled attribute separately to avoid any issues with regular meta calls where the state can change accidentally causing unexpected incidents")
             .name("PutDomainSystemMeta")
             .pathParam("name", "DomainName", "name of the domain to be updated")
             .pathParam("attribute", "SimpleName", "name of the system attribute to be modified")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
             .input("detail", "DomainMeta", "DomainMeta object with updated attribute values")
-            .auth("update", "sys.auth:meta.domain.{attribute}.{name}")
+            .auth("", "", true)
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
 
@@ -1192,6 +1376,28 @@ public class ZMSSchema {
             .exception("UNAUTHORIZED", "ResourceError", "")
 ;
 
+        sb.resource("DomainAuditLog", "GET", "/domain/{domainName}/history/audit")
+            .comment("Get the audit log history for the domain. The optional query arguments can be used to filter the result set. The start and end dates must be specified in RFC3339 format e.g. 2026-09-01T00:00:00Z The principal must be authorized for the \"zms.auditlogaccess\" action on either the \"{domainName}:meta.audit.log\" resource in the requested domain or the \"sys.auth:meta.audit.log.{domainName}\" resource in the sys.auth domain")
+            .pathParam("domainName", "DomainName", "name of the domain")
+            .queryParam("api", "api", "SimpleName", null, "restrict results to the given api name")
+            .queryParam("entity", "entity", "ResourceName", null, "restrict results to the given entity name")
+            .queryParam("principal", "principal", "ResourceName", null, "restrict results to changes made by the given principal")
+            .queryParam("start", "startDate", "String", null, "restrict results to changes made on or after this date")
+            .queryParam("end", "endDate", "String", null, "restrict results to changes made on or before this date")
+            .queryParam("limit", "limit", "Int32", null, "restrict the number of results in this call")
+            .auth("", "", true)
+            .expected("OK")
+            .exception("BAD_REQUEST", "ResourceError", "")
+
+            .exception("FORBIDDEN", "ResourceError", "")
+
+            .exception("NOT_FOUND", "ResourceError", "")
+
+            .exception("TOO_MANY_REQUESTS", "ResourceError", "")
+
+            .exception("UNAUTHORIZED", "ResourceError", "")
+;
+
         sb.resource("ExpiredMembers", "DELETE", "/expired-members")
             .comment("Delete expired principals This command will purge expired members of the following resources based on the purgeResources value 0 - none of them will be purged 1 - only roles will be purged 2 - only groups will be purged default/3 - both of them will be purged")
             .queryParam("purgeResources", "purgeResources", "Int32", null, "defining which resources will be purged. by default all resources will be purged")
@@ -1202,6 +1408,24 @@ public class ZMSSchema {
             .exception("BAD_REQUEST", "ResourceError", "")
 
             .exception("FORBIDDEN", "ResourceError", "")
+
+            .exception("UNAUTHORIZED", "ResourceError", "")
+;
+
+        sb.resource("ResourceDomainOwnership", "PUT", "/domain/{domainName}/ownership")
+            .comment("Set the resource ownership for the given domain")
+            .pathParam("domainName", "DomainName", "name of the domain")
+            .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .input("resourceOwnership", "ResourceDomainOwnership", "resource ownership to be set for the given domain")
+            .auth("update", "{domainName}:meta.domain.ownership")
+            .expected("NO_CONTENT")
+            .exception("BAD_REQUEST", "ResourceError", "")
+
+            .exception("FORBIDDEN", "ResourceError", "")
+
+            .exception("NOT_FOUND", "ResourceError", "")
+
+            .exception("TOO_MANY_REQUESTS", "ResourceError", "")
 
             .exception("UNAUTHORIZED", "ResourceError", "")
 ;
@@ -1314,8 +1538,8 @@ public class ZMSSchema {
             .comment("Get the list of all roles in a domain with optional flag whether or not include members")
             .pathParam("domainName", "DomainName", "name of the domain")
             .queryParam("members", "members", "Bool", false, "return list of members in the role")
-            .queryParam("tagKey", "tagKey", "CompoundName", null, "flag to query all roles that have a given tagName")
-            .queryParam("tagValue", "tagValue", "CompoundName", null, "flag to query all roles that have a given tag name and value")
+            .queryParam("tagKey", "tagKey", "TagKey", null, "flag to query all roles that have a given tagName")
+            .queryParam("tagValue", "tagValue", "TagCompoundValue", null, "flag to query all roles that have a given tag name and value")
             .auth("", "", true)
             .expected("OK")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -1353,6 +1577,7 @@ public class ZMSSchema {
             .pathParam("roleName", "EntityName", "name of the role to be added/updated")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
             .headerParam("Athenz-Return-Object", "returnObj", "Bool", false, "Return object param updated object back.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("role", "Role", "Role object to be added/updated in the domain")
             .auth("update", "{domainName}:role.{roleName}")
             .expected("NO_CONTENT")
@@ -1374,7 +1599,30 @@ public class ZMSSchema {
             .pathParam("domainName", "DomainName", "name of the domain")
             .pathParam("roleName", "EntityName", "name of the role to be deleted")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .auth("delete", "{domainName}:role.{roleName}")
+            .expected("NO_CONTENT")
+            .exception("BAD_REQUEST", "ResourceError", "")
+
+            .exception("CONFLICT", "ResourceError", "")
+
+            .exception("FORBIDDEN", "ResourceError", "")
+
+            .exception("NOT_FOUND", "ResourceError", "")
+
+            .exception("TOO_MANY_REQUESTS", "ResourceError", "")
+
+            .exception("UNAUTHORIZED", "ResourceError", "")
+;
+
+        sb.resource("RoleList", "DELETE", "/domain/{domainName}/roles/{roleNames}")
+            .comment("Delete the specified roles. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned).")
+            .name("DeleteRoles")
+            .pathParam("domainName", "DomainName", "name of the domain")
+            .pathParam("roleNames", "EntityNameList", "comma separated list of role names to be deleted")
+            .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
+            .auth("", "", true)
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
 
@@ -1442,9 +1690,9 @@ public class ZMSSchema {
 ;
 
         sb.resource("DomainRoleMember", "GET", "/role")
-            .comment("Fetch all the roles across domains by either calling or specified principal The optional expand argument will include all direct and indirect roles, however, it will force authorization that you must be either the principal or for service accounts have update access to the service identity: 1. authenticated principal is the same as the check principal 2. system authorized (\"access\", \"sys.auth:meta.role.lookup\") 3. service admin (\"update\", \"{principal}\")")
+            .comment("Fetch all the roles across domains by either calling or specified principal The optional expand argument will include all direct and indirect roles, however, it will force authorization that you must be either the principal or for service accounts have update access to the service identity: 1. authenticated principal is the same as the check principal 2. system authorized (\"access\", \"sys.auth:meta.role.lookup\") 3. service admin (\"update\", \"{principal}\") 4. domain authorized (\"access\", \"{domainName}:meta.role.lookup\") if domainName is provided")
             .name("getPrincipalRoles")
-            .queryParam("principal", "principal", "ResourceName", null, "If not present, will return roles for the user making the call")
+            .queryParam("principal", "principal", "PrincipalName", null, "If not present, will return roles for the user making the call")
             .queryParam("domain", "domainName", "DomainName", null, "If not present, will return roles from all domains")
             .queryParam("expand", "expand", "Bool", false, "expand to include group and delegated trust role membership")
             .auth("", "", true)
@@ -1461,12 +1709,13 @@ public class ZMSSchema {
 ;
 
         sb.resource("Membership", "PUT", "/domain/{domainName}/role/{roleName}/member/{memberName}")
-            .comment("Add the specified user to the role's member list. If the role is neither auditEnabled nor selfserve, then it will use authorize (\"update\", \"{domainName}:role.{roleName}\") or (\"update_members\", \"{domainName}:role.{roleName}\"). This only allows access to members and not role attributes. otherwise membership will be sent for approval to either designated delegates ( in case of auditEnabled roles ) or to domain admins ( in case of selfserve roles )")
+            .comment("Add the specified user to the role's member list. If the role is selfRenewEnabled, then an existing member may extend their expiration time by the configured number of minutes (selfRenewMins) by calling this API regardless or not the user is expired or active. If the role is neither auditEnabled nor selfserve, then it will use authorize (\"update\", \"{domainName}:role.{roleName}\") or (\"update_members\", \"{domainName}:role.{roleName}\"). This only allows access to members and not role attributes. otherwise membership will be sent for approval to either designated delegates ( in case of auditEnabled roles ) or to domain admins ( in case of selfserve roles )")
             .pathParam("domainName", "DomainName", "name of the domain")
             .pathParam("roleName", "EntityName", "name of the role")
             .pathParam("memberName", "MemberName", "name of the user to be added as a member")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
             .headerParam("Athenz-Return-Object", "returnObj", "Bool", false, "Return object param updated object back.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("membership", "Membership", "Membership object (must contain role/member names as specified in the URI)")
             .auth("", "", true)
             .expected("NO_CONTENT")
@@ -1489,6 +1738,7 @@ public class ZMSSchema {
             .pathParam("roleName", "EntityName", "name of the role")
             .pathParam("memberName", "MemberName", "name of the user to be removed as a member")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .auth("", "", true)
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -1571,6 +1821,7 @@ public class ZMSSchema {
             .pathParam("domainName", "DomainName", "name of the domain to be updated")
             .pathParam("roleName", "EntityName", "name of the role")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("detail", "RoleMeta", "RoleMeta object with updated attribute values")
             .auth("", "", true)
             .expected("NO_CONTENT")
@@ -1611,14 +1862,15 @@ public class ZMSSchema {
 ;
 
         sb.resource("Role", "PUT", "/domain/{domainName}/role/{roleName}/review")
-            .comment("Review role membership and take action to either extend and/or delete existing members.")
+            .comment("Review role membership and take action to either extend and/or delete existing members. The required authorization includes two options: 1. (\"update\", \"{domainName}:role.{roleName}\") 2. (\"update_members\", \"{domainName}:role.{roleName}\")")
             .name("PutRoleReview")
             .pathParam("domainName", "DomainName", "name of the domain")
             .pathParam("roleName", "EntityName", "name of the role")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
             .headerParam("Athenz-Return-Object", "returnObj", "Bool", false, "Return object param updated object back.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("role", "Role", "Role object with updated and/or deleted members")
-            .auth("update", "{domainName}:role.{roleName}")
+            .auth("", "", true)
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
 
@@ -1633,12 +1885,31 @@ public class ZMSSchema {
             .exception("UNAUTHORIZED", "ResourceError", "")
 ;
 
+        sb.resource("ResourceRoleOwnership", "PUT", "/domain/{domainName}/role/{roleName}/ownership")
+            .comment("Set the resource ownership for the given role")
+            .pathParam("domainName", "DomainName", "name of the domain")
+            .pathParam("roleName", "EntityName", "name of the role")
+            .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .input("resourceOwnership", "ResourceRoleOwnership", "resource ownership to be set for the given role")
+            .auth("update", "{domainName}:meta.role.ownership.{roleName}")
+            .expected("NO_CONTENT")
+            .exception("BAD_REQUEST", "ResourceError", "")
+
+            .exception("FORBIDDEN", "ResourceError", "")
+
+            .exception("NOT_FOUND", "ResourceError", "")
+
+            .exception("TOO_MANY_REQUESTS", "ResourceError", "")
+
+            .exception("UNAUTHORIZED", "ResourceError", "")
+;
+
         sb.resource("Groups", "GET", "/domain/{domainName}/groups")
             .comment("Get the list of all groups in a domain with optional flag whether or not include members")
             .pathParam("domainName", "DomainName", "name of the domain")
             .queryParam("members", "members", "Bool", false, "return list of members in the group")
-            .queryParam("tagKey", "tagKey", "CompoundName", null, "flag to query all groups that have a given tagName")
-            .queryParam("tagValue", "tagValue", "CompoundName", null, "flag to query all groups that have a given tag name and value")
+            .queryParam("tagKey", "tagKey", "TagKey", null, "flag to query all groups that have a given tagName")
+            .queryParam("tagValue", "tagValue", "TagCompoundValue", null, "flag to query all groups that have a given tag name and value")
             .auth("", "", true)
             .expected("OK")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -1675,6 +1946,7 @@ public class ZMSSchema {
             .pathParam("groupName", "EntityName", "name of the group to be added/updated")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
             .headerParam("Athenz-Return-Object", "returnObj", "Bool", false, "Return object param updated object back.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("group", "Group", "Group object to be added/updated in the domain")
             .auth("update", "{domainName}:group.{groupName}")
             .expected("NO_CONTENT")
@@ -1696,6 +1968,7 @@ public class ZMSSchema {
             .pathParam("domainName", "DomainName", "name of the domain")
             .pathParam("groupName", "EntityName", "name of the group to be deleted")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .auth("delete", "{domainName}:group.{groupName}")
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -1733,7 +2006,7 @@ public class ZMSSchema {
         sb.resource("DomainGroupMember", "GET", "/group")
             .comment("Fetch all the groups across domains by either calling or specified principal")
             .name("getPrincipalGroups")
-            .queryParam("principal", "principal", "EntityName", null, "If not present, will return groups for the user making the call")
+            .queryParam("principal", "principal", "PrincipalName", null, "If not present, will return groups for the user making the call")
             .queryParam("domain", "domainName", "DomainName", null, "If not present, will return groups from all domains")
             .auth("", "", true)
             .expected("OK")
@@ -1749,12 +2022,13 @@ public class ZMSSchema {
 ;
 
         sb.resource("GroupMembership", "PUT", "/domain/{domainName}/group/{groupName}/member/{memberName}")
-            .comment("Add the specified user to the group's member list. If the group is neither auditEnabled nor selfserve, then it will use authorize (\"update\", \"{domainName}:group.{groupName}\") otherwise membership will be sent for approval to either designated delegates ( in case of auditEnabled groups ) or to domain admins ( in case of selfserve groups )")
+            .comment("Add the specified user to the group's member list. If the group is selfRenewEnabled, then an existing member may extend their expiration time by the configured number of minutes (selfRenewMins) by calling this API regardless or not the user is expired or active. If the group is neither auditEnabled nor selfserve, then it will use authorize (\"update\", \"{domainName}:group.{groupName}\") otherwise membership will be sent for approval to either designated delegates ( in case of auditEnabled groups ) or to domain admins ( in case of selfserve groups )")
             .pathParam("domainName", "DomainName", "name of the domain")
             .pathParam("groupName", "EntityName", "name of the group")
             .pathParam("memberName", "GroupMemberName", "name of the user to be added as a member")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
             .headerParam("Athenz-Return-Object", "returnObj", "Bool", false, "Return object param updated object back.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("membership", "GroupMembership", "Membership object (must contain group/member names as specified in the URI)")
             .auth("", "", true)
             .expected("NO_CONTENT")
@@ -1777,6 +2051,7 @@ public class ZMSSchema {
             .pathParam("groupName", "EntityName", "name of the group")
             .pathParam("memberName", "GroupMemberName", "name of the user to be removed as a member")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .auth("", "", true)
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -1841,6 +2116,7 @@ public class ZMSSchema {
             .pathParam("domainName", "DomainName", "name of the domain to be updated")
             .pathParam("groupName", "EntityName", "name of the group")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("detail", "GroupMeta", "GroupMeta object with updated attribute values")
             .auth("update", "{domainName}:group.{groupName}")
             .expected("NO_CONTENT")
@@ -1881,14 +2157,15 @@ public class ZMSSchema {
 ;
 
         sb.resource("Group", "PUT", "/domain/{domainName}/group/{groupName}/review")
-            .comment("Review group membership and take action to either extend and/or delete existing members.")
+            .comment("Review group membership and take action to either extend and/or delete existing members. The required authorization includes three options: 1. (\"update\", \"{domainName}:group.{groupName}\") 2. (\"update_members\", \"{domainName}:group.{groupName}\")")
             .name("PutGroupReview")
             .pathParam("domainName", "DomainName", "name of the domain")
             .pathParam("groupName", "EntityName", "name of the group")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
             .headerParam("Athenz-Return-Object", "returnObj", "Bool", false, "Return object param updated object back.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("group", "Group", "Group object with updated and/or deleted members")
-            .auth("update", "{domainName}:group.{groupName}")
+            .auth("", "", true)
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
 
@@ -1908,6 +2185,41 @@ public class ZMSSchema {
             .name("getPendingDomainGroupMembersList")
             .queryParam("principal", "principal", "EntityName", null, "If present, return pending list for this principal")
             .queryParam("domain", "domainName", "String", null, "If present, return pending list for this domain")
+            .auth("", "", true)
+            .expected("OK")
+            .exception("BAD_REQUEST", "ResourceError", "")
+
+            .exception("FORBIDDEN", "ResourceError", "")
+
+            .exception("NOT_FOUND", "ResourceError", "")
+
+            .exception("TOO_MANY_REQUESTS", "ResourceError", "")
+
+            .exception("UNAUTHORIZED", "ResourceError", "")
+;
+
+        sb.resource("ResourceGroupOwnership", "PUT", "/domain/{domainName}/group/{groupName}/ownership")
+            .comment("Set the resource ownership for the given group")
+            .pathParam("domainName", "DomainName", "name of the domain")
+            .pathParam("groupName", "EntityName", "name of the group")
+            .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .input("resourceOwnership", "ResourceGroupOwnership", "resource ownership to be set for the given group")
+            .auth("update", "{domainName}:meta.group.ownership.{groupName}")
+            .expected("NO_CONTENT")
+            .exception("BAD_REQUEST", "ResourceError", "")
+
+            .exception("FORBIDDEN", "ResourceError", "")
+
+            .exception("NOT_FOUND", "ResourceError", "")
+
+            .exception("TOO_MANY_REQUESTS", "ResourceError", "")
+
+            .exception("UNAUTHORIZED", "ResourceError", "")
+;
+
+        sb.resource("DomainGroupMembers", "GET", "/domain/{domainName}/group/member")
+            .comment("Get list of principals defined in groups in the given domain")
+            .pathParam("domainName", "DomainName", "name of the domain")
             .auth("", "", true)
             .expected("OK")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -1944,8 +2256,8 @@ public class ZMSSchema {
             .pathParam("domainName", "DomainName", "name of the domain")
             .queryParam("assertions", "assertions", "Bool", false, "return list of assertions in the policy")
             .queryParam("includeNonActive", "includeNonActive", "Bool", false, "include non-active policy versions")
-            .queryParam("tagKey", "tagKey", "CompoundName", null, "flag to query all policies that have a given tagName")
-            .queryParam("tagValue", "tagValue", "CompoundName", null, "flag to query all policies that have a given tag name and value")
+            .queryParam("tagKey", "tagKey", "TagKey", null, "flag to query all policies that have a given tagName")
+            .queryParam("tagValue", "tagValue", "TagCompoundValue", null, "flag to query all policies that have a given tag name and value")
             .auth("", "", true)
             .expected("OK")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -1980,6 +2292,7 @@ public class ZMSSchema {
             .pathParam("policyName", "EntityName", "name of the policy to be added/updated")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
             .headerParam("Athenz-Return-Object", "returnObj", "Bool", false, "Return object param updated object back.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("policy", "Policy", "Policy object to be added or updated in the domain")
             .auth("update", "{domainName}:policy.{policyName}")
             .expected("NO_CONTENT")
@@ -2001,7 +2314,30 @@ public class ZMSSchema {
             .pathParam("domainName", "DomainName", "name of the domain")
             .pathParam("policyName", "EntityName", "name of the policy to be deleted")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .auth("delete", "{domainName}:policy.{policyName}")
+            .expected("NO_CONTENT")
+            .exception("BAD_REQUEST", "ResourceError", "")
+
+            .exception("CONFLICT", "ResourceError", "")
+
+            .exception("FORBIDDEN", "ResourceError", "")
+
+            .exception("NOT_FOUND", "ResourceError", "")
+
+            .exception("TOO_MANY_REQUESTS", "ResourceError", "")
+
+            .exception("UNAUTHORIZED", "ResourceError", "")
+;
+
+        sb.resource("PolicyList", "DELETE", "/domain/{domainName}/policies/{policyNames}")
+            .comment("Delete the specified policies. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned).")
+            .name("DeletePolicies")
+            .pathParam("domainName", "DomainName", "name of the domain")
+            .pathParam("policyNames", "EntityNameList", "comma separated list of policy names to be deleted")
+            .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
+            .auth("", "", true)
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
 
@@ -2039,6 +2375,7 @@ public class ZMSSchema {
             .pathParam("domainName", "DomainName", "name of the domain")
             .pathParam("policyName", "EntityName", "name of the policy")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("assertion", "Assertion", "Assertion object to be added to the given policy")
             .auth("update", "{domainName}:policy.{policyName}")
             .expected("OK")
@@ -2062,6 +2399,7 @@ public class ZMSSchema {
             .pathParam("policyName", "EntityName", "name of the policy")
             .pathParam("version", "SimpleName", "name of the version")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("assertion", "Assertion", "Assertion object to be added to the given policy version")
             .auth("update", "{domainName}:policy.{policyName}")
             .expected("OK")
@@ -2079,12 +2417,13 @@ public class ZMSSchema {
 ;
 
         sb.resource("Assertion", "DELETE", "/domain/{domainName}/policy/{policyName}/assertion/{assertionId}")
-            .comment("Delete the specified policy assertion. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned).")
+            .comment("Delete the specified policy assertion. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned). The required authorization includes two options: 1. (\"update\", \"{domainName}:policy.{policyName}\") 2. (\"delete\", \"{domainName}:policy.{policyName}.assertion.{assertionId}\")")
             .pathParam("domainName", "DomainName", "name of the domain")
             .pathParam("policyName", "EntityName", "name of the policy")
             .pathParam("assertionId", "Int64", "assertion id")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
-            .auth("update", "{domainName}:policy.{policyName}")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
+            .auth("", "", true)
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
 
@@ -2100,14 +2439,15 @@ public class ZMSSchema {
 ;
 
         sb.resource("Assertion", "DELETE", "/domain/{domainName}/policy/{policyName}/version/{version}/assertion/{assertionId}")
-            .comment("Delete the specified policy version assertion. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned).")
+            .comment("Delete the specified policy version assertion. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned). The required authorization includes two options: 1. (\"update\", \"{domainName}:policy.{policyName}\") 2. (\"delete\", \"{domainName}:policy.{policyName}.assertion.{assertionId}\")")
             .name("deleteAssertionPolicyVersion")
             .pathParam("domainName", "DomainName", "name of the domain")
             .pathParam("policyName", "EntityName", "name of the policy")
             .pathParam("version", "SimpleName", "name of the version")
             .pathParam("assertionId", "Int64", "assertion id")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
-            .auth("update", "{domainName}:policy.{policyName}")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
+            .auth("", "", true)
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
 
@@ -2128,6 +2468,7 @@ public class ZMSSchema {
             .pathParam("policyName", "EntityName", "name of the policy")
             .pathParam("assertionId", "Int64", "assertion id")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("assertionConditions", "AssertionConditions", "Assertion conditions object to be added to the given assertion")
             .auth("update", "{domainName}:policy.{policyName}")
             .expected("OK")
@@ -2150,6 +2491,7 @@ public class ZMSSchema {
             .pathParam("policyName", "EntityName", "name of the policy")
             .pathParam("assertionId", "Int64", "assertion id")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("assertionCondition", "AssertionCondition", "Assertion conditions object to be added to the given assertion")
             .auth("update", "{domainName}:policy.{policyName}")
             .expected("OK")
@@ -2172,6 +2514,7 @@ public class ZMSSchema {
             .pathParam("policyName", "EntityName", "name of the policy")
             .pathParam("assertionId", "Int64", "assertion id")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .auth("update", "{domainName}:policy.{policyName}")
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -2194,6 +2537,7 @@ public class ZMSSchema {
             .pathParam("assertionId", "Int64", "assertion id")
             .pathParam("conditionId", "Int32", "condition id")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .auth("update", "{domainName}:policy.{policyName}")
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -2254,6 +2598,7 @@ public class ZMSSchema {
             .input("policyOptions", "PolicyOptions", "name of the source version to copy from and name of new version")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
             .headerParam("Athenz-Return-Object", "returnObj", "Bool", false, "Return object param updated object back.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .auth("update", "{domainName}:policy.{policyName}")
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -2276,6 +2621,7 @@ public class ZMSSchema {
             .pathParam("policyName", "EntityName", "name of the policy")
             .input("policyOptions", "PolicyOptions", "name of the version")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .auth("update", "{domainName}:policy.{policyName}")
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -2298,11 +2644,31 @@ public class ZMSSchema {
             .pathParam("policyName", "EntityName", "name of the policy")
             .pathParam("version", "SimpleName", "name of the version to be deleted")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .auth("delete", "{domainName}:policy.{policyName}")
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
 
             .exception("CONFLICT", "ResourceError", "")
+
+            .exception("FORBIDDEN", "ResourceError", "")
+
+            .exception("NOT_FOUND", "ResourceError", "")
+
+            .exception("TOO_MANY_REQUESTS", "ResourceError", "")
+
+            .exception("UNAUTHORIZED", "ResourceError", "")
+;
+
+        sb.resource("ResourcePolicyOwnership", "PUT", "/domain/{domainName}/policy/{policyName}/ownership")
+            .comment("Set the resource ownership for the given policy")
+            .pathParam("domainName", "DomainName", "name of the domain")
+            .pathParam("policyName", "EntityName", "name of the policy")
+            .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .input("resourceOwnership", "ResourcePolicyOwnership", "resource ownership to be set for the given policy")
+            .auth("update", "{domainName}:meta.policy.ownership.{policyName}")
+            .expected("NO_CONTENT")
+            .exception("BAD_REQUEST", "ResourceError", "")
 
             .exception("FORBIDDEN", "ResourceError", "")
 
@@ -2319,6 +2685,7 @@ public class ZMSSchema {
             .pathParam("service", "SimpleName", "name of the service")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
             .headerParam("Athenz-Return-Object", "returnObj", "Bool", false, "Return object param updated object back.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("detail", "ServiceIdentity", "ServiceIdentity object to be added/updated in the domain")
             .auth("update", "{domain}:service.{service}")
             .expected("NO_CONTENT")
@@ -2357,6 +2724,7 @@ public class ZMSSchema {
             .pathParam("domain", "DomainName", "name of the domain")
             .pathParam("service", "SimpleName", "name of the service to be deleted")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .auth("delete", "{domain}:service.{service}")
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -2377,8 +2745,8 @@ public class ZMSSchema {
             .pathParam("domainName", "DomainName", "name of the domain")
             .queryParam("publickeys", "publickeys", "Bool", false, "return list of public keys in the service")
             .queryParam("hosts", "hosts", "Bool", false, "return list of hosts in the service")
-            .queryParam("tagKey", "tagKey", "CompoundName", null, "flag to query all services that have a given tagName")
-            .queryParam("tagValue", "tagValue", "CompoundName", null, "flag to query all services that have a given tag name and value")
+            .queryParam("tagKey", "tagKey", "TagKey", null, "flag to query all services that have a given tagName")
+            .queryParam("tagValue", "tagValue", "TagCompoundValue", null, "flag to query all services that have a given tag name and value")
             .auth("", "", true)
             .expected("OK")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -2432,6 +2800,7 @@ public class ZMSSchema {
             .pathParam("service", "SimpleName", "name of the service")
             .pathParam("id", "String", "the identifier of the public key to be added")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .input("publicKeyEntry", "PublicKeyEntry", "PublicKeyEntry object to be added/updated in the service")
             .auth("update", "{domain}:service.{service}")
             .expected("NO_CONTENT")
@@ -2454,6 +2823,7 @@ public class ZMSSchema {
             .pathParam("service", "SimpleName", "name of the service")
             .pathParam("id", "String", "the identifier of the public key to be deleted")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
             .auth("update", "{domain}:service.{service}")
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -2470,13 +2840,68 @@ public class ZMSSchema {
 ;
 
         sb.resource("ServiceIdentitySystemMeta", "PUT", "/domain/{domain}/service/{service}/meta/system/{attribute}")
-            .comment("Set the specified service metadata. Caller must have update privileges on the sys.auth domain.")
+            .comment("Set the specified service metadata. Caller must have update privileges on the sys.auth domain. For OAuth DCR clientid updates, client ID self-update is also allowed when the server property and domain clientIdSelfUpdate flag are enabled, the caller is the target service principal, and the target domain policy grants update on resource service.<service>.clientid.<clientid>.")
             .pathParam("domain", "DomainName", "name of the domain")
             .pathParam("service", "SimpleName", "name of the service")
             .pathParam("attribute", "SimpleName", "name of the system attribute to be modified")
             .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
             .input("detail", "ServiceIdentitySystemMeta", "ServiceIdentitySystemMeta object with updated attribute values")
-            .auth("update", "sys.auth:meta.service.{attribute}.{domain}")
+            .auth("", "", true)
+            .expected("NO_CONTENT")
+            .exception("BAD_REQUEST", "ResourceError", "")
+
+            .exception("CONFLICT", "ResourceError", "")
+
+            .exception("FORBIDDEN", "ResourceError", "")
+
+            .exception("NOT_FOUND", "ResourceError", "")
+
+            .exception("TOO_MANY_REQUESTS", "ResourceError", "")
+
+            .exception("UNAUTHORIZED", "ResourceError", "")
+;
+
+        sb.resource("ResourceServiceIdentityOwnership", "PUT", "/domain/{domainName}/service/{service}/ownership")
+            .comment("Set the resource ownership for the given service")
+            .pathParam("domainName", "DomainName", "name of the domain")
+            .pathParam("service", "SimpleName", "name of the service")
+            .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .input("resourceOwnership", "ResourceServiceIdentityOwnership", "resource ownership to be set for the given service")
+            .auth("update", "{domainName}:meta.service.ownership.{service}")
+            .expected("NO_CONTENT")
+            .exception("BAD_REQUEST", "ResourceError", "")
+
+            .exception("FORBIDDEN", "ResourceError", "")
+
+            .exception("NOT_FOUND", "ResourceError", "")
+
+            .exception("TOO_MANY_REQUESTS", "ResourceError", "")
+
+            .exception("UNAUTHORIZED", "ResourceError", "")
+;
+
+        sb.resource("ServiceIdentities", "GET", "/service/{serviceName}")
+            .comment("Search for all services across all domains that match the specified service name. The service name can be a substring match based on the option substringMatch query parameter. The domainFilter query parameter can be used to limit the domain names.")
+            .name("searchServiceIdentities")
+            .pathParam("serviceName", "SimpleName", "name of the service (could be substring)")
+            .queryParam("substringMatch", "substringMatch", "Bool", false, "substring match for service name")
+            .queryParam("domainFilter", "domainFilter", "DomainName", null, "domain filter match for service name")
+            .auth("", "", true)
+            .expected("OK")
+            .exception("BAD_REQUEST", "ResourceError", "")
+
+            .exception("TOO_MANY_REQUESTS", "ResourceError", "")
+;
+
+        sb.resource("CredsEntry", "PUT", "/domain/{domain}/service/{service}/creds")
+            .comment("Add the specified credentials for the service.")
+            .name("PutServiceCredsEntry")
+            .pathParam("domain", "DomainName", "name of the domain")
+            .pathParam("service", "SimpleName", "name of the service")
+            .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .headerParam("Athenz-Resource-Owner", "resourceOwner", "String", null, "Resource owner for the request")
+            .input("credEntry", "CredsEntry", "CredsEntry object to be added/updated in the service")
+            .auth("update", "{domain}:service.{service}")
             .expected("NO_CONTENT")
             .exception("BAD_REQUEST", "ResourceError", "")
 
@@ -2710,7 +3135,7 @@ public class ZMSSchema {
             .pathParam("action", "ActionName", "action as specified in the policy assertion, i.e. update or read")
             .pathParam("resource", "ResourceName", "the resource to check access against, i.e. \"media.news:articles\"")
             .queryParam("domain", "domain", "DomainName", null, "usually null. If present, it specifies an alternate domain for cross-domain trust relation")
-            .queryParam("principal", "checkPrincipal", "EntityName", null, "usually null. If present, carry out the access check for this principal")
+            .queryParam("principal", "checkPrincipal", "PrincipalName", null, "usually null. If present, carry out the access check for this principal")
             .auth("", "", true)
             .expected("OK")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -2730,7 +3155,8 @@ public class ZMSSchema {
             .pathParam("action", "ActionName", "action as specified in the policy assertion, i.e. update or read")
             .queryParam("resource", "resource", "String", null, "the resource to check access against, i.e. \"media.news:articles\"")
             .queryParam("domain", "domain", "DomainName", null, "usually null. If present, it specifies an alternate domain for cross-domain trust relation")
-            .queryParam("principal", "checkPrincipal", "EntityName", null, "usually null. If present, carry out the access check for this principal")
+            .queryParam("principal", "checkPrincipal", "PrincipalName", null, "usually null. If present, carry out the access check for this principal")
+            .queryParam("caseSensitive", "caseSensitive", "Bool", null, "usually null. If true, match the action and resource of assertions created with the case-sensitive flag in their original case")
             .auth("", "", true)
             .expected("OK")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -2746,8 +3172,9 @@ public class ZMSSchema {
 
         sb.resource("ResourceAccessList", "GET", "/resource")
             .comment("Return list of resources that the given principal has access to. Even though the principal is marked as optional, it must be specified")
-            .queryParam("principal", "principal", "ResourceName", null, "specifies principal to query the resource list for")
+            .queryParam("principal", "principal", "PrincipalName", null, "specifies principal to query the resource list for")
             .queryParam("action", "action", "ActionName", null, "action as specified in the policy assertion")
+            .queryParam("filter", "filter", "String", null, "resource filter for specific subset of resources")
             .auth("", "", true)
             .expected("OK")
             .exception("BAD_REQUEST", "ResourceError", "")
@@ -3150,11 +3577,101 @@ public class ZMSSchema {
             .exception("UNAUTHORIZED", "ResourceError", "")
 ;
 
+        sb.resource("ReviewObjects", "GET", "/review/role")
+            .comment("Fetch all the roles across domains for either the caller or specified principal that require a review based on the last reviewed date and configured attributes. The method requires the caller to be either the principal or authorized in system to carry out the operation for any principal (typically this would be system administrators) 1. authenticated principal is the same as the check principal 2. system authorized (\"access\", \"sys.auth:meta.review.lookup\")")
+            .name("GetRolesForReview")
+            .queryParam("principal", "principal", "ResourceName", null, "If not present, will return roles for the user making the call")
+            .auth("", "", true)
+            .expected("OK")
+            .exception("BAD_REQUEST", "ResourceError", "")
+
+            .exception("FORBIDDEN", "ResourceError", "")
+
+            .exception("NOT_FOUND", "ResourceError", "")
+
+            .exception("TOO_MANY_REQUESTS", "ResourceError", "")
+
+            .exception("UNAUTHORIZED", "ResourceError", "")
+;
+
+        sb.resource("ReviewObjects", "GET", "/review/group")
+            .comment("Fetch all the groups across domains for either the caller or specified principal that require a review based on the last reviewed date and configured attributes. The method requires the caller to be either the principal or authorized in system to carry out the operation for any principal (typically this would be system administrators) 1. authenticated principal is the same as the check principal 2. system authorized (\"access\", \"sys.auth:meta.review.lookup\")")
+            .name("GetGroupsForReview")
+            .queryParam("principal", "principal", "ResourceName", null, "If not present, will return groups for the user making the call")
+            .auth("", "", true)
+            .expected("OK")
+            .exception("BAD_REQUEST", "ResourceError", "")
+
+            .exception("FORBIDDEN", "ResourceError", "")
+
+            .exception("NOT_FOUND", "ResourceError", "")
+
+            .exception("TOO_MANY_REQUESTS", "ResourceError", "")
+
+            .exception("UNAUTHORIZED", "ResourceError", "")
+;
+
+        sb.resource("SelfServeObjects", "GET", "/selfserve/role")
+            .comment("Fetch all self-service roles across all domains whose name or description contains the given match string. The match is case-insensitive. If the match string is not specified, then all self-service roles are returned. Any authenticated principal may make this call since self-service roles are, by definition, discoverable and requestable by any user.")
+            .name("GetSelfServeRoles")
+            .queryParam("matchString", "matchString", "String", null, "string to match against the role name or description; if empty all self-service roles are returned")
+            .queryParam("memberOnly", "memberOnly", "Bool", false, "if true, only return roles the calling principal is already a member of or has a pending request for")
+            .auth("", "", true)
+            .expected("OK")
+            .exception("BAD_REQUEST", "ResourceError", "")
+
+            .exception("FORBIDDEN", "ResourceError", "")
+
+            .exception("NOT_FOUND", "ResourceError", "")
+
+            .exception("TOO_MANY_REQUESTS", "ResourceError", "")
+
+            .exception("UNAUTHORIZED", "ResourceError", "")
+;
+
+        sb.resource("SelfServeObjects", "GET", "/selfserve/group")
+            .comment("Fetch all self-service groups across all domains whose name contains the given match string. The match is case-insensitive. If the match string is not specified, then all self-service groups are returned. Any authenticated principal may make this call since self-service groups are, by definition, discoverable and requestable by any user.")
+            .name("GetSelfServeGroups")
+            .queryParam("matchString", "matchString", "String", null, "string to match against the group name; if empty all self-service groups are returned")
+            .queryParam("memberOnly", "memberOnly", "Bool", false, "if true, only return groups the calling principal is already a member of or has a pending request for")
+            .auth("", "", true)
+            .expected("OK")
+            .exception("BAD_REQUEST", "ResourceError", "")
+
+            .exception("FORBIDDEN", "ResourceError", "")
+
+            .exception("NOT_FOUND", "ResourceError", "")
+
+            .exception("TOO_MANY_REQUESTS", "ResourceError", "")
+
+            .exception("UNAUTHORIZED", "ResourceError", "")
+;
+
         sb.resource("Info", "GET", "/sys/info")
             .comment("Retrieve the server info. Since we're exposing server version details, the request will require authorization")
             .auth("get", "sys.auth:info")
             .expected("OK")
             .exception("BAD_REQUEST", "ResourceError", "")
+
+            .exception("FORBIDDEN", "ResourceError", "")
+
+            .exception("NOT_FOUND", "ResourceError", "")
+
+            .exception("TOO_MANY_REQUESTS", "ResourceError", "")
+
+            .exception("UNAUTHORIZED", "ResourceError", "")
+;
+
+        sb.resource("PrincipalState", "PUT", "/principal/{principalName}/state")
+            .comment("Update the state of the principal - currently only the suspended state is supported Suspension can be enforced through the User Authority or by Athenz administrators. The suspended state is used to disable a principal from accessing the Athenz services The required authorization includes the following two options: 1. (\"update\", \"{domainName}:service.{serviceName}\") for the domain administrators where the domainName and serviceName are extracted from the principalName 2. (\"update\", \"sys.auth:state.{principalName}\") for the Athenz administrators")
+            .pathParam("principalName", "MemberName", "name of the principal")
+            .headerParam("Y-Audit-Ref", "auditRef", "String", null, "Audit param required(not empty) if domain auditEnabled is true.")
+            .input("principalState", "PrincipalState", "Principal state indicating if the principal is suspended or not")
+            .auth("", "", true)
+            .expected("NO_CONTENT")
+            .exception("BAD_REQUEST", "ResourceError", "")
+
+            .exception("CONFLICT", "ResourceError", "")
 
             .exception("FORBIDDEN", "ResourceError", "")
 

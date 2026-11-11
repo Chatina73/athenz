@@ -16,13 +16,12 @@
 package com.yahoo.athenz.common.metrics.impl;
 
 import static org.testng.Assert.*;
+
+import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
 import com.yahoo.athenz.common.metrics.Metric;
 import com.yahoo.athenz.common.metrics.MetricFactory;
-
-import java.util.HashMap;
-import java.util.Map;
 
 public class MetricsTest {
 
@@ -39,7 +38,9 @@ public class MetricsTest {
         metric.increment("metric1", "athenz", 3);
         metric.increment("metric1", "athenz", "sports");
         metric.increment("metric1", "athenz", "sports", 3);
+        metric.increment("metric1", 1, "athenz", "sports", "api");
         metric.increment("apiRquestsMetric", "athenz", "sports", "POST", 200, "caller");
+        metric.setGauge("metric1", "athenz", "sports", 10);
 
         String[] attributes = new String[] {
                 "tag1", "value1",
@@ -52,6 +53,8 @@ public class MetricsTest {
         assertNull(metric.startTiming("metric1", "athenz"));
         assertNull(metric.startTiming("metric1", "athenz", "sports"));
         assertNull(metric.startTiming("apiRquestsMetric", "athenz", "sports", "POST", "caller"));
+        assertNull(metric.startTiming("apiRquestsMetric", "athenz", "sports", "POST", "caller",
+                Metric.TimerMetricType.API_LATENCY));
 
         metric.stopTiming("metric1");
         metric.stopTiming("metric1", "athenz", "sports");
@@ -79,7 +82,8 @@ public class MetricsTest {
             }
 
             @Override
-            public void increment(String metric, String requestDomainName, String principalDomainName, String httpMethod, int httpStatus, String apiName) {
+            public void increment(String metric, String requestDomainName, String principalDomainName,
+                                  String httpMethod, int httpStatus, String apiName) {
             }
 
             @Override
@@ -88,11 +92,18 @@ public class MetricsTest {
             }
 
             @Override
+            public Object startTiming(String metric, String requestDomainName, String principalDomainName,
+                                      String httpMethod, String apiName, TimerMetricType metricType) {
+                return (metricType == TimerMetricType.PROVIDER_LATENCY) ? Mockito.mockStatic(Object.class) : null;
+            }
+
+            @Override
             public void stopTiming(Object timerMetric) {
             }
 
             @Override
-            public void stopTiming(Object timerMetric, String requestDomainName, String principalDomainName, String httpMethod, int httpStatus, String apiName) {
+            public void stopTiming(Object timerMetric, String requestDomainName, String principalDomainName,
+                                   String httpMethod, int httpStatus, String apiName) {
             }
 
             @Override
@@ -108,6 +119,7 @@ public class MetricsTest {
         metric.increment("metric1", "athenz", 3);
         metric.increment("metric1", "athenz", "sports");
         metric.increment("metric1", "athenz", "sports", 3);
+        metric.increment("metric1", 1, "athenz", "sports", "api");
         metric.increment("apiRquestsMetric", "athenz", "sports", "POST", 200, "caller");
 
         String[] attributes = new String[] {
@@ -116,9 +128,14 @@ public class MetricsTest {
                 "tag3", "value3",
         };
         metric.increment("metric1", attributes);
+        metric.setGauge("metric1", "athenz", "sports", 10);
 
         assertNull(metric.startTiming("metric1", "athenz", "sports"));
         assertNull(metric.startTiming("apiRquestsMetric", "athenz", "sports", "POST", "caller"));
+        assertNull(metric.startTiming("apiRquestsMetric", "athenz", "sports", "POST", "caller",
+                Metric.TimerMetricType.API_LATENCY));
+        assertNotNull(metric.startTiming("apiRquestsMetric", "athenz", "sports", "POST", "caller",
+                Metric.TimerMetricType.PROVIDER_LATENCY));
 
         metric.stopTiming("metric1", "athenz", "sports");
         metric.stopTiming("apiRquestsMetric", "athenz", "sports", "POST", 200, "caller");
@@ -173,9 +190,12 @@ public class MetricsTest {
                 "tag3", "value3",
         };
         metric.increment("metric1", attributes);
+        metric.setGauge("metric1", "athenz", "sports", 10);
 
         assertNull(metric.startTiming("metric1", "athenz", "sports"));
         assertNull(metric.startTiming("apiRquestsMetric", "athenz", "sports", "POST", "caller"));
+        assertNull(metric.startTiming("apiRquestsMetric", "athenz", "sports", "POST", "caller",
+                Metric.TimerMetricType.API_LATENCY));
 
         metric.stopTiming("metric1", "athenz", "sports");
         metric.stopTiming("apiRquestsMetric", "athenz", "sports", "POST", 200, "caller");
@@ -183,3 +203,4 @@ public class MetricsTest {
         metric.quit();
     }
 }
+

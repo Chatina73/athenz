@@ -25,6 +25,26 @@ import { selectProvider } from '../../redux/selectors/services';
 import { deleteService, getProvider } from '../../redux/thunks/services';
 import { connect } from 'react-redux';
 import ProviderTable from './ProviderTable';
+import ManagedResourceIcon from '../resource-ownership/ManagedResourceIcon';
+import { isServiceResourceObjectManaged } from '../utils/resourceOwnership';
+import { roleIconStripMinWidthStyle } from '../utils/roleIconStrip';
+
+const IconStrip = styled.span`
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+    vertical-align: middle;
+    box-sizing: border-box;
+`;
+
+const IconSlot = styled.span`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.35em;
+    vertical-align: middle;
+`;
 
 const TdStyled = styled.td`
     background-color: ${(props) => props.color};
@@ -57,6 +77,8 @@ class ServiceRow extends React.Component {
         this.togglePublicKeys = this.togglePublicKeys.bind(this);
         this.toggleProviders = this.toggleProviders.bind(this);
         this.toggleInstances = this.toggleInstances.bind(this);
+        this.clickTag = this.clickTag.bind(this);
+        this.clickMicrosegmentation = this.clickMicrosegmentation.bind(this);
         this.state = {
             provider: null,
             publicKeys: false,
@@ -71,6 +93,20 @@ class ServiceRow extends React.Component {
         this.props.router.push(
             `/domain/${domain}/service/${service}/instance/dynamic`,
             `/domain/${domain}/service/${service}/instance/dynamic`
+        );
+    }
+
+    clickTag() {
+        this.props.router.push(
+            `/domain/${this.props.domainName}/service/${this.props.serviceName}/tags`,
+            `/domain/${this.props.domainName}/service/${this.props.serviceName}/tags`
+        );
+    }
+
+    clickMicrosegmentation() {
+        this.props.router.push(
+            `/domain/${this.props.domainName}/service/${this.props.serviceName}/microsegmentation`,
+            `/domain/${this.props.domainName}/service/${this.props.serviceName}/microsegmentation`
         );
     }
 
@@ -97,6 +133,13 @@ class ServiceRow extends React.Component {
         let row = [];
         const serviceName = this.props.serviceName;
         const newService = this.props.newService;
+        const managedResourceIconStripMaxIcons =
+            this.props.managedResourceIconStripMaxIcons ?? 0;
+        const serviceManagedResourceIcon = isServiceResourceObjectManaged(
+            this.props.resourceOwnership
+        ) ? (
+            <ManagedResourceIcon show={true} size='1.1em' />
+        ) : null;
         row.push(
             <TrStyled
                 key={serviceName}
@@ -104,7 +147,26 @@ class ServiceRow extends React.Component {
                 isSuccess={newService}
             >
                 <TdStyled color={color} align={left}>
-                    {serviceName}
+                    {managedResourceIconStripMaxIcons > 0 ? (
+                        <>
+                            <IconStrip
+                                style={{
+                                    minWidth: roleIconStripMinWidthStyle(
+                                        managedResourceIconStripMaxIcons
+                                    ),
+                                }}
+                            >
+                                {serviceManagedResourceIcon ? (
+                                    <IconSlot>
+                                        {serviceManagedResourceIcon}
+                                    </IconSlot>
+                                ) : null}
+                            </IconStrip>
+                            <span>{' ' + serviceName}</span>
+                        </>
+                    ) : (
+                        serviceName
+                    )}
                 </TdStyled>
                 <TdStyled color={color} align={left}>
                     {this.localDate.getLocalDate(
@@ -113,9 +175,10 @@ class ServiceRow extends React.Component {
                         this.props.timeZone
                     )}
                 </TdStyled>
-                {this.props.featureFlag ? (
+                {this.props.featureFlag && this.props.showInstances ? (
                     <TdStyled color={color} align={center}>
                         <Icon
+                            id={'view-instances-' + this.props.serviceName}
                             icon={'data-source'}
                             onClick={this.toggleInstances}
                             color={colors.icons}
@@ -127,6 +190,7 @@ class ServiceRow extends React.Component {
                 ) : null}
                 <TdStyled color={color} align={center}>
                     <Icon
+                        dataWdio={'service-pubkeys-' + this.props.serviceName}
                         icon={'key'}
                         onClick={this.togglePublicKeys}
                         color={colors.icons}
@@ -137,16 +201,42 @@ class ServiceRow extends React.Component {
                 </TdStyled>
                 <TdStyled color={color} align={center}>
                     <Icon
-                        icon={'cloud'}
-                        onClick={this.toggleProviders}
+                        icon={'tag'}
+                        onClick={this.clickTag}
                         color={colors.icons}
                         isLink
                         size={'1.25em'}
                         verticalAlign={'text-bottom'}
                     />
                 </TdStyled>
+                {this.props.featureFlag && this.props.showMicrosegmentation ? (
+                    <TdStyled color={color} align={center}>
+                        <Icon
+                            icon={'list-check'}
+                            onClick={this.clickMicrosegmentation}
+                            color={colors.icons}
+                            isLink
+                            size={'1.25em'}
+                            verticalAlign={'text-bottom'}
+                        />
+                    </TdStyled>
+                ) : null}
+                {this.props.featureFlag && this.props.showProviders ? (
+                    <TdStyled color={color} align={center}>
+                        <Icon
+                            id={this.props.serviceName + '-providers'}
+                            icon={'cloud'}
+                            onClick={this.toggleProviders}
+                            color={colors.icons}
+                            isLink
+                            size={'1.25em'}
+                            verticalAlign={'text-bottom'}
+                        />
+                    </TdStyled>
+                ) : null}
                 <TdStyled color={color} align={center}>
                     <Icon
+                        id={'delete-service-' + this.props.serviceName}
                         icon={'trash'}
                         onClick={this.props.onClickDeleteService}
                         color={colors.icons}

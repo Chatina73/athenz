@@ -138,6 +138,14 @@ func (e *CertType) UnmarshalJSON(b []byte) error {
 	return err
 }
 
+// ExternalMemberName - External Member name. Even though the pattern is open
+// to support all possible external members, the server will validate that it
+// does not include * character
+type ExternalMemberName string
+
+// PrincipalName - A principal name for role/group membership queries
+type PrincipalName string
+
 // ResourceAccess - ResourceAccess can be checked and returned as this
 // resource. (same as ZMS.Access)
 type ResourceAccess struct {
@@ -1139,6 +1147,11 @@ type RoleCertificateRequest struct {
 	// previous role certificate not after date
 	//
 	PrevCertNotAfter *rdl.Timestamp `json:"prevCertNotAfter,omitempty" rdl:"optional"`
+
+	//
+	// requested x509 cert signer key id
+	//
+	X509CertSignerKeyId SimpleName `json:"x509CertSignerKeyId,omitempty" rdl:"optional"`
 }
 
 // NewRoleCertificateRequest - creates an initialized RoleCertificateRequest instance, returns a pointer to it
@@ -1180,6 +1193,12 @@ func (self *RoleCertificateRequest) Validate() error {
 		val := rdl.Validate(ZTSSchema(), "EntityName", self.ProxyForPrincipal)
 		if !val.Valid {
 			return fmt.Errorf("RoleCertificateRequest.proxyForPrincipal does not contain a valid EntityName (%v)", val.Error)
+		}
+	}
+	if self.X509CertSignerKeyId != "" {
+		val := rdl.Validate(ZTSSchema(), "SimpleName", self.X509CertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("RoleCertificateRequest.x509CertSignerKeyId does not contain a valid SimpleName (%v)", val.Error)
 		}
 	}
 	return nil
@@ -1499,6 +1518,11 @@ type InstanceRefreshRequest struct {
 	// azure / openstack etc.
 	//
 	Cloud SimpleName `json:"cloud,omitempty" rdl:"optional"`
+
+	//
+	// requested x509 cert signer key id
+	//
+	X509CertSignerKeyId SimpleName `json:"x509CertSignerKeyId,omitempty" rdl:"optional"`
 }
 
 // NewInstanceRefreshRequest - creates an initialized InstanceRefreshRequest instance, returns a pointer to it
@@ -1552,6 +1576,12 @@ func (self *InstanceRefreshRequest) Validate() error {
 		val := rdl.Validate(ZTSSchema(), "SimpleName", self.Cloud)
 		if !val.Valid {
 			return fmt.Errorf("InstanceRefreshRequest.cloud does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	if self.X509CertSignerKeyId != "" {
+		val := rdl.Validate(ZTSSchema(), "SimpleName", self.X509CertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("InstanceRefreshRequest.x509CertSignerKeyId does not contain a valid SimpleName (%v)", val.Error)
 		}
 	}
 	return nil
@@ -2095,7 +2125,7 @@ type AccessTokenResponse struct {
 	//
 	// access token
 	//
-	Access_token string `json:"access_token"`
+	Access_token string `json:"access_token,omitempty" rdl:"optional"`
 
 	//
 	// token type e.g. Bearer
@@ -2121,6 +2151,11 @@ type AccessTokenResponse struct {
 	// id token
 	//
 	Id_token string `json:"id_token,omitempty" rdl:"optional"`
+
+	//
+	// issued token type
+	//
+	Issued_token_type string `json:"issued_token_type,omitempty" rdl:"optional"`
 }
 
 // NewAccessTokenResponse - creates an initialized AccessTokenResponse instance, returns a pointer to it
@@ -2150,9 +2185,7 @@ func (self *AccessTokenResponse) UnmarshalJSON(b []byte) error {
 
 // Validate - checks for missing required fields, etc
 func (self *AccessTokenResponse) Validate() error {
-	if self.Access_token == "" {
-		return fmt.Errorf("AccessTokenResponse.access_token is missing but is a required field")
-	} else {
+	if self.Access_token != "" {
 		val := rdl.Validate(ZTSSchema(), "String", self.Access_token)
 		if !val.Valid {
 			return fmt.Errorf("AccessTokenResponse.access_token does not contain a valid String (%v)", val.Error)
@@ -2182,6 +2215,12 @@ func (self *AccessTokenResponse) Validate() error {
 		val := rdl.Validate(ZTSSchema(), "String", self.Id_token)
 		if !val.Valid {
 			return fmt.Errorf("AccessTokenResponse.id_token does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Issued_token_type != "" {
+		val := rdl.Validate(ZTSSchema(), "String", self.Issued_token_type)
+		if !val.Valid {
+			return fmt.Errorf("AccessTokenResponse.issued_token_type does not contain a valid String (%v)", val.Error)
 		}
 	}
 	return nil
@@ -2338,6 +2377,11 @@ type OpenIDConfig struct {
 	Authorization_endpoint string `json:"authorization_endpoint"`
 
 	//
+	// oauth 2.0 token endpoint url
+	//
+	Token_endpoint string `json:"token_endpoint"`
+
+	//
 	// public server jwk set url
 	//
 	Jwks_uri string `json:"jwks_uri"`
@@ -2420,6 +2464,14 @@ func (self *OpenIDConfig) Validate() error {
 			return fmt.Errorf("OpenIDConfig.authorization_endpoint does not contain a valid String (%v)", val.Error)
 		}
 	}
+	if self.Token_endpoint == "" {
+		return fmt.Errorf("OpenIDConfig.token_endpoint is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZTSSchema(), "String", self.Token_endpoint)
+		if !val.Valid {
+			return fmt.Errorf("OpenIDConfig.token_endpoint does not contain a valid String (%v)", val.Error)
+		}
+	}
 	if self.Jwks_uri == "" {
 		return fmt.Errorf("OpenIDConfig.jwks_uri is missing but is a required field")
 	} else {
@@ -2452,6 +2504,11 @@ type OAuthConfig struct {
 	// oauth 2.0 authorization endpoint url
 	//
 	Authorization_endpoint string `json:"authorization_endpoint"`
+
+	//
+	// oauth 2.0 introspection endpoint
+	//
+	Introspection_endpoint string `json:"introspection_endpoint"`
 
 	//
 	// authorization server token endpoint
@@ -2534,6 +2591,14 @@ func (self *OAuthConfig) Validate() error {
 		val := rdl.Validate(ZTSSchema(), "String", self.Authorization_endpoint)
 		if !val.Valid {
 			return fmt.Errorf("OAuthConfig.authorization_endpoint does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Introspection_endpoint == "" {
+		return fmt.Errorf("OAuthConfig.introspection_endpoint is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZTSSchema(), "String", self.Introspection_endpoint)
+		if !val.Valid {
+			return fmt.Errorf("OAuthConfig.introspection_endpoint does not contain a valid String (%v)", val.Error)
 		}
 	}
 	if self.Token_endpoint == "" {
@@ -2692,6 +2757,167 @@ func (self *OIDCResponse) Validate() error {
 	return nil
 }
 
+// IntrospectRequest -
+type IntrospectRequest string
+
+// IntrospectResponse -
+type IntrospectResponse struct {
+
+	//
+	// token status
+	//
+	Active bool `json:"active"`
+
+	//
+	// version number
+	//
+	Ver int32 `json:"ver"`
+
+	//
+	// expiration time
+	//
+	Exp *int64 `json:"exp,omitempty" rdl:"optional"`
+
+	//
+	// issued at time
+	//
+	Iat *int64 `json:"iat,omitempty" rdl:"optional"`
+
+	//
+	// issued at time
+	//
+	Auth_time *int64 `json:"auth_time,omitempty" rdl:"optional"`
+
+	//
+	// audience
+	//
+	Aud string `json:"aud,omitempty" rdl:"optional"`
+
+	//
+	// issuer
+	//
+	Iss string `json:"iss,omitempty" rdl:"optional"`
+
+	//
+	// jwt id
+	//
+	Jti string `json:"jti,omitempty" rdl:"optional"`
+
+	//
+	// subject
+	//
+	Sub string `json:"sub,omitempty" rdl:"optional"`
+
+	//
+	// scope of the access token
+	//
+	Scope string `json:"scope,omitempty" rdl:"optional"`
+
+	//
+	// client id
+	//
+	Client_id string `json:"client_id,omitempty" rdl:"optional"`
+
+	//
+	// user id
+	//
+	Uid string `json:"uid,omitempty" rdl:"optional"`
+
+	//
+	// proxy principal
+	//
+	Proxy string `json:"proxy,omitempty" rdl:"optional"`
+
+	//
+	// authorization details
+	//
+	Authorization_details string `json:"authorization_details,omitempty" rdl:"optional"`
+}
+
+// NewIntrospectResponse - creates an initialized IntrospectResponse instance, returns a pointer to it
+func NewIntrospectResponse(init ...*IntrospectResponse) *IntrospectResponse {
+	var o *IntrospectResponse
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(IntrospectResponse)
+	}
+	return o
+}
+
+type rawIntrospectResponse IntrospectResponse
+
+// UnmarshalJSON is defined for proper JSON decoding of a IntrospectResponse
+func (self *IntrospectResponse) UnmarshalJSON(b []byte) error {
+	var m rawIntrospectResponse
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := IntrospectResponse(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *IntrospectResponse) Validate() error {
+	if self.Aud != "" {
+		val := rdl.Validate(ZTSSchema(), "String", self.Aud)
+		if !val.Valid {
+			return fmt.Errorf("IntrospectResponse.aud does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Iss != "" {
+		val := rdl.Validate(ZTSSchema(), "String", self.Iss)
+		if !val.Valid {
+			return fmt.Errorf("IntrospectResponse.iss does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Jti != "" {
+		val := rdl.Validate(ZTSSchema(), "String", self.Jti)
+		if !val.Valid {
+			return fmt.Errorf("IntrospectResponse.jti does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Sub != "" {
+		val := rdl.Validate(ZTSSchema(), "String", self.Sub)
+		if !val.Valid {
+			return fmt.Errorf("IntrospectResponse.sub does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Scope != "" {
+		val := rdl.Validate(ZTSSchema(), "String", self.Scope)
+		if !val.Valid {
+			return fmt.Errorf("IntrospectResponse.scope does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Client_id != "" {
+		val := rdl.Validate(ZTSSchema(), "String", self.Client_id)
+		if !val.Valid {
+			return fmt.Errorf("IntrospectResponse.client_id does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Uid != "" {
+		val := rdl.Validate(ZTSSchema(), "String", self.Uid)
+		if !val.Valid {
+			return fmt.Errorf("IntrospectResponse.uid does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Proxy != "" {
+		val := rdl.Validate(ZTSSchema(), "String", self.Proxy)
+		if !val.Valid {
+			return fmt.Errorf("IntrospectResponse.proxy does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Authorization_details != "" {
+		val := rdl.Validate(ZTSSchema(), "String", self.Authorization_details)
+		if !val.Valid {
+			return fmt.Errorf("IntrospectResponse.authorization_details does not contain a valid String (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
 // InstanceRegisterInformation -
 type InstanceRegisterInformation struct {
 
@@ -2714,13 +2940,13 @@ type InstanceRegisterInformation struct {
 	// identity attestation data including document with its signature containing
 	// attributes like IP address, instance-id, account#, etc.
 	//
-	AttestationData string `json:"attestationData"`
+	AttestationData string `json:"attestationData,omitempty" rdl:"optional"`
 
 	//
 	// the Certificate Signing Request for the expected X.509 certificate in the
 	// response
 	//
-	Csr string `json:"csr"`
+	Csr string `json:"csr,omitempty" rdl:"optional"`
 
 	//
 	// deprecated - use sshCertRequest, if present, return an SSH host
@@ -2773,6 +2999,53 @@ type InstanceRegisterInformation struct {
 	// azure / openstack etc.
 	//
 	Cloud SimpleName `json:"cloud,omitempty" rdl:"optional"`
+
+	//
+	// requested x509 cert signer key id
+	//
+	X509CertSignerKeyId SimpleName `json:"x509CertSignerKeyId,omitempty" rdl:"optional"`
+
+	//
+	// requested ssh cert signer key id
+	//
+	SshCertSignerKeyId SimpleName `json:"sshCertSignerKeyId,omitempty" rdl:"optional"`
+
+	//
+	// caller-supplied unique instance id for the x.509 cert when instance id can
+	// not be derived from CSR
+	//
+	X509CertInstanceId PathElement `json:"x509CertInstanceId,omitempty" rdl:"optional"`
+
+	//
+	// unique instance id within provider's namespace for the jwt svid
+	//
+	JwtSVIDInstanceId PathElement `json:"jwtSVIDInstanceId,omitempty" rdl:"optional"`
+
+	//
+	// the audience value for the jwt svid
+	//
+	JwtSVIDAudience string `json:"jwtSVIDAudience,omitempty" rdl:"optional"`
+
+	//
+	// the nonce value for the jwt svid
+	//
+	JwtSVIDNonce EntityName `json:"jwtSVIDNonce,omitempty" rdl:"optional"`
+
+	//
+	// the spiffe uri for the jwt svid
+	//
+	JwtSVIDSpiffe string `json:"jwtSVIDSpiffe,omitempty" rdl:"optional"`
+
+	//
+	// if true, return the spiffe uri as the jwt svid sub claim value
+	//
+	JwtSVIDSpiffeSubject *bool `json:"jwtSVIDSpiffeSubject,omitempty" rdl:"optional"`
+
+	//
+	// optional signing key type - RSA or EC. Might be ignored if server doesn't
+	// have the requested type configured
+	//
+	JwtSVIDKeyType SimpleName `json:"jwtSVIDKeyType,omitempty" rdl:"optional"`
 }
 
 // NewInstanceRegisterInformation - creates an initialized InstanceRegisterInformation instance, returns a pointer to it
@@ -2826,17 +3099,13 @@ func (self *InstanceRegisterInformation) Validate() error {
 			return fmt.Errorf("InstanceRegisterInformation.service does not contain a valid SimpleName (%v)", val.Error)
 		}
 	}
-	if self.AttestationData == "" {
-		return fmt.Errorf("InstanceRegisterInformation.attestationData is missing but is a required field")
-	} else {
+	if self.AttestationData != "" {
 		val := rdl.Validate(ZTSSchema(), "String", self.AttestationData)
 		if !val.Valid {
 			return fmt.Errorf("InstanceRegisterInformation.attestationData does not contain a valid String (%v)", val.Error)
 		}
 	}
-	if self.Csr == "" {
-		return fmt.Errorf("InstanceRegisterInformation.csr is missing but is a required field")
-	} else {
+	if self.Csr != "" {
 		val := rdl.Validate(ZTSSchema(), "String", self.Csr)
 		if !val.Valid {
 			return fmt.Errorf("InstanceRegisterInformation.csr does not contain a valid String (%v)", val.Error)
@@ -2864,6 +3133,54 @@ func (self *InstanceRegisterInformation) Validate() error {
 		val := rdl.Validate(ZTSSchema(), "SimpleName", self.Cloud)
 		if !val.Valid {
 			return fmt.Errorf("InstanceRegisterInformation.cloud does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	if self.X509CertSignerKeyId != "" {
+		val := rdl.Validate(ZTSSchema(), "SimpleName", self.X509CertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("InstanceRegisterInformation.x509CertSignerKeyId does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	if self.SshCertSignerKeyId != "" {
+		val := rdl.Validate(ZTSSchema(), "SimpleName", self.SshCertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("InstanceRegisterInformation.sshCertSignerKeyId does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	if self.X509CertInstanceId != "" {
+		val := rdl.Validate(ZTSSchema(), "PathElement", self.X509CertInstanceId)
+		if !val.Valid {
+			return fmt.Errorf("InstanceRegisterInformation.x509CertInstanceId does not contain a valid PathElement (%v)", val.Error)
+		}
+	}
+	if self.JwtSVIDInstanceId != "" {
+		val := rdl.Validate(ZTSSchema(), "PathElement", self.JwtSVIDInstanceId)
+		if !val.Valid {
+			return fmt.Errorf("InstanceRegisterInformation.jwtSVIDInstanceId does not contain a valid PathElement (%v)", val.Error)
+		}
+	}
+	if self.JwtSVIDAudience != "" {
+		val := rdl.Validate(ZTSSchema(), "String", self.JwtSVIDAudience)
+		if !val.Valid {
+			return fmt.Errorf("InstanceRegisterInformation.jwtSVIDAudience does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.JwtSVIDNonce != "" {
+		val := rdl.Validate(ZTSSchema(), "EntityName", self.JwtSVIDNonce)
+		if !val.Valid {
+			return fmt.Errorf("InstanceRegisterInformation.jwtSVIDNonce does not contain a valid EntityName (%v)", val.Error)
+		}
+	}
+	if self.JwtSVIDSpiffe != "" {
+		val := rdl.Validate(ZTSSchema(), "String", self.JwtSVIDSpiffe)
+		if !val.Valid {
+			return fmt.Errorf("InstanceRegisterInformation.jwtSVIDSpiffe does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.JwtSVIDKeyType != "" {
+		val := rdl.Validate(ZTSSchema(), "SimpleName", self.JwtSVIDKeyType)
+		if !val.Valid {
+			return fmt.Errorf("InstanceRegisterInformation.jwtSVIDKeyType does not contain a valid SimpleName (%v)", val.Error)
 		}
 	}
 	return nil
@@ -2935,6 +3252,16 @@ type InstanceRefreshInformation struct {
 	// azure / openstack etc.
 	//
 	Cloud SimpleName `json:"cloud,omitempty" rdl:"optional"`
+
+	//
+	// requested x509 cert signer key id
+	//
+	X509CertSignerKeyId SimpleName `json:"x509CertSignerKeyId,omitempty" rdl:"optional"`
+
+	//
+	// requested ssh cert signer key id
+	//
+	SshCertSignerKeyId SimpleName `json:"sshCertSignerKeyId,omitempty" rdl:"optional"`
 }
 
 // NewInstanceRefreshInformation - creates an initialized InstanceRefreshInformation instance, returns a pointer to it
@@ -2998,6 +3325,18 @@ func (self *InstanceRefreshInformation) Validate() error {
 		val := rdl.Validate(ZTSSchema(), "SimpleName", self.Cloud)
 		if !val.Valid {
 			return fmt.Errorf("InstanceRefreshInformation.cloud does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	if self.X509CertSignerKeyId != "" {
+		val := rdl.Validate(ZTSSchema(), "SimpleName", self.X509CertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("InstanceRefreshInformation.x509CertSignerKeyId does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	if self.SshCertSignerKeyId != "" {
+		val := rdl.Validate(ZTSSchema(), "SimpleName", self.SshCertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("InstanceRefreshInformation.sshCertSignerKeyId does not contain a valid SimpleName (%v)", val.Error)
 		}
 	}
 	return nil
@@ -4213,6 +4552,16 @@ type DomainDetails struct {
 	AzureSubscription string `json:"azureSubscription,omitempty" rdl:"optional"`
 
 	//
+	// associated azure tenant id
+	//
+	AzureTenant string `json:"azureTenant,omitempty" rdl:"optional"`
+
+	//
+	// associated azure client id
+	//
+	AzureClient string `json:"azureClient,omitempty" rdl:"optional"`
+
+	//
 	// associated gcp project id
 	//
 	GcpProjectId string `json:"gcpProjectId,omitempty" rdl:"optional"`
@@ -4270,6 +4619,18 @@ func (self *DomainDetails) Validate() error {
 			return fmt.Errorf("DomainDetails.azureSubscription does not contain a valid String (%v)", val.Error)
 		}
 	}
+	if self.AzureTenant != "" {
+		val := rdl.Validate(ZTSSchema(), "String", self.AzureTenant)
+		if !val.Valid {
+			return fmt.Errorf("DomainDetails.azureTenant does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.AzureClient != "" {
+		val := rdl.Validate(ZTSSchema(), "String", self.AzureClient)
+		if !val.Valid {
+			return fmt.Errorf("DomainDetails.azureClient does not contain a valid String (%v)", val.Error)
+		}
+	}
 	if self.GcpProjectId != "" {
 		val := rdl.Validate(ZTSSchema(), "String", self.GcpProjectId)
 		if !val.Valid {
@@ -4280,6 +4641,276 @@ func (self *DomainDetails) Validate() error {
 		val := rdl.Validate(ZTSSchema(), "String", self.GcpProjectNumber)
 		if !val.Valid {
 			return fmt.Errorf("DomainDetails.gcpProjectNumber does not contain a valid String (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
+// UserCertificate - Copyright The Athenz Authors Licensed under the terms of
+// the Apache version 2.0 license. See LICENSE file for terms. UserCertificate -
+// a user certificate
+type UserCertificate struct {
+	X509Certificate string `json:"x509Certificate"`
+}
+
+// NewUserCertificate - creates an initialized UserCertificate instance, returns a pointer to it
+func NewUserCertificate(init ...*UserCertificate) *UserCertificate {
+	var o *UserCertificate
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(UserCertificate)
+	}
+	return o
+}
+
+type rawUserCertificate UserCertificate
+
+// UnmarshalJSON is defined for proper JSON decoding of a UserCertificate
+func (self *UserCertificate) UnmarshalJSON(b []byte) error {
+	var m rawUserCertificate
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := UserCertificate(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *UserCertificate) Validate() error {
+	if self.X509Certificate == "" {
+		return fmt.Errorf("UserCertificate.x509Certificate is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZTSSchema(), "String", self.X509Certificate)
+		if !val.Valid {
+			return fmt.Errorf("UserCertificate.x509Certificate does not contain a valid String (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
+// UserCertificateRequest - UserCertificateRequest - a certificate signing
+// request
+type UserCertificateRequest struct {
+
+	//
+	// name of the user
+	//
+	Name string `json:"name"`
+
+	//
+	// user certificate singing request
+	//
+	Csr string `json:"csr"`
+
+	//
+	// identity attestation data
+	//
+	AttestationData string `json:"attestationData"`
+
+	//
+	// expiry time in minutes for the certificate (server enforces max expiry)
+	//
+	ExpiryTime *int32 `json:"expiryTime,omitempty" rdl:"optional"`
+
+	//
+	// requested x509 cert signer key id
+	//
+	X509CertSignerKeyId SimpleName `json:"x509CertSignerKeyId,omitempty" rdl:"optional"`
+}
+
+// NewUserCertificateRequest - creates an initialized UserCertificateRequest instance, returns a pointer to it
+func NewUserCertificateRequest(init ...*UserCertificateRequest) *UserCertificateRequest {
+	var o *UserCertificateRequest
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(UserCertificateRequest)
+	}
+	return o
+}
+
+type rawUserCertificateRequest UserCertificateRequest
+
+// UnmarshalJSON is defined for proper JSON decoding of a UserCertificateRequest
+func (self *UserCertificateRequest) UnmarshalJSON(b []byte) error {
+	var m rawUserCertificateRequest
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := UserCertificateRequest(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *UserCertificateRequest) Validate() error {
+	if self.Name == "" {
+		return fmt.Errorf("UserCertificateRequest.name is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZTSSchema(), "String", self.Name)
+		if !val.Valid {
+			return fmt.Errorf("UserCertificateRequest.name does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.Csr == "" {
+		return fmt.Errorf("UserCertificateRequest.csr is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZTSSchema(), "String", self.Csr)
+		if !val.Valid {
+			return fmt.Errorf("UserCertificateRequest.csr does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.AttestationData == "" {
+		return fmt.Errorf("UserCertificateRequest.attestationData is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZTSSchema(), "String", self.AttestationData)
+		if !val.Valid {
+			return fmt.Errorf("UserCertificateRequest.attestationData does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.X509CertSignerKeyId != "" {
+		val := rdl.Validate(ZTSSchema(), "SimpleName", self.X509CertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("UserCertificateRequest.x509CertSignerKeyId does not contain a valid SimpleName (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
+// ExternalMemberCertificate - Copyright The Athenz Authors Licensed under the
+// terms of the Apache version 2.0 license. See LICENSE file for terms.
+// ExternalMemberCertificate - an external member certificate
+type ExternalMemberCertificate struct {
+	X509Certificate string `json:"x509Certificate"`
+}
+
+// NewExternalMemberCertificate - creates an initialized ExternalMemberCertificate instance, returns a pointer to it
+func NewExternalMemberCertificate(init ...*ExternalMemberCertificate) *ExternalMemberCertificate {
+	var o *ExternalMemberCertificate
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(ExternalMemberCertificate)
+	}
+	return o
+}
+
+type rawExternalMemberCertificate ExternalMemberCertificate
+
+// UnmarshalJSON is defined for proper JSON decoding of a ExternalMemberCertificate
+func (self *ExternalMemberCertificate) UnmarshalJSON(b []byte) error {
+	var m rawExternalMemberCertificate
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := ExternalMemberCertificate(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *ExternalMemberCertificate) Validate() error {
+	if self.X509Certificate == "" {
+		return fmt.Errorf("ExternalMemberCertificate.x509Certificate is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZTSSchema(), "String", self.X509Certificate)
+		if !val.Valid {
+			return fmt.Errorf("ExternalMemberCertificate.x509Certificate does not contain a valid String (%v)", val.Error)
+		}
+	}
+	return nil
+}
+
+// ExternalMemberCertificateRequest - ExternalMemberCertificateRequest - an
+// external member certificate signing request
+type ExternalMemberCertificateRequest struct {
+
+	//
+	// name of the external member
+	//
+	Name ExternalMemberName `json:"name"`
+
+	//
+	// external member certificate signing request
+	//
+	Csr string `json:"csr"`
+
+	//
+	// identity attestation data
+	//
+	AttestationData string `json:"attestationData"`
+
+	//
+	// expiry time in minutes for the certificate (server enforces max expiry)
+	//
+	ExpiryTime *int32 `json:"expiryTime,omitempty" rdl:"optional"`
+
+	//
+	// requested x509 cert signer key id
+	//
+	X509CertSignerKeyId SimpleName `json:"x509CertSignerKeyId,omitempty" rdl:"optional"`
+}
+
+// NewExternalMemberCertificateRequest - creates an initialized ExternalMemberCertificateRequest instance, returns a pointer to it
+func NewExternalMemberCertificateRequest(init ...*ExternalMemberCertificateRequest) *ExternalMemberCertificateRequest {
+	var o *ExternalMemberCertificateRequest
+	if len(init) == 1 {
+		o = init[0]
+	} else {
+		o = new(ExternalMemberCertificateRequest)
+	}
+	return o
+}
+
+type rawExternalMemberCertificateRequest ExternalMemberCertificateRequest
+
+// UnmarshalJSON is defined for proper JSON decoding of a ExternalMemberCertificateRequest
+func (self *ExternalMemberCertificateRequest) UnmarshalJSON(b []byte) error {
+	var m rawExternalMemberCertificateRequest
+	err := json.Unmarshal(b, &m)
+	if err == nil {
+		o := ExternalMemberCertificateRequest(m)
+		*self = o
+		err = self.Validate()
+	}
+	return err
+}
+
+// Validate - checks for missing required fields, etc
+func (self *ExternalMemberCertificateRequest) Validate() error {
+	if self.Name == "" {
+		return fmt.Errorf("ExternalMemberCertificateRequest.name is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZTSSchema(), "ExternalMemberName", self.Name)
+		if !val.Valid {
+			return fmt.Errorf("ExternalMemberCertificateRequest.name does not contain a valid ExternalMemberName (%v)", val.Error)
+		}
+	}
+	if self.Csr == "" {
+		return fmt.Errorf("ExternalMemberCertificateRequest.csr is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZTSSchema(), "String", self.Csr)
+		if !val.Valid {
+			return fmt.Errorf("ExternalMemberCertificateRequest.csr does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.AttestationData == "" {
+		return fmt.Errorf("ExternalMemberCertificateRequest.attestationData is missing but is a required field")
+	} else {
+		val := rdl.Validate(ZTSSchema(), "String", self.AttestationData)
+		if !val.Valid {
+			return fmt.Errorf("ExternalMemberCertificateRequest.attestationData does not contain a valid String (%v)", val.Error)
+		}
+	}
+	if self.X509CertSignerKeyId != "" {
+		val := rdl.Validate(ZTSSchema(), "SimpleName", self.X509CertSignerKeyId)
+		if !val.Valid {
+			return fmt.Errorf("ExternalMemberCertificateRequest.x509CertSignerKeyId does not contain a valid SimpleName (%v)", val.Error)
 		}
 	}
 	return nil

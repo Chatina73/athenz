@@ -15,27 +15,26 @@
  */
 package com.yahoo.athenz.common.server.log.jetty;
 
-import java.io.IOException;
 import java.util.Locale;
 
-import org.apache.http.conn.util.InetAddressUtils;
+import com.yahoo.athenz.common.ServerCommonConsts;
+import org.apache.hc.core5.net.InetAddressUtils;
+import org.eclipse.jetty.http.HttpHeader;
+import org.eclipse.jetty.io.EndPoint;
 import org.eclipse.jetty.server.CustomRequestLog;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.RequestLog;
 import org.eclipse.jetty.server.Response;
 import org.eclipse.jetty.util.DateCache;
-import org.eclipse.jetty.http.HttpHeader;
+import org.eclipse.jetty.util.NanoTime;
 import org.eclipse.jetty.util.StringUtil;
-
-import javax.net.ssl.SSLSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class AthenzRequestLog extends CustomRequestLog {
 
-    private static final String REQUEST_PRINCIPAL      = "com.yahoo.athenz.auth.principal";
-    private static final String REQUEST_AUTHORITY_ID   = "com.yahoo.athenz.auth.authority_id";
-    private static final String REQUEST_URI_SKIP_QUERY = "com.yahoo.athenz.uri.skip_query";
-    private static final String REQUEST_URI_ADDL_QUERY = "com.yahoo.athenz.uri.addl_query";
-    private static final String REQUEST_SSL_SESSION    = "org.eclipse.jetty.servlet.request.ssl_session";
+    private static final Logger LOG = LoggerFactory.getLogger(AthenzRequestLog.class);
+
     private static final String LOOPBACK_ADDRESS       = "127.0.0.1";
 
     private static final ThreadLocal<StringBuilder> TLS_BUILDER = ThreadLocal.withInitial(() -> new StringBuilder(256));
@@ -68,9 +67,9 @@ public class AthenzRequestLog extends CustomRequestLog {
     }
 
     private void logRequestUri(StringBuilder buf, Request request) {
-        final Object skipQuery = request.getAttribute(REQUEST_URI_SKIP_QUERY);
-        append(buf, (skipQuery == Boolean.TRUE) ? request.getRequestURI() : request.getOriginalURI());
-        final Object addlQuery = request.getAttribute(REQUEST_URI_ADDL_QUERY);
+        final Object skipQuery = request.getAttribute(ServerCommonConsts.REQUEST_URI_SKIP_QUERY);
+        append(buf, (skipQuery == Boolean.TRUE) ? request.getHttpURI().getPath() : request.getHttpURI().getPathQuery());
+        final Object addlQuery = request.getAttribute(ServerCommonConsts.REQUEST_URI_ADDL_QUERY);
         if (addlQuery != null) {
             buf.append('?');
             buf.append(addlQuery);
@@ -78,20 +77,27 @@ public class AthenzRequestLog extends CustomRequestLog {
     }
 
     private void logPrincipal(StringBuilder buf, Request request) {
-        final Object principal = request.getAttribute(REQUEST_PRINCIPAL);
+        final Object principal = request.getAttribute(ServerCommonConsts.REQUEST_PRINCIPAL);
         append(buf, (principal == null) ? null : principal.toString());
     }
 
     private void logAuthorityId(StringBuilder buf, Request request) {
-        final Object authId = request.getAttribute(REQUEST_AUTHORITY_ID);
+        final Object authId = request.getAttribute(ServerCommonConsts.REQUEST_AUTHORITY_ID);
         append(buf, (authId == null) ? "Auth-None" : authId.toString());
     }
 
+    private void logX509Serial(StringBuilder buf, Request request) {
+        final Object serialNumber = request.getAttribute(ServerCommonConsts.REQUEST_X509_SERIAL);
+        append(buf, (serialNumber == null) ? "-" : serialNumber.toString());
+    }
+
     private void logTLSProtocol(StringBuilder buf, Request request) {
-        SSLSession sslSession = (SSLSession) request.getAttribute(REQUEST_SSL_SESSION);
-        append(buf, (sslSession == null) ? null : sslSession.getProtocol());
+        EndPoint.SslSessionData sslData = (EndPoint.SslSessionData) request.getAttribute(EndPoint.SslSessionData.ATTRIBUTE);
+
+        append(buf, (sslData == null) ? null : sslData.sslSession() != null
+            ? sslData.sslSession().getProtocol() : null);
         buf.append(' ');
-        append(buf, (sslSession == null) ? null : sslSession.getCipherSuite());
+        append(buf, (sslData == null) ? null : sslData.cipherSuite());
     }
 
     private void append(StringBuilder buf, String str) {
@@ -106,15 +112,15 @@ public class AthenzRequestLog extends CustomRequestLog {
 
         String addr = null;
         if (logForwardedForAddr) {
-            addr = request.getHeader(HttpHeader.X_FORWARDED_FOR.toString());
+            addr = request.getHeaders().get(HttpHeader.X_FORWARDED_FOR);
         }
 
         // if we have no x-forwarded-for header or if the value is specified,
         // but it's not a valid ipv4 or ipv6 address, we'll fall back to the
         // standard remote addr value from the request
 
-        if (addr == null || (!InetAddressUtils.isIPv4Address(addr) && !InetAddressUtils.isIPv6Address(addr))) {
-            addr = request.getRemoteAddr();
+        if (addr == null || (!InetAddressUtils.isIPv4(addr) && !InetAddressUtils.isIPv6(addr))) {
+            addr = Request.getRemoteAddr(request);
         }
 
         if (StringUtil.isEmpty(addr)) {
@@ -124,8 +130,8 @@ public class AthenzRequestLog extends CustomRequestLog {
         buf.append(addr);
     }
 
-    protected void logExtended(StringBuilder b, Request request) throws IOException {
-        String referer = request.getHeader(HttpHeader.REFERER.toString());
+    protected void logExtended(StringBuilder b, Request request) {
+        String referer = request.getHeaders().get(HttpHeader.REFERER);
         if (referer == null) {
             b.append("\"-\" ");
         } else {
@@ -134,7 +140,7 @@ public class AthenzRequestLog extends CustomRequestLog {
             b.append("\" ");
         }
 
-        String agent = request.getHeader(HttpHeader.USER_AGENT.toString());
+        String agent = request.getHeaders().get(HttpHeader.USER_AGENT);
         if (agent == null) {
             b.append("\"-\"");
         } else {
@@ -155,7 +161,7 @@ public class AthenzRequestLog extends CustomRequestLog {
             logPrincipal(buf, request);
 
             buf.append(" [");
-            buf.append(logDateCache.format(request.getTimeStamp()));
+            buf.append(logDateCache.format(Request.getTimeStamp(request)));
             buf.append("] \"");
 
             append(buf, request.getMethod());
@@ -164,22 +170,22 @@ public class AthenzRequestLog extends CustomRequestLog {
             logRequestUri(buf, request);
             buf.append(' ');
 
-            append(buf, request.getProtocol());
+            append(buf, request.getConnectionMetaData().getProtocol());
             buf.append("\" ");
 
-            buf.append(response.getCommittedMetaData().getStatus());
+            buf.append(response.getStatus());
             buf.append(' ');
 
-            logLength(buf, response.getHttpChannel().getBytesWritten());
+            logLength(buf, Response.getContentBytesWritten(response));
             buf.append(' ');
 
             logExtended(buf, request);
 
             buf.append(' ');
-            logLength(buf, request.getHttpInput().getContentReceived());
+            logLength(buf, Request.getContentBytesRead(request));
 
             buf.append(' ');
-            buf.append(System.currentTimeMillis() - request.getTimeStamp());
+            buf.append(NanoTime.millisSince(request.getBeginNanoTime()));
 
             buf.append(' ');
             logAuthorityId(buf, request);
@@ -187,9 +193,12 @@ public class AthenzRequestLog extends CustomRequestLog {
             buf.append(' ');
             logTLSProtocol(buf, request);
 
+            buf.append(' ');
+            logX509Serial(buf, request);
+
             getWriter().write(buf.toString());
 
-        } catch (IOException ex) {
+        } catch (Exception ex) {
             LOG.warn("unable to write log entry", ex);
         }
     }

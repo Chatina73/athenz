@@ -14,24 +14,23 @@
  * limitations under the License.
  */
 import React from 'react';
-import DomainDetails from '../../../components/header/DomainDetails';
 import {
-    getStateWithDomainData,
-    buildDomainDataForState,
     renderWithRedux,
+    buildDomainDataForState,
+    getStateWithDomainData,
 } from '../../../tests_utils/ComponentsTestUtils';
-import { getExpiryTime } from '../../../redux/utils';
 import MockApi from '../../../mock/MockApi';
+import { fireEvent, screen } from '@testing-library/react';
+import DomainDetails from '../../../components/header/DomainDetails';
+import * as constants from '../../../components/constants/constants';
 
+// \* simple stable mock api \*/
 const mockApi = {
-    getMeta: jest.fn().mockReturnValue(
-        new Promise((resolve, reject) => {
-            resolve([]);
-        })
-    ),
+    getMeta: jest.fn().mockResolvedValue([]),
 };
 
 beforeEach(() => {
+    jest.resetAllMocks();
     MockApi.setMockApi(mockApi);
 });
 
@@ -39,34 +38,177 @@ afterEach(() => {
     MockApi.cleanMockApi();
 });
 
+// helper: render DomainDetails with given org
+const renderDomainDetails = ({ org, orgDomain, extraMeta = {} }) => {
+    const domainMetadata = {
+        modified: '2020-02-12T21:44:37.792Z',
+        auditEnabled: true,
+        ypmId: 'test',
+        account: 'test',
+        environment: 'qa',
+        org,
+        ...extraMeta,
+    };
+
+    const domainData = buildDomainDataForState(domainMetadata);
+    const state = getStateWithDomainData(domainData);
+
+    return renderWithRedux(<DomainDetails organization={org} />, state);
+};
+
 describe('DomainDetails', () => {
-    it('should render', () => {
+    it('should render snapshot with minimal metadata', () => {
         const domainMetadata = {
             modified: '2020-02-12T21:44:37.792Z',
             auditEnabled: false,
         };
         const domainData = buildDomainDataForState(domainMetadata);
-        const { getByTestId } = renderWithRedux(
-            <DomainDetails />,
-            getStateWithDomainData(domainData)
-        );
-        const domainDetails = getByTestId('domain-details');
-        expect(domainDetails).toMatchSnapshot();
+        const state = getStateWithDomainData(domainData);
+
+        const { getByTestId } = renderWithRedux(<DomainDetails />, state);
+        expect(getByTestId('domain-details')).toMatchSnapshot();
     });
-    it('should render with mock data', () => {
+
+    it('should render snapshot with full metadata', () => {
         const domainMetadata = {
             modified: '2020-02-12T21:44:37.792Z',
             ypmId: 'test',
             org: 'test',
             auditEnabled: true,
             account: 'test',
+            environment: 'qa',
         };
         const domainData = buildDomainDataForState(domainMetadata);
-        const { getByTestId } = renderWithRedux(
-            <DomainDetails />,
-            getStateWithDomainData(domainData)
+        const state = getStateWithDomainData(domainData);
+
+        const { getByTestId } = renderWithRedux(<DomainDetails />, state);
+        expect(getByTestId('domain-details')).toMatchSnapshot();
+    });
+
+    it('shows organization as link when org and orgDomain are set', () => {
+        const organization = 'test-org';
+        const orgDomain = 'test-domain';
+
+        jest.spyOn(constants, 'getOrganizationDomain').mockReturnValue(
+            orgDomain
         );
-        const domainDetails = getByTestId('domain-details');
-        expect(domainDetails).toMatchSnapshot();
+
+        renderDomainDetails({ org: organization, orgDomain });
+
+        fireEvent.click(screen.getByTestId('expand-domain-details'));
+
+        const orgNameNode = screen.getByTestId('organization-name');
+        expect(orgNameNode).toBeInTheDocument();
+
+        const organizationLink = screen.getByTestId('organization-link');
+        expect(organizationLink).toHaveAttribute(
+            'href',
+            `/domain/${orgDomain}/role/${organization}/members`
+        );
+    });
+
+    it('shows organization as plain text when orgDomain is empty', () => {
+        const organization = 'test-org';
+        const orgDomain = '';
+
+        jest.spyOn(constants, 'getOrganizationDomain').mockReturnValue('');
+
+        renderDomainDetails({ org: organization, orgDomain });
+
+        fireEvent.click(screen.getByTestId('expand-domain-details'));
+
+        const organizationLink = screen.queryByTestId('organization-link');
+        expect(organizationLink).toBeNull();
+
+        expect(screen.getByText(organization)).toBeInTheDocument();
+    });
+
+    it('should hide cloud account details when showCloudAccountDetails is false', () => {
+        const domainMetadata = {
+            modified: '2020-02-12T21:44:37.792Z',
+            ypmId: 'test',
+            org: 'test',
+            auditEnabled: true,
+            account: 'aws-account-123',
+            gcpProject: 'gcp-project-456',
+            environment: 'qa',
+        };
+        const domainData = buildDomainDataForState(domainMetadata);
+        const state = {
+            ...getStateWithDomainData(domainData),
+            domains: {
+                featureFlag: {
+                    enabled: true,
+                    showCloudAccountDetails: false,
+                },
+            },
+        };
+
+        renderWithRedux(<DomainDetails />, state);
+
+        expect(screen.queryByText('AWS ACCOUNT ID')).toBeNull();
+        expect(screen.queryByText('GCP PROJECT ID')).toBeNull();
+        expect(screen.queryByText('Onboard to AWS')).toBeNull();
+    });
+
+    it('should show cloud account details when showCloudAccountDetails is true', () => {
+        const domainMetadata = {
+            modified: '2020-02-12T21:44:37.792Z',
+            ypmId: 'test',
+            org: 'test',
+            auditEnabled: true,
+            account: 'aws-account-123',
+            environment: 'qa',
+        };
+        const domainData = buildDomainDataForState(domainMetadata);
+        const state = {
+            ...getStateWithDomainData(domainData),
+            domains: {
+                featureFlag: {
+                    enabled: true,
+                    showCloudAccountDetails: true,
+                },
+            },
+        };
+
+        renderWithRedux(<DomainDetails />, state);
+
+        expect(screen.getByText('AWS ACCOUNT ID')).toBeInTheDocument();
+        expect(screen.getByText('GCP PROJECT ID')).toBeInTheDocument();
+    });
+
+    it('shows domain description when it is set', () => {
+        const description = 'test domain description';
+
+        renderDomainDetails({ org: 'test', extraMeta: { description } });
+
+        expect(screen.getByTestId('domain-description')).toHaveTextContent(
+            description
+        );
+        expect(screen.getByText('DESCRIPTION')).toBeInTheDocument();
+    });
+
+    it('hides domain description when it is not set', () => {
+        renderDomainDetails({ org: 'test' });
+
+        expect(screen.queryByTestId('domain-description')).toBeNull();
+        expect(screen.queryByText('DESCRIPTION')).toBeNull();
+    });
+
+    it('shows N/A when organization is empty and orgDomain is empty', () => {
+        const organization = '';
+        const orgDomain = '';
+
+        jest.spyOn(constants, 'getOrganizationDomain').mockReturnValue('');
+
+        renderDomainDetails({ org: organization, orgDomain });
+
+        fireEvent.click(screen.getByTestId('expand-domain-details'));
+
+        const organizationLink = screen.queryByTestId('organization-link');
+        expect(organizationLink).toBeNull();
+
+        const organizationName = screen.getByTestId('organization-name');
+        expect(organizationName).toHaveTextContent('N/A');
     });
 });

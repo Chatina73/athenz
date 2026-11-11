@@ -16,6 +16,18 @@ public class ServiceIdentitySystemMeta {
     @RdlOptional
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public String providerEndpoint;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public String x509CertSignerKeyId;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public String sshCertSignerKeyId;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public String clientId;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public Integer featureFlags;
 
     public ServiceIdentitySystemMeta setProviderEndpoint(String providerEndpoint) {
         this.providerEndpoint = providerEndpoint;
@@ -23,6 +35,34 @@ public class ServiceIdentitySystemMeta {
     }
     public String getProviderEndpoint() {
         return providerEndpoint;
+    }
+    public ServiceIdentitySystemMeta setX509CertSignerKeyId(String x509CertSignerKeyId) {
+        this.x509CertSignerKeyId = x509CertSignerKeyId;
+        return this;
+    }
+    public String getX509CertSignerKeyId() {
+        return x509CertSignerKeyId;
+    }
+    public ServiceIdentitySystemMeta setSshCertSignerKeyId(String sshCertSignerKeyId) {
+        this.sshCertSignerKeyId = sshCertSignerKeyId;
+        return this;
+    }
+    public String getSshCertSignerKeyId() {
+        return sshCertSignerKeyId;
+    }
+    public ServiceIdentitySystemMeta setClientId(String clientId) {
+        this.clientId = clientId;
+        return this;
+    }
+    public String getClientId() {
+        return clientId;
+    }
+    public ServiceIdentitySystemMeta setFeatureFlags(Integer featureFlags) {
+        this.featureFlags = featureFlags;
+        return this;
+    }
+    public Integer getFeatureFlags() {
+        return featureFlags;
     }
 
     @Override
@@ -33,6 +73,18 @@ public class ServiceIdentitySystemMeta {
             }
             ServiceIdentitySystemMeta a = (ServiceIdentitySystemMeta) another;
             if (providerEndpoint == null ? a.providerEndpoint != null : !providerEndpoint.equals(a.providerEndpoint)) {
+                return false;
+            }
+            if (x509CertSignerKeyId == null ? a.x509CertSignerKeyId != null : !x509CertSignerKeyId.equals(a.x509CertSignerKeyId)) {
+                return false;
+            }
+            if (sshCertSignerKeyId == null ? a.sshCertSignerKeyId != null : !sshCertSignerKeyId.equals(a.sshCertSignerKeyId)) {
+                return false;
+            }
+            if (clientId == null ? a.clientId != null : !clientId.equals(a.clientId)) {
+                return false;
+            }
+            if (featureFlags == null ? a.featureFlags != null : !featureFlags.equals(a.featureFlags)) {
                 return false;
             }
         }

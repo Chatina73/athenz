@@ -20,6 +20,7 @@ import (
 	"log"
 	"os"
 
+	sc "github.com/AthenZ/athenz/libs/go/sia/config"
 	"github.com/AthenZ/athenz/libs/go/sia/host/provider"
 	"github.com/AthenZ/athenz/libs/go/sia/options"
 )
@@ -37,7 +38,7 @@ func GetGKEPodId() string {
 	return podId
 }
 
-func GetGKEConfig(configFile, profileConfigFile, metaEndpoint, region string, provider provider.Provider) (*options.Config, *options.AccessProfileConfig, error) {
+func GetGKEConfig(configFile, profileConfigFile, metaEndpoint, region string, provider provider.Provider) (*sc.Config, *sc.AccessProfileConfig, error) {
 
 	config, _, err := options.InitFileConfig(configFile, metaEndpoint, false, region, "", provider)
 	if err != nil {
@@ -48,8 +49,8 @@ func GetGKEConfig(configFile, profileConfigFile, metaEndpoint, region string, pr
 			log.Printf("Unable to process environment settings: %v\n", err)
 			// if we do not have settings in our environment, we're going
 			// to use fallback to retrieve values from the context ( metadata etc )
-			config, _, err = options.InitGenericProfileConfig(metaEndpoint, "", "", provider)
-			if err != nil && config == nil {
+			config, _, err = options.InitGenericProfileConfig(config, metaEndpoint, "", "", provider)
+			if err != nil {
 				log.Printf("Unable to determine project, domain, service etc. from context err=%v\n", err)
 				return nil, nil, err
 			}
@@ -66,7 +67,7 @@ func GetGKEConfig(configFile, profileConfigFile, metaEndpoint, region string, pr
 	return config, nil, nil
 }
 
-func GetGKEAccessProfile(configFile, metaEndpoint string, provider provider.Provider) (*options.AccessProfileConfig, error) {
+func GetGKEAccessProfile(configFile, metaEndpoint string, provider provider.Provider) (*sc.AccessProfileConfig, error) {
 	accessProfileConfig, err := options.InitAccessProfileFileConfig(configFile)
 	if err != nil {
 		log.Printf("Unable to process user access management configuration file '%s': %v\n", configFile, err)
@@ -77,7 +78,7 @@ func GetGKEAccessProfile(configFile, metaEndpoint string, provider provider.Prov
 			// if we do not have settings in our environment, we're going
 			// to use fallback to retrieving access profile from meta
 			log.Println("Trying to determine user access management profile details from GCP context")
-			_, accessProfileConfig, err = options.InitGenericProfileConfig(metaEndpoint, "", "", provider)
+			_, accessProfileConfig, err = options.InitGenericProfileConfig(nil, metaEndpoint, "", "", provider)
 			if err != nil {
 				return nil, err
 			}

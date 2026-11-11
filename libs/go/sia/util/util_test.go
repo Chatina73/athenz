@@ -20,6 +20,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"net"
 	"os"
 	"os/user"
 	"strconv"
@@ -293,6 +294,80 @@ func TestGenerateSvcCertCSR(test *testing.T) {
 	}
 }
 
+func TestGenerateSvcCertCSREmailAddresses(test *testing.T) {
+
+	key, err := GenerateKeyPair(2048)
+	if err != nil {
+		test.Errorf("Cannot generate private key: %v", err)
+		return
+	}
+	svcCertReqOptions := &SvcCertReqOptions{
+		Country:    "US",
+		Domain:     "domain",
+		Service:    "service",
+		CommonName: "domain.service",
+		InstanceId: "instance001",
+		Provider:   "Athenz",
+		ZtsDomains: []string{"athenz.cloud"},
+		// the empty and duplicate entries must be skipped
+		EmailAddresses: []string{"domain.service@athenz.io", "", "domain.service@athenz.io", "admin@athenz.io"},
+	}
+	csr, err := GenerateSvcCertCSR(key, svcCertReqOptions)
+	if err != nil {
+		test.Errorf("Cannot create CSR: %v", err)
+		return
+	}
+
+	block, _ := pem.Decode([]byte(csr))
+	parsedcertreq, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		test.Errorf("Cannot parse CSR: %v", err)
+		return
+	}
+	assert.Equal(test, []string{"domain.service@athenz.io", "admin@athenz.io"}, parsedcertreq.EmailAddresses)
+}
+
+func TestGenerateSvcCertCSRInstanceIdSanDNS(test *testing.T) {
+
+	key, err := GenerateKeyPair(2048)
+	if err != nil {
+		test.Errorf("Cannot generate private key: %v", err)
+		return
+	}
+	svcCertReqOptions := &SvcCertReqOptions{
+		Country:          "US",
+		Domain:           "domain",
+		Service:          "service",
+		CommonName:       "domain.service",
+		InstanceId:       "instance001",
+		Provider:         "Athenz",
+		Hostname:         "host1.athenz.io",
+		ZtsDomains:       []string{"athenz.cloud"},
+		WildCardDnsName:  true,
+		InstanceIdSanDNS: true,
+	}
+	csr, err := GenerateSvcCertCSR(key, svcCertReqOptions)
+	if err != nil {
+		test.Errorf("Cannot create CSR: %v", err)
+		return
+	}
+
+	block, _ := pem.Decode([]byte(csr))
+	parsedcertreq, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		test.Errorf("Cannot parse CSR: %v", err)
+		return
+	}
+	expectedHosts := []string{
+		"service.domain.athenz.cloud",
+		"*.service.domain.athenz.cloud",
+		"host1.athenz.io",
+		"instance001.instanceid.athenz.athenz.cloud",
+	}
+	assert.Equal(test, expectedHosts, parsedcertreq.DNSNames)
+	assert.Nil(test, parsedcertreq.EmailAddresses)
+}
+
 func TestGenerateSvcCertCSRSpiffeTrustDomain(test *testing.T) {
 
 	key, err := GenerateKeyPair(2048)
@@ -408,6 +483,46 @@ func TestGenerateRoleCertCSR(test *testing.T) {
 	}
 	if parsedcertreq.Subject.Organization != nil {
 		test.Errorf("CSR does not have expected org")
+		return
+	}
+}
+
+func TestGenerateRoleCertCSRSpiffeTrustDomain(test *testing.T) {
+
+	key, err := GenerateKeyPair(2048)
+	if err != nil {
+		test.Errorf("Cannot generate private key: %v", err)
+		return
+	}
+	roleCertReqOptions := &RoleCertReqOptions{
+		Country:           "US",
+		Domain:            "domain",
+		Service:           "service",
+		RoleName:          "athenz:role.readers",
+		InstanceId:        "instance001",
+		Provider:          "Athenz",
+		EmailDomain:       "athenz.cloud",
+		SpiffeTrustDomain: "athenz.io",
+	}
+	csr, err := GenerateRoleCertCSR(key, roleCertReqOptions)
+	if err != nil {
+		test.Errorf("Cannot create CSR: %v", err)
+		return
+	}
+
+	block, _ := pem.Decode([]byte(csr))
+	parsedcertreq, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		test.Errorf("Cannot parse CSR: %v", err)
+		return
+	}
+
+	if len(parsedcertreq.URIs) != 3 {
+		test.Errorf("CSR does not have expected number of URI fields: %d", len(parsedcertreq.URIs))
+		return
+	}
+	if parsedcertreq.URIs[0].String() != "spiffe://athenz.io/ns/athenz/ra/readers" {
+		test.Errorf("CSR does not have expected spiffe uri: %s", parsedcertreq.URIs[0].String())
 		return
 	}
 }
@@ -875,7 +990,7 @@ func TestParseAssumedRoleArnValid(test *testing.T) {
 }
 
 func TestParseRoleArnInvalidPrefix(test *testing.T) {
-	_, _, _, _, err := ParseRoleArn("arn:aws:sts:123456789012:role/athenz.zts-service", "role/", "", "")
+	_, _, _, _, err := ParseRoleArn("arn:aws:sts:123456789012:role/athenz.zts-service", "role/", "", "", false)
 	if err == nil {
 		test.Errorf("Unable to verify proper role arn prefix")
 	}
@@ -885,7 +1000,7 @@ func TestParseRoleArnInvalidPrefix(test *testing.T) {
 }
 
 func TestParseRoleArnInvalidNumberOfComponents(test *testing.T) {
-	_, _, _, _, err := ParseRoleArn("arn:aws:iam::role/athenz.zts-service", "role/", "-service", "")
+	_, _, _, _, err := ParseRoleArn("arn:aws:iam::role/athenz.zts-service", "role/", "-service", "", false)
 	if err == nil {
 		test.Errorf("Unable to verify proper role arn number of components")
 	}
@@ -895,7 +1010,7 @@ func TestParseRoleArnInvalidNumberOfComponents(test *testing.T) {
 }
 
 func TestParseRoleArnInvalidAssumedRoleComponent(test *testing.T) {
-	_, _, _, _, err := ParseRoleArn("arn:aws:iam::123456789012:assumed-role/athenz.zts-service", "role/", "-service", "")
+	_, _, _, _, err := ParseRoleArn("arn:aws:iam::123456789012:assumed-role/athenz.zts-service", "role/", "-service", "", false)
 	if err == nil {
 		test.Errorf("Unable to verify proper role assumed-role prefix")
 	}
@@ -905,7 +1020,7 @@ func TestParseRoleArnInvalidAssumedRoleComponent(test *testing.T) {
 }
 
 func TestParseRoleArnInvalidAthenzService(test *testing.T) {
-	_, _, _, _, err := ParseRoleArn("arn:aws:iam::123456789012:role/athenz-service", "role/", "-service", "@")
+	_, _, _, _, err := ParseRoleArn("arn:aws:iam::123456789012:role/athenz-service", "role/", "-service", "@", false)
 	if err == nil {
 		test.Errorf("Unable to verify proper athenz service name")
 	}
@@ -915,69 +1030,176 @@ func TestParseRoleArnInvalidAthenzService(test *testing.T) {
 }
 
 func TestParseRoleArnValid(test *testing.T) {
-	account, domain, service, profile, err := ParseRoleArn("arn:aws:iam::123456789012:role/athenz.zts-service", "role/", "-service", "@")
-	if err != nil {
-		test.Errorf("Unable to parse valid arn, error %v", err)
+
+	tests := map[string]struct {
+		roleArn             string
+		rolePrefix          string
+		roleSuffix          string
+		profileSeparator    string
+		roleServiceNameOnly bool
+		account             string
+		domain              string
+		service             string
+		profile             string
+	}{
+		"valid-role": {
+			roleArn:             "arn:aws:iam::123456789012:role/athenz.zts-service",
+			rolePrefix:          "role/",
+			roleSuffix:          "-service",
+			profileSeparator:    "@",
+			roleServiceNameOnly: false,
+			account:             "123456789012",
+			domain:              "athenz",
+			service:             "zts",
+			profile:             "",
+		},
+		"valid-role-service-only-true": {
+			roleArn:             "arn:aws:iam::123456789012:role/athenz.zts-service",
+			rolePrefix:          "role/",
+			roleSuffix:          "-service",
+			profileSeparator:    "@",
+			roleServiceNameOnly: true,
+			account:             "123456789012",
+			domain:              "athenz",
+			service:             "zts",
+			profile:             "",
+		},
+		"valid-instance-profile": {
+			roleArn:             "arn:aws:iam::123456789012:instance-profile/sys.auth.zms",
+			rolePrefix:          "instance-profile/",
+			roleSuffix:          "",
+			profileSeparator:    "@",
+			roleServiceNameOnly: false,
+			account:             "123456789012",
+			domain:              "sys.auth",
+			service:             "zms",
+			profile:             "",
+		},
+		"valid-instance-profile-service-only-true": {
+			roleArn:             "arn:aws:iam::123456789012:instance-profile/sys.auth.zms",
+			rolePrefix:          "instance-profile/",
+			roleSuffix:          "",
+			profileSeparator:    "@",
+			roleServiceNameOnly: true,
+			account:             "123456789012",
+			domain:              "sys.auth",
+			service:             "zms",
+			profile:             "",
+		},
+		"valid-instance-sia-profile": {
+			roleArn:             "arn:aws:iam::123456789012:instance-profile/sys.auth.zms@sia_profile",
+			rolePrefix:          "instance-profile/",
+			roleSuffix:          "",
+			profileSeparator:    "@",
+			roleServiceNameOnly: false,
+			account:             "123456789012",
+			domain:              "sys.auth",
+			service:             "zms",
+			profile:             "sia_profile",
+		},
+		"valid-instance-sia-profile-service-only-true": {
+			roleArn:             "arn:aws:iam::123456789012:instance-profile/sys.auth.zms@sia_profile",
+			rolePrefix:          "instance-profile/",
+			roleSuffix:          "",
+			profileSeparator:    "@",
+			roleServiceNameOnly: true,
+			account:             "123456789012",
+			domain:              "sys.auth",
+			service:             "zms",
+			profile:             "sia_profile",
+		},
+		"valid-role-sia-profile": {
+			roleArn:             "arn:aws:iam::123456789012:role/athenz.zts-service@sia_profile",
+			rolePrefix:          "role/",
+			roleSuffix:          "-service",
+			profileSeparator:    "@",
+			roleServiceNameOnly: false,
+			account:             "123456789012",
+			domain:              "athenz",
+			service:             "zts",
+			profile:             "sia_profile",
+		},
+		"valid-role-sia-profile-service-only-true": {
+			roleArn:             "arn:aws:iam::123456789012:role/athenz.zts-service@sia_profile",
+			rolePrefix:          "role/",
+			roleSuffix:          "-service",
+			profileSeparator:    "@",
+			roleServiceNameOnly: true,
+			account:             "123456789012",
+			domain:              "athenz",
+			service:             "zts",
+			profile:             "sia_profile",
+		},
 	}
-	if account != "123456789012" {
-		test.Errorf("Unable to parse valid arn, invalid account: %s", account)
+
+	for name, tt := range tests {
+		test.Run(name, func(t *testing.T) {
+			account, domain, service, profile, _ := ParseRoleArn(tt.roleArn, tt.rolePrefix, tt.roleSuffix, tt.profileSeparator, tt.roleServiceNameOnly)
+			assert.Equal(t, account, tt.account)
+			assert.Equal(t, domain, tt.domain)
+			assert.Equal(t, service, tt.service)
+			assert.Equal(t, profile, tt.profile)
+		})
 	}
-	if domain != "athenz" {
-		test.Errorf("Unable to parse valid arn, invalid domain: %s", domain)
+}
+
+func TestParseRoleArnServiceNameOnly(test *testing.T) {
+
+	tests := map[string]struct {
+		roleArn          string
+		rolePrefix       string
+		roleSuffix       string
+		profileSeparator string
+		account          string
+		service          string
+		profile          string
+	}{
+		"valid-role": {
+			roleArn:          "arn:aws:iam::123456789012:role/zts-service",
+			rolePrefix:       "role/",
+			roleSuffix:       "-service",
+			profileSeparator: "@",
+			account:          "123456789012",
+			service:          "zts",
+			profile:          "",
+		},
+		"valid-instance-profile": {
+			roleArn:          "arn:aws:iam::123456789012:instance-profile/zms",
+			rolePrefix:       "instance-profile/",
+			roleSuffix:       "",
+			profileSeparator: "@",
+			account:          "123456789012",
+			service:          "zms",
+			profile:          "",
+		},
+		"valid-instance-sia-profile": {
+			roleArn:          "arn:aws:iam::123456789012:instance-profile/zms@sia_profile",
+			rolePrefix:       "instance-profile/",
+			roleSuffix:       "",
+			profileSeparator: "@",
+			account:          "123456789012",
+			service:          "zms",
+			profile:          "sia_profile",
+		},
+		"valid-role-sia-profile": {
+			roleArn:          "arn:aws:iam::123456789012:role/zts-service@sia_profile",
+			rolePrefix:       "role/",
+			roleSuffix:       "-service",
+			profileSeparator: "@",
+			account:          "123456789012",
+			service:          "zts",
+			profile:          "sia_profile",
+		},
 	}
-	if service != "zts" {
-		test.Errorf("Unable to parse valid arn, invalid service: %s", service)
-	}
-	if profile != "" {
-		test.Errorf("Unable to parse valid arn, invalid profile: %s", service)
-	}
-	account, domain, service, profile, err = ParseRoleArn("arn:aws:iam::123456789012:instance-profile/sys.auth.zms", "instance-profile/", "", "@")
-	if err != nil {
-		test.Errorf("Unable to parse valid arn, error %v", err)
-	}
-	if account != "123456789012" {
-		test.Errorf("Unable to parse valid arn, invalid account: %s", account)
-	}
-	if domain != "sys.auth" {
-		test.Errorf("Unable to parse valid arn, invalid domain: %s", domain)
-	}
-	if service != "zms" {
-		test.Errorf("Unable to parse valid arn, invalid service: %s", service)
-	}
-	if profile != "" {
-		test.Errorf("Unable to parse valid arn, invalid profile: %s", service)
-	}
-	account, domain, service, profile, err = ParseRoleArn("arn:aws:iam::123456789012:instance-profile/sys.auth.zms@sia_profile", "instance-profile/", "", "@")
-	if err != nil {
-		test.Errorf("Unable to parse valid arn, error %v", err)
-	}
-	if account != "123456789012" {
-		test.Errorf("Unable to parse valid arn, invalid account: %s", account)
-	}
-	if domain != "sys.auth" {
-		test.Errorf("Unable to parse valid arn, invalid domain: %s", domain)
-	}
-	if service != "zms" {
-		test.Errorf("Unable to parse valid arn, invalid service: %s", service)
-	}
-	if profile != "sia_profile" {
-		test.Errorf("Unable to parse valid arn, invalid profile: %s", service)
-	}
-	account, domain, service, profile, err = ParseRoleArn("arn:aws:iam::123456789012:role/athenz.zts-service@sia_profile", "role/", "-service", "@")
-	if err != nil {
-		test.Errorf("Unable to parse valid arn, error %v", err)
-	}
-	if account != "123456789012" {
-		test.Errorf("Unable to parse valid arn, invalid account: %s", account)
-	}
-	if domain != "athenz" {
-		test.Errorf("Unable to parse valid arn, invalid domain: %s", domain)
-	}
-	if service != "zts" {
-		test.Errorf("Unable to parse valid arn, invalid service: %s", service)
-	}
-	if profile != "sia_profile" {
-		test.Errorf("Unable to parse valid arn, invalid profile: %s", service)
+
+	for name, tt := range tests {
+		test.Run(name, func(t *testing.T) {
+			account, domain, service, profile, _ := ParseRoleArn(tt.roleArn, tt.rolePrefix, tt.roleSuffix, tt.profileSeparator, true)
+			assert.Equal(t, account, tt.account)
+			assert.Equal(t, domain, "")
+			assert.Equal(t, service, tt.service)
+			assert.Equal(t, profile, tt.profile)
+		})
 	}
 }
 
@@ -1306,6 +1528,33 @@ func TestAppendHostname(t *testing.T) {
 	assert.Equal(t, list[1], "host2.athenz.io")
 }
 
+func TestAppendEmail(t *testing.T) {
+	list := []string{}
+	list = AppendEmail(list, "")
+	assert.Equal(t, 0, len(list))
+
+	list = AppendEmail(list, "user1@athenz.io")
+	assert.Equal(t, 1, len(list))
+	assert.Equal(t, "user1@athenz.io", list[0])
+
+	list = AppendEmail(list, "user1@athenz.io")
+	assert.Equal(t, 1, len(list))
+	assert.Equal(t, "user1@athenz.io", list[0])
+
+	list = AppendEmail(list, "user2@athenz.io")
+	assert.Equal(t, 2, len(list))
+	assert.Equal(t, "user1@athenz.io", list[0])
+	assert.Equal(t, "user2@athenz.io", list[1])
+
+	list = AppendEmail(list, "user2@athenz.io")
+	assert.Equal(t, 2, len(list))
+	assert.Equal(t, "user1@athenz.io", list[0])
+	assert.Equal(t, "user2@athenz.io", list[1])
+
+	list = AppendEmail(list, "")
+	assert.Equal(t, 2, len(list))
+}
+
 func TestRequiredFilePerm(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -1545,4 +1794,214 @@ func TestGetSvcSpiffeUri(t *testing.T) {
 			assert.Equal(t, spiffeUri, tt.uri)
 		})
 	}
+}
+
+type customFormatter struct{}
+
+func (f *customFormatter) FormatServiceURI(trustDomain, namespace, domain, service, workloadId string) string {
+	return fmt.Sprintf("spiffe://custom.example/svc/%s/%s", domain, service)
+}
+
+func (f *customFormatter) FormatRoleURI(trustDomain, domain, role string) string {
+	return fmt.Sprintf("spiffe://custom.example/role/%s/%s", domain, role)
+}
+
+func (f *customFormatter) FormatUserURI(trustDomain, namespace, principalName, deviceId string) string {
+	return fmt.Sprintf("spiffe://custom.example/user/%s", principalName)
+}
+
+type customParser struct{}
+
+func (p *customParser) ParseServiceURI(uri string) (string, string, string, string, string) {
+	if uri == "spiffe://custom.example/svc/athenz/api" {
+		return "custom.example", "custom-ns", "athenz", "api", ""
+	}
+	return "", "", "", "", ""
+}
+
+func (p *customParser) ParseRoleURI(uri string) (string, string) {
+	if uri == "spiffe://custom.example/role/athenz/readers" {
+		return "athenz", "readers"
+	}
+	return "", ""
+}
+
+func (p *customParser) ParseCAURI(uri string) (string, string, string) {
+	if uri == "spiffe://custom.example/ca/default/us-west-2" {
+		return "custom.example", "default", "us-west-2"
+	}
+	return "", "", ""
+}
+
+func TestGenerateSvcCertCSRCustomSpiffeFormatter(t *testing.T) {
+	key, err := GenerateKeyPair(2048)
+	if err != nil {
+		t.Fatalf("Cannot generate private key: %v", err)
+	}
+
+	svcCertReqOptions := &SvcCertReqOptions{
+		Country:            "US",
+		Domain:             "domain",
+		Service:            "service",
+		CommonName:         "domain.service",
+		InstanceId:         "instance001",
+		Provider:           "Athenz",
+		ZtsDomains:         []string{"athenz.cloud"},
+		WildCardDnsName:    false,
+		InstanceIdSanDNS:   false,
+		SpiffeURIFormatter: &customFormatter{},
+	}
+
+	csr, err := GenerateSvcCertCSR(key, svcCertReqOptions)
+	if err != nil {
+		t.Fatalf("Cannot create CSR: %v", err)
+	}
+
+	block, _ := pem.Decode([]byte(csr))
+	parsedcertreq, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		t.Fatalf("Cannot parse CSR: %v", err)
+	}
+
+	if parsedcertreq.URIs[0].String() != "spiffe://custom.example/svc/domain/service" {
+		t.Fatalf("CSR does not have expected custom spiffe uri: %s", parsedcertreq.URIs[0].String())
+	}
+}
+
+func TestParseServiceSpiffeUriCustomParser(t *testing.T) {
+	// Use explicit injection instead of global state
+	parser := &customParser{}
+	trust, ns, domain, service, _ := parser.ParseServiceURI("spiffe://custom.example/svc/athenz/api")
+	if trust != "custom.example" || ns != "custom-ns" || domain != "athenz" || service != "api" {
+		t.Fatalf("custom parser was not used, got trust=%s ns=%s domain=%s service=%s", trust, ns, domain, service)
+	}
+}
+
+func TestGetRoleSpiffeUri(t *testing.T) {
+
+	tests := map[string]struct {
+		domain      string
+		role        string
+		trustDomain string
+		uri         string
+	}{
+		"domain-role-only": {
+			domain:      "sports",
+			role:        "readers",
+			trustDomain: "",
+			uri:         "spiffe://sports/ra/readers",
+		},
+		"trust-domain": {
+			domain:      "sports",
+			role:        "readers",
+			trustDomain: "athenz.cloud",
+			uri:         "spiffe://athenz.cloud/ns/sports/ra/readers",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			spiffeUri := GetRoleSpiffeUri(tt.trustDomain, tt.domain, tt.role)
+			assert.Equal(t, spiffeUri, tt.uri)
+		})
+	}
+}
+
+func TestParseSiaCmd(test *testing.T) {
+
+	tests := []struct {
+		name       string
+		siaCmd     string
+		cmd        string
+		skipErrors bool
+	}{
+		{"empty-cmd", "", "", false},
+		{"simple-valid-cmd", "init", "init", false},
+		{"simple-unknown-cmd", "operation", "operation", false},
+		{"simple-skip-errors", "init:skip-errors", "init", true},
+		{"multiple-parts", "init:skip-errors:unknown", "init", true},
+		{"multiple-parts-unknown", "init:test:unknown", "init", false},
+	}
+	for _, tt := range tests {
+		test.Run(tt.name, func(t *testing.T) {
+			cmd, skipErrors := ParseSiaCmd(tt.siaCmd)
+			if tt.cmd != cmd {
+				test.Errorf("%s: invalid cmd returned - expected: %v, received %v", tt.name, tt.cmd, cmd)
+			}
+			if tt.skipErrors != skipErrors {
+				test.Errorf("%s: invalid skipErrors returned - expected: %v, received %v", tt.name, tt.skipErrors, skipErrors)
+			}
+		})
+	}
+}
+
+func TestExecuteScript(test *testing.T) {
+
+	// non-existent script
+	err := ExecuteScript([]string{"unknown-script"}, "", false)
+	assert.NotNil(test, err)
+
+	// remove our test file if it exists
+	os.Remove("/tmp/test-after-script")
+	// valid script
+	err = ExecuteScript([]string{"data/test_after_script.sh"}, "", true)
+	assert.Nil(test, err)
+	// verify our test file was created
+	_, err = os.Stat("/tmp/test-after-script")
+	assert.Nil(test, err)
+}
+
+func TestNotifySystemdReady(test *testing.T) {
+
+	notifySocket := "/tmp/notify.socket"
+	// non-existent env setting
+	err := NotifySystemdReady()
+	assert.NotNil(test, err)
+	assert.Equal(test, err.Error(), "notify socket is not set")
+
+	// set the env variable but no socket
+	os.Setenv("NOTIFY_SOCKET", notifySocket)
+	err = NotifySystemdReady()
+	assert.NotNil(test, err)
+	assert.Equal(test, err.Error(), "dial unixgram /tmp/notify.socket: connect: no such file or directory")
+
+	// create a unix listener
+	socketAddr := net.UnixAddr{
+		Name: notifySocket,
+		Net:  "unixgram",
+	}
+	_, err = net.ListenUnixgram("unixgram", &socketAddr)
+	assert.Nil(test, err)
+	defer os.Remove(notifySocket)
+	err = NotifySystemdReady()
+	assert.Nil(test, err)
+	os.Unsetenv("NOTIFY_SOCKET")
+}
+
+func TestNotifySystemdReadyForCommand(test *testing.T) {
+
+	// when commands don't match there is always nil error
+	err := NotifySystemdReadyForCommand("systemd-notify", "init")
+	assert.Nil(test, err)
+
+	// when commands match, the code is executed, so we should
+	// get an error that notify socket is not set
+	err = NotifySystemdReadyForCommand("systemd-notify", "systemd-notify")
+	assert.NotNil(test, err)
+	assert.Equal(test, err.Error(), "notify socket is not set")
+}
+
+func TestTouchDoneFile(test *testing.T) {
+
+	// remove our test file if it exists
+	os.Remove("/tmp/init.done")
+	// create the file first time
+	err := TouchDoneFile("/tmp", "init")
+	assert.Nil(test, err)
+	// verify our test file was created
+	_, err = os.Stat("/tmp/init.done")
+	assert.Nil(test, err)
+	// call the method again and verify no errors
+	err = TouchDoneFile("/tmp", "init")
+	assert.Nil(test, err)
 }

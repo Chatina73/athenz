@@ -29,20 +29,44 @@ const config = {
         {
             id: 'aws_instance_launch_provider',
             name: 'AWS EC2/EKS/Fargate launches instances for the service',
+            service: 'athens.aws.us-east-1',
         },
     ],
     createDomainMessage: '',
     servicePageConfig: '',
     productMasterLink: '',
+    resourceOwnershipGuideLink: {
+        title: 'resource-ownership-guide',
+        url: 'https://github.com/AthenZ/athenz/blob/master/docs/design/resource_ownership.md',
+        target: '_blank',
+    },
+    resourceOwnershipUi: {
+        icon: 'terraform',
+        label: 'Terraform',
+        managedIconTooltip:
+            'This resource is managed by {{label}} (ownership in ZMS).',
+        membersManagedIconTooltip:
+            'Role membership is managed by {{label}} (members owner).',
+        cliSuggestionBody:
+            'This resource is {{label}}-managed and cannot be edited via the Athenz UI. To maintain environment stability, always apply changes through {{label}} configuration. While the zms-cli can force immediate updates, doing so creates configuration drift, leaving the resource out-of-sync and requiring manual intervention to reconcile.',
+        cliSuggestionEmergencyHeading: 'Use only in emergencies:',
+        cliSuggestionGuideFooter: 'For detailed guidance, refer to',
+    },
     userData: () => {},
     userDomain: 'test-user-domain',
     serviceHeaderLinks: [],
     templates: ['openhouse'],
+    callCloudSSO: true,
 };
+const SEVEN_SECONDS_TIMEOUT = 1000 * 7;
 const secrets = {};
 const expressApp = require('express')();
 const request = require('supertest');
 const bodyParser = require('body-parser');
+const {
+    listUserDomains_response,
+    getPrincipalRoles_response,
+} = require('../../../mock/MockData');
 
 describe('Fetchr Server API Test', () => {
     describe('success tests', () => {
@@ -50,6 +74,157 @@ describe('Fetchr Server API Test', () => {
             sinon.stub(CLIENTS, 'load').returns(Promise.resolve());
             sinon.stub(CLIENTS, 'middleware').returns((req, res, next) => {
                 req.clients = {
+                    cloud_sso: {
+                        // respond asynchronously like the real http client
+                        getResourceAccessList: (params, callback) =>
+                            setImmediate(() =>
+                                params.action === 'forcefailcloudsso' ||
+                                params.action === 'forcefailboth'
+                                    ? callback({ status: 503 }, null)
+                                    : callback(undefined, {
+                                          resources: {
+                                              principal: 'user.dummy1',
+                                              assertions: [
+                                                  {
+                                                      dummyProperty:
+                                                          'dummyValue',
+                                                  },
+                                              ],
+                                          },
+                                      })
+                            ),
+                    },
+                    msd: {
+                        getTransportPolicySnapshots: (params, callback) =>
+                            params.serviceName === 'forcefail'
+                                ? callback(
+                                      {
+                                          status: 404,
+                                          message: {
+                                              message:
+                                                  'unable to read snapshots',
+                                          },
+                                      },
+                                      null
+                                  )
+                                : callback(undefined, {
+                                      snapshots: [
+                                          {
+                                              domainName: params.domainName,
+                                              serviceName: params.serviceName,
+                                              name: 'v1',
+                                              createdTime:
+                                                  '2026-09-16T10:00:00.000Z',
+                                              active: true,
+                                          },
+                                      ],
+                                  }),
+                        getTransportPolicySnapshot: (params, callback) =>
+                            callback(undefined, {
+                                domainName: params.domainName,
+                                serviceName: params.serviceName,
+                                name: params.snapshotName,
+                                createdTime: '2026-09-16T10:00:00.000Z',
+                                active: true,
+                                transportPolicyRules: {
+                                    ingress: [],
+                                    egress: [],
+                                },
+                            }),
+                        getTransportPolicySnapshotUsage: (params, callback) =>
+                            callback(undefined, {
+                                principals: [
+                                    {
+                                        name: 'peer.controller',
+                                        time: '2026-09-28T07:00:00.000Z',
+                                    },
+                                ],
+                                partial: false,
+                            }),
+                        createTransportPolicySnapshot: (params, callback) =>
+                            params.snapshot.name === 'forcefail'
+                                ? callback(
+                                      {
+                                          status: 400,
+                                          message: {
+                                              message: 'snapshot limit reached',
+                                          },
+                                      },
+                                      null
+                                  )
+                                : callback(undefined, {
+                                      domainName: params.domainName,
+                                      serviceName: params.serviceName,
+                                      name: params.snapshot.name,
+                                      active: params.snapshot.active,
+                                      createdTime: '2026-09-29T10:00:00.000Z',
+                                  }),
+                        updateTransportPolicySnapshot: (params, callback) =>
+                            params.snapshotName === 'forcefail'
+                                ? callback(
+                                      {
+                                          status: 404,
+                                          message: {
+                                              message: 'snapshot not found',
+                                          },
+                                      },
+                                      null
+                                  )
+                                : callback(undefined, {
+                                      domainName: params.domainName,
+                                      serviceName: params.serviceName,
+                                      name: params.snapshotName,
+                                      active: params.updateRequest.active,
+                                      createdTime: '2026-09-16T10:00:00.000Z',
+                                      modified: '2026-09-30T10:00:00.000Z',
+                                  }),
+                        deleteTransportPolicySnapshot: (params, callback) =>
+                            params.snapshotName === 'active' && !params.force
+                                ? callback(
+                                      {
+                                          status: 409,
+                                          message: {
+                                              message:
+                                                  'snapshot active is active and cannot be deleted',
+                                          },
+                                      },
+                                      null
+                                  )
+                                : callback(undefined, undefined),
+                        getWorkloadsByDomainAndService: (params, callback) => {
+                            // Simulate rdl-rest on MSD 5xx: both err and JSON body present.
+                            // Previously the UI treated truthy data as success and showed an empty list.
+                            if (params.request && params.request.forcefail) {
+                                return callback(
+                                    {
+                                        status: 500,
+                                        message: {
+                                            message: 'Internal Server Error',
+                                        },
+                                    },
+                                    {
+                                        message: 'Internal Server Error',
+                                    }
+                                );
+                            }
+                            return callback(undefined, {
+                                workloads: {
+                                    staticWorkloadList: [
+                                        {
+                                            name: '10.1.1.1',
+                                            type: 'EXTERNAL_APPLIANCE',
+                                        },
+                                    ],
+                                    dynamicWorkloadList: [
+                                        {
+                                            uuid: 'abc-123',
+                                            hostname: 'host1',
+                                        },
+                                    ],
+                                },
+                            });
+                        },
+                    },
                     zms: {
                         putAssertion: (params, callback) =>
                             params.forcefail
@@ -105,6 +280,11 @@ describe('Fetchr Server API Test', () => {
                                       names: ['dom1', 'domabc1'],
                                   });
                         },
+                        getPrincipalRoles: (params, callback) => {
+                            callback(undefined, {
+                                ...getPrincipalRoles_response,
+                            });
+                        },
                         getSignedDomains: (params, callback) =>
                             params.forcefail
                                 ? callback({ status: 404 }, null)
@@ -141,6 +321,8 @@ describe('Fetchr Server API Test', () => {
                             params.forcefail
                                 ? callback({ status: 404 }, null)
                                 : callback(undefined, { success: 'true' }),
+                        getAccessExt: (params, callback) =>
+                            callback(undefined, { granted: 'true' }),
                         putPolicy: (params, callback) =>
                             params.forcefail
                                 ? callback({ status: 404 }, null)
@@ -214,9 +396,11 @@ describe('Fetchr Server API Test', () => {
                                                               active: false,
                                                               auditRef: 'ee',
                                                               requestPrincipal:
-                                                                  'user.abhijetv',
+                                                                  'user.test2',
                                                               requestTime:
                                                                   '2020-04-10T04:59:33.325Z',
+                                                              reviewReminder:
+                                                                  '2020-07-15T19:01:00.000Z',
                                                           },
                                                       ],
                                                   },
@@ -230,15 +414,16 @@ describe('Fetchr Server API Test', () => {
                                                               auditRef:
                                                                   'jothi no expiry',
                                                               requestPrincipal:
-                                                                  'user.abhijetv',
+                                                                  'user.test2',
                                                               requestTime:
                                                                   '2020-04-10T06:04:29.337Z',
+                                                              reviewReminder:
+                                                                  '2020-07-15T19:02:00.000Z',
                                                           },
                                                       ],
                                                   },
                                                   {
-                                                      memberName:
-                                                          'user.palakas',
+                                                      memberName: 'user.test1',
                                                       memberRoles: [
                                                           {
                                                               roleName:
@@ -246,9 +431,11 @@ describe('Fetchr Server API Test', () => {
                                                               active: false,
                                                               auditRef: 'ee',
                                                               requestPrincipal:
-                                                                  'user.abhijetv',
+                                                                  'user.test2',
                                                               requestTime:
                                                                   '2020-04-10T05:11:32.667Z',
+                                                              reviewReminder:
+                                                                  '2020-07-15T19:03:00.000Z',
                                                           },
                                                       ],
                                                   },
@@ -300,35 +487,64 @@ describe('Fetchr Server API Test', () => {
                                       ],
                                   }),
                         getResourceAccessList: (params, callback) =>
-                            params.forcefail
-                                ? callback({ status: 404 }, null)
+                            params.action === 'forcefailboth'
+                                ? callback(
+                                      {
+                                          status: 503,
+                                          message: { message: 'zms fail' },
+                                      },
+                                      null
+                                  )
                                 : callback(undefined, {
                                       resources: {
-                                          principal: 'user.dummy1',
+                                          principal: 'user.dummy2',
                                           assertions: [
                                               {
-                                                  role: 'dummy.project:role.gcp.fed.power.user',
-                                                  resource:
-                                                      'dummy.project:fed.power.user',
-                                                  action: 'gcp.assume_role',
-                                                  effect: 'ALLOW',
-                                                  id: 1,
-                                              },
-                                              {
-                                                  role: 'dummy.project2:role.gcp.fed.admin.user',
-                                                  resource:
-                                                      'dummy.project2:fed.admin.user',
-                                                  action: 'gcp.assume_role',
-                                                  effect: 'ALLOW',
-                                                  id: 2,
+                                                  dummyProperty: 'dummyValue2',
                                               },
                                           ],
                                       },
+                                  }),
+                        getRolesForReview: (params, callback) =>
+                            params.forcefail
+                                ? callback({ status: 404 }, null)
+                                : callback(undefined, {
+                                      list: [
+                                          {
+                                              domainName: 'home.user1',
+                                              name: 'testrole',
+                                              memberExpiryDays: 10,
+                                              memberReviewDays: 0,
+                                              serviceExpiryDays: 10,
+                                              serviceReviewDays: 0,
+                                              groupExpiryDays: 5,
+                                              groupReviewDays: 5,
+                                          },
+                                      ],
+                                  }),
+                        getGroupsForReview: (params, callback) =>
+                            params.forcefail
+                                ? callback({ status: 404 }, null)
+                                : callback(undefined, {
+                                      list: [
+                                          {
+                                              domainName: 'home.user1',
+                                              name: 'testgroup',
+                                              memberExpiryDays: 10,
+                                              memberReviewDays: 0,
+                                              serviceExpiryDays: 10,
+                                              serviceReviewDays: 0,
+                                              groupExpiryDays: 5,
+                                              groupReviewDays: 5,
+                                          },
+                                      ],
                                   }),
                     },
                 };
                 next();
             });
+        });
+        beforeEach(async () => {
             api.load(config, secrets).then(() => {
                 expressApp.use(bodyParser.urlencoded({ extended: false }));
                 expressApp.use(bodyParser.json());
@@ -407,6 +623,223 @@ describe('Fetchr Server API Test', () => {
                 .set('Content-Type', 'application/json')
                 .then((res) => {
                     expect(res.body.g0.data).toEqual({ success: 'true' });
+                });
+        });
+        it('snapshots list test success', async () => {
+            await request(expressApp)
+                .get('/api/v1/snapshots;domainName=dom;serviceName=svc')
+                .then((res) => {
+                    expect(res.status).toEqual(200);
+                    expect(res.body.snapshots).toHaveLength(1);
+                    expect(res.body.snapshots[0].name).toEqual('v1');
+                });
+        });
+        it('snapshots list test failure keeps MSD status and message', async () => {
+            await request(expressApp)
+                .get('/api/v1/snapshots;domainName=dom;serviceName=forcefail')
+                .then((res) => {
+                    expect(res.status).toEqual(404);
+                    expect(res.body.message).toEqual(
+                        'MSD: unable to read snapshots'
+                    );
+                });
+        });
+        it('snapshots get single test success', async () => {
+            await request(expressApp)
+                .get(
+                    '/api/v1/snapshots;domainName=dom;serviceName=svc;snapshotName=v1'
+                )
+                .then((res) => {
+                    expect(res.status).toEqual(200);
+                    expect(res.body.name).toEqual('v1');
+                    expect(res.body.transportPolicyRules).toEqual({
+                        ingress: [],
+                        egress: [],
+                    });
+                });
+        });
+        it('snapshots get usage test success', async () => {
+            await request(expressApp)
+                .get(
+                    '/api/v1/snapshots;domainName=dom;serviceName=svc;snapshotName=v1;usage=true'
+                )
+                .then((res) => {
+                    expect(res.status).toEqual(200);
+                    expect(res.body.principals[0].name).toEqual(
+                        'peer.controller'
+                    );
+                    expect(res.body.partial).toEqual(false);
+                });
+        });
+        it('snapshots create test success', async () => {
+            await request(expressApp)
+                .post('/api/v1')
+                .send({
+                    requests: {
+                        g0: {
+                            resource: 'snapshots',
+                            operation: 'create',
+                            params: {
+                                domainName: 'dom',
+                                serviceName: 'svc',
+                                name: 'v2',
+                                active: true,
+                            },
+                        },
+                    },
+                })
+                .set('Accept', 'application/json')
+                .set('Content-Type', 'application/json')
+                .then((res) => {
+                    expect(res.body.g0.data.name).toEqual('v2');
+                    expect(res.body.g0.data.active).toEqual(true);
+                });
+        });
+        it('snapshots create test failure', async () => {
+            await request(expressApp)
+                .post('/api/v1')
+                .send({
+                    requests: {
+                        g0: {
+                            resource: 'snapshots',
+                            operation: 'create',
+                            params: {
+                                domainName: 'dom',
+                                serviceName: 'svc',
+                                name: 'forcefail',
+                            },
+                        },
+                    },
+                })
+                .set('Accept', 'application/json')
+                .set('Content-Type', 'application/json')
+                .then((res) => {
+                    expect(res.status).toEqual(400);
+                    expect(res.body.message).toEqual(
+                        'MSD: snapshot limit reached'
+                    );
+                });
+        });
+        it('snapshots update test success', async () => {
+            await request(expressApp)
+                .post('/api/v1')
+                .send({
+                    requests: {
+                        g0: {
+                            resource: 'snapshots',
+                            operation: 'update',
+                            params: {
+                                domainName: 'dom',
+                                serviceName: 'svc',
+                                snapshotName: 'v1',
+                                active: false,
+                            },
+                        },
+                    },
+                })
+                .set('Accept', 'application/json')
+                .set('Content-Type', 'application/json')
+                .then((res) => {
+                    expect(res.status).toEqual(200);
+                    expect(res.body.g0.data.name).toEqual('v1');
+                    expect(res.body.g0.data.active).toEqual(false);
+                });
+        });
+        it('snapshots update test failure', async () => {
+            await request(expressApp)
+                .post('/api/v1')
+                .send({
+                    requests: {
+                        g0: {
+                            resource: 'snapshots',
+                            operation: 'update',
+                            params: {
+                                domainName: 'dom',
+                                serviceName: 'svc',
+                                snapshotName: 'forcefail',
+                                active: true,
+                            },
+                        },
+                    },
+                })
+                .set('Accept', 'application/json')
+                .set('Content-Type', 'application/json')
+                .then((res) => {
+                    expect(res.status).toEqual(404);
+                    expect(res.body.message).toEqual('MSD: snapshot not found');
+                });
+        });
+        it('snapshots delete test success', async () => {
+            await request(expressApp)
+                .post('/api/v1')
+                .send({
+                    requests: {
+                        g0: {
+                            resource: 'snapshots',
+                            operation: 'delete',
+                            params: {
+                                domainName: 'dom',
+                                serviceName: 'svc',
+                                snapshotName: 'v1',
+                                force: false,
+                            },
+                        },
+                    },
+                })
+                .set('Accept', 'application/json')
+                .set('Content-Type', 'application/json')
+                .then((res) => {
+                    expect(res.status).toEqual(200);
+                    expect(res.body.g0.data).toEqual({});
+                });
+        });
+        it('snapshots delete active without force returns 409', async () => {
+            await request(expressApp)
+                .post('/api/v1')
+                .send({
+                    requests: {
+                        g0: {
+                            resource: 'snapshots',
+                            operation: 'delete',
+                            params: {
+                                domainName: 'dom',
+                                serviceName: 'svc',
+                                snapshotName: 'active',
+                            },
+                        },
+                    },
+                })
+                .set('Accept', 'application/json')
+                .set('Content-Type', 'application/json')
+                .then((res) => {
+                    expect(res.status).toEqual(409);
+                    expect(res.body.message).toEqual(
+                        'MSD: snapshot active is active and cannot be deleted'
+                    );
+                });
+        });
+        it('snapshots delete active with force succeeds', async () => {
+            await request(expressApp)
+                .post('/api/v1')
+                .send({
+                    requests: {
+                        g0: {
+                            resource: 'snapshots',
+                            operation: 'delete',
+                            params: {
+                                domainName: 'dom',
+                                serviceName: 'svc',
+                                snapshotName: 'active',
+                                force: true,
+                            },
+                        },
+                    },
+                })
+                .set('Accept', 'application/json')
+                .set('Content-Type', 'application/json')
+                .then((res) => {
+                    expect(res.status).toEqual(200);
+                    expect(res.body.g0.data).toEqual({});
                 });
         });
         it('getDomain test success', async () => {
@@ -511,14 +944,11 @@ describe('Fetchr Server API Test', () => {
                     expect(res.body).toEqual([]);
                 });
         });
-        it('domainList test success', async () => {
+        it('getPrincipalRoles test success', async () => {
             await request(expressApp)
-                .get('/api/v1/domain-list')
+                .get('/api/v1/domain-role-member')
                 .then((res) => {
-                    expect(res.body).toEqual([
-                        { adminDomain: true, name: 'dom1' },
-                        { adminDomain: true, name: 'domabc1' },
-                    ]);
+                    expect(res.body).toEqual(listUserDomains_response);
                 });
         });
         it('getForm test success', async () => {
@@ -694,18 +1124,19 @@ describe('Fetchr Server API Test', () => {
                     expect(res.body.g0.data).toEqual({ success: 'true' });
                 });
         });
-        it('getProvider test success', async () => {
+        it('getAccessExt test granted - true', async () => {
             await request(expressApp)
-                .get('/api/v1/provider')
+                .get('/api/v1/access')
                 .then((res) => {
                     expect(res.body).toEqual({
                         allProviders: [
                             {
                                 id: 'aws_instance_launch_provider',
                                 name: 'AWS EC2/EKS/Fargate launches instances for the service',
+                                service: 'athens.aws.us-east-1',
                             },
                         ],
-                        provider: { aws_instance_launch_provider: 'not' },
+                        provider: { aws_instance_launch_provider: 'allow' },
                     });
                 });
         });
@@ -862,8 +1293,9 @@ describe('Fetchr Server API Test', () => {
                             userComment: 'ee',
                             auditRef: '',
                             category: 'role',
-                            requestPrincipal: 'user.abhijetv',
+                            requestPrincipal: 'user.test2',
                             requestTime: '2020-04-10T04:59:33.325Z',
+                            reviewReminder: '2020-07-15T19:01:00.000Z',
                             expiryDate: '2020-07-17T19:00:00.000Z',
                             memberNameFull: null,
                             requestPrincipalFull: null,
@@ -875,20 +1307,22 @@ describe('Fetchr Server API Test', () => {
                             roleName: 'audit_enabled_role2',
                             userComment: 'jothi no expiry',
                             auditRef: '',
-                            requestPrincipal: 'user.abhijetv',
+                            requestPrincipal: 'user.test2',
                             requestTime: '2020-04-10T06:04:29.337Z',
+                            reviewReminder: '2020-07-15T19:02:00.000Z',
                             expiryDate: null,
                             memberNameFull: null,
                             requestPrincipalFull: null,
                         },
-                        'avtestuser.palakasaudit_enabled_role2': {
+                        'avtestuser.test1audit_enabled_role2': {
                             domainName: 'avtest',
-                            memberName: 'user.palakas',
+                            memberName: 'user.test1',
                             category: 'role',
                             roleName: 'audit_enabled_role2',
                             userComment: 'ee',
                             auditRef: '',
-                            requestPrincipal: 'user.abhijetv',
+                            requestPrincipal: 'user.test2',
+                            reviewReminder: '2020-07-15T19:03:00.000Z',
                             requestTime: '2020-04-10T05:11:32.667Z',
                             expiryDate: null,
                             memberNameFull: null,
@@ -921,8 +1355,9 @@ describe('Fetchr Server API Test', () => {
                             userComment: 'ee',
                             auditRef: '',
                             category: 'role',
-                            requestPrincipal: 'user.abhijetv',
+                            requestPrincipal: 'user.test2',
                             requestTime: '2020-04-10T04:59:33.325Z',
+                            reviewReminder: '2020-07-15T19:01:00.000Z',
                             expiryDate: '2020-07-17T19:00:00.000Z',
                             memberNameFull: null,
                             requestPrincipalFull: null,
@@ -934,21 +1369,23 @@ describe('Fetchr Server API Test', () => {
                             roleName: 'audit_enabled_role2',
                             userComment: 'jothi no expiry',
                             auditRef: '',
-                            requestPrincipal: 'user.abhijetv',
+                            requestPrincipal: 'user.test2',
                             requestTime: '2020-04-10T06:04:29.337Z',
+                            reviewReminder: '2020-07-15T19:02:00.000Z',
                             expiryDate: null,
                             memberNameFull: null,
                             requestPrincipalFull: null,
                         },
-                        'avtestuser.palakasaudit_enabled_role2': {
+                        'avtestuser.test1audit_enabled_role2': {
                             domainName: 'avtest',
-                            memberName: 'user.palakas',
+                            memberName: 'user.test1',
                             category: 'role',
                             roleName: 'audit_enabled_role2',
                             userComment: 'ee',
                             auditRef: '',
-                            requestPrincipal: 'user.abhijetv',
+                            requestPrincipal: 'user.test2',
                             requestTime: '2020-04-10T05:11:32.667Z',
+                            reviewReminder: '2020-07-15T19:03:00.000Z',
                             expiryDate: null,
                             memberNameFull: null,
                             requestPrincipalFull: null,
@@ -1067,13 +1504,17 @@ describe('Fetchr Server API Test', () => {
                     expect(res.body.g0.data).toEqual({ success: 'true' });
                 });
         });
-        it('get status test success', async () => {
-            await request(expressApp)
-                .get('/api/v1/status')
-                .then((res) => {
-                    expect(res.body).toEqual('ok');
-                });
-        });
+        it(
+            'get status test success',
+            async () => {
+                await request(expressApp)
+                    .get('/api/v1/status')
+                    .then((res) => {
+                        expect(res.body).toEqual('ok');
+                    });
+            },
+            SEVEN_SECONDS_TIMEOUT
+        );
         it('get user test success', async () => {
             await request(expressApp)
                 .get('/api/v1/user')
@@ -1100,6 +1541,26 @@ describe('Fetchr Server API Test', () => {
                         userId: 'testuser',
                         createDomainMessage: '',
                         productMasterLink: '',
+                        resourceOwnershipGuideLink: {
+                            title: 'resource-ownership-guide',
+                            url: 'https://github.com/AthenZ/athenz/blob/master/docs/design/resource_ownership.md',
+                            target: '_blank',
+                        },
+                        resourceOwnershipUi: {
+                            icon: 'terraform',
+                            label: 'Terraform',
+                            managedIconTooltip:
+                                'This resource is managed by {{label}} (ownership in ZMS).',
+                            membersManagedIconTooltip:
+                                'Role membership is managed by {{label}} (members owner).',
+                            cliSuggestionBody:
+                                'This resource is {{label}}-managed and cannot be edited via the Athenz UI. To maintain environment stability, always apply changes through {{label}} configuration. While the zms-cli can force immediate updates, doing so creates configuration drift, leaving the resource out-of-sync and requiring manual intervention to reconcile.',
+                            cliSuggestionEmergencyHeading:
+                                'Use only in emergencies:',
+                            cliSuggestionGuideFooter:
+                                'For detailed guidance, refer to',
+                        },
+                        zmsUrl: 'https://zms.athenz.io',
                     });
                 });
         });
@@ -1125,6 +1586,55 @@ describe('Fetchr Server API Test', () => {
                         },
                     ]);
                 });
+        });
+        it('getResourceAccessList test cloudsso success', async () => {
+            await request(expressApp)
+                .get('/api/v1/resource-access')
+                .then((res) => {
+                    expect(res.body).toEqual({
+                        resources: {
+                            principal: 'user.dummy1',
+                            assertions: [
+                                {
+                                    dummyProperty: 'dummyValue',
+                                },
+                            ],
+                        },
+                    });
+                });
+        });
+
+        it('getResourceAccessList test callCloudSSO is false, zms call success', async () => {
+            api.load({ ...config, callCloudSSO: false }, secrets).then(() => {
+                expressApp.use(bodyParser.urlencoded({ extended: false }));
+                expressApp.use(bodyParser.json());
+                expressApp.use((req, res, next) => {
+                    req.session = {
+                        shortId: 'testuser',
+                    };
+                    req.csrfToken = () => '1234';
+                    next();
+                });
+                api.route(expressApp);
+            });
+
+            await request(expressApp)
+                .get('/api/v1/resource-access')
+                .then((res) => {
+                    expect(res.body).toEqual({
+                        resources: {
+                            principal: 'user.dummy2',
+                            assertions: [
+                                {
+                                    dummyProperty: 'dummyValue2',
+                                },
+                            ],
+                        },
+                    });
+                });
+
+            // restore the default config for the remaining tests
+            await api.load(config, secrets);
         });
     });
     describe('failure tests', () => {
@@ -1282,31 +1792,158 @@ describe('Fetchr Server API Test', () => {
                     expect(res.status).toEqual(404);
                 });
         });
-        it('getResourceAccessList test success', async () => {
+
+        it('getResourceAccessList test cloudsso fail zms success', async () => {
             await request(expressApp)
-                .get('/api/v1/resource-access')
+                .post('/api/v1')
+                .send({
+                    requests: {
+                        g0: {
+                            resource: 'resource-access',
+                            operation: 'read',
+                            params: {
+                                action: 'forcefailcloudsso',
+                            },
+                        },
+                    },
+                })
                 .then((res) => {
                     expect(res.body).toEqual({
-                        resources: {
-                            principal: 'user.dummy1',
-                            assertions: [
-                                {
-                                    role: 'dummy.project:role.gcp.fed.power.user',
-                                    resource: 'dummy.project:fed.power.user',
-                                    action: 'gcp.assume_role',
-                                    effect: 'ALLOW',
-                                    id: 1,
+                        g0: {
+                            data: {
+                                resources: {
+                                    principal: 'user.dummy2',
+                                    assertions: [
+                                        {
+                                            dummyProperty: 'dummyValue2',
+                                        },
+                                    ],
                                 },
-                                {
-                                    role: 'dummy.project2:role.gcp.fed.admin.user',
-                                    resource: 'dummy.project2:fed.admin.user',
-                                    action: 'gcp.assume_role',
-                                    effect: 'ALLOW',
-                                    id: 2,
-                                },
-                            ],
+                            },
+                            meta: {},
                         },
                     });
+                });
+        });
+        it('getResourceAccessList test both cloudsso and zms fail', async () => {
+            await request(expressApp)
+                .post('/api/v1/resource-access')
+                .send({
+                    requests: {
+                        g0: {
+                            resource: 'resource-access',
+                            operation: 'read',
+                            params: {
+                                action: 'forcefailboth',
+                            },
+                        },
+                    },
+                })
+                .then((res) => {
+                    expect(res.body).toEqual({
+                        message: 'zms fail',
+                    });
+                });
+        });
+        it('getRolesForReview test success', async () => {
+            await request(expressApp)
+                .get('/api/v1/roles-review')
+                .then((res) => {
+                    expect(res.body).toEqual([
+                        {
+                            domainName: 'home.user1',
+                            name: 'testrole',
+                            memberExpiryDays: 10,
+                            memberReviewDays: 0,
+                            serviceExpiryDays: 10,
+                            serviceReviewDays: 0,
+                            groupExpiryDays: 5,
+                            groupReviewDays: 5,
+                        },
+                    ]);
+                });
+        });
+        it('getGroupsForReview test success', async () => {
+            await request(expressApp)
+                .get('/api/v1/groups-review')
+                .then((res) => {
+                    expect(res.body).toEqual([
+                        {
+                            domainName: 'home.user1',
+                            name: 'testgroup',
+                            memberExpiryDays: 10,
+                            memberReviewDays: 0,
+                            serviceExpiryDays: 10,
+                            serviceReviewDays: 0,
+                            groupExpiryDays: 5,
+                            groupReviewDays: 5,
+                        },
+                    ]);
+                });
+        });
+        it('getInstances static success', async () => {
+            await request(expressApp)
+                .post('/api/v1')
+                .send({
+                    requests: {
+                        g0: {
+                            resource: 'instances',
+                            operation: 'read',
+                            params: {
+                                category: 'static',
+                                body: {
+                                    domainServices: [
+                                        {
+                                            domainName: 'dom',
+                                            serviceNames: ['svc'],
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                    },
+                })
+                .set('Accept', 'application/json')
+                .set('Content-Type', 'application/json')
+                .then((res) => {
+                    expect(res.body.g0.data).toEqual([
+                        {
+                            name: '10.1.1.1',
+                            type: 'EXTERNAL_APPLIANCE',
+                        },
+                    ]);
+                });
+        });
+        it('getInstances surfaces MSD 5xx instead of empty list', async () => {
+            await request(expressApp)
+                .post('/api/v1')
+                .send({
+                    requests: {
+                        g0: {
+                            resource: 'instances',
+                            operation: 'read',
+                            params: {
+                                category: 'static',
+                                body: {
+                                    forcefail: true,
+                                    domainServices: [
+                                        {
+                                            domainName: 'dom',
+                                            serviceNames: ['svc'],
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                    },
+                })
+                .set('Accept', 'application/json')
+                .set('Content-Type', 'application/json')
+                .then((res) => {
+                    // Must not succeed with an empty workload list on MSD failure
+                    expect(res.body.g0).toBeUndefined();
+                    expect(res.body.message).toEqual('Internal Server Error');
+                    expect(res.status).toEqual(500);
                 });
         });
     });

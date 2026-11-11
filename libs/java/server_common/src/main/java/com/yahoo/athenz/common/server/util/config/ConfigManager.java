@@ -18,7 +18,6 @@ package com.yahoo.athenz.common.server.util.config;
 import com.yahoo.athenz.common.server.util.Utils;
 import com.yahoo.athenz.common.server.util.config.dynamic.DynamicConfigDuration;
 import com.yahoo.athenz.common.server.util.config.providers.ConfigProvider;
-import com.yahoo.athenz.common.server.util.config.providers.ConfigProviderAwsParametersStore;
 import com.yahoo.athenz.common.server.util.config.providers.ConfigProviderFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,7 +41,7 @@ import java.util.concurrent.TimeUnit;
  *  and (optionally) periodically reload them into the system-properties - possibly calling change-callbacks. <br>
  * These configs can then be accessed via {@link System#getProperty}, or directly from the ConfigManager -
  *  either via {@link #getConfigValue} or {@link #getAllConfigValues()}.
- *
+ * <p>
  * <h3>Simple usage example:</h3>
  * <pre>{@code
  *      new ConfigManager()
@@ -137,7 +136,6 @@ public class ConfigManager implements Closeable {
     /** Overridable: This is called upon construction and add all standard providers */
     protected void init() {
         addProvider(new ConfigProviderFile());
-        addProvider(new ConfigProviderAwsParametersStore());
     }
 
     /**
@@ -383,36 +381,16 @@ public class ConfigManager implements Closeable {
         // Log all changes
 
         if (LOG.isInfoEnabled()) {
-            StringBuilder changesDescription = new StringBuilder();
+            LOG.info("{} configurations changed", changeLogs.size());
             for (ChangeLog changeLog : changeLogs) {
                 if ((changeLog.oldEntry != null) && (changeLog.newEntry != null)) {
-                    changesDescription.append("\n    Update config: ")
-                            .append(Utils.jsonSerializeForLog(changeLog.newEntry.key))
-                            .append(" = ")
-                            .append(Utils.jsonSerializeForLog(changeLog.newEntry.value))
-                            .append(" from ")
-                            .append(changeLog.newEntry.describeSource())
-                            .append("    Old-value: ")
-                            .append(Utils.jsonSerializeForLog(changeLog.oldEntry.value))
-                            .append(" from ")
-                            .append(changeLog.oldEntry.describeSource());
+                    LOG.info("configuration {} updated", Utils.jsonSerializeForLog(changeLog.newEntry.key));
                 } else if (changeLog.newEntry != null) {
-                    changesDescription.append("\n       New config: ")
-                            .append(Utils.jsonSerializeForLog(changeLog.newEntry.key))
-                            .append(" = ")
-                            .append(Utils.jsonSerializeForLog(changeLog.newEntry.value))
-                            .append(" from ")
-                            .append(changeLog.newEntry.describeSource());
+                    LOG.info("configuration {} created", Utils.jsonSerializeForLog(changeLog.newEntry.key));
                 } else if (changeLog.oldEntry != null) {
-                    changesDescription.append("\n    Delete config: ")
-                            .append(Utils.jsonSerializeForLog(changeLog.oldEntry.key))
-                            .append("    Old-value: ")
-                            .append(Utils.jsonSerializeForLog(changeLog.oldEntry.value))
-                            .append(" from ")
-                            .append(changeLog.oldEntry.describeSource());
+                    LOG.info("configuration {} deleted", Utils.jsonSerializeForLog(changeLog.oldEntry.key));
                 }
             }
-            LOG.info("{} configurations changed:{}", changeLogs.size(), changesDescription);
         }
 
         // Call change-callbacks

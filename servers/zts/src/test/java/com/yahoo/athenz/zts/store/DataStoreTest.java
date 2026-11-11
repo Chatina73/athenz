@@ -64,6 +64,8 @@ import com.yahoo.athenz.zts.cache.MemberRole;
 import com.yahoo.athenz.zts.store.DataStore.DataUpdater;
 import com.yahoo.rdl.JSON;
 
+import javax.crypto.SecretKey;
+
 public class DataStoreTest {
 
     private PrivateKey pkey;
@@ -1356,8 +1358,41 @@ public class DataStoreTest {
         store.addDomainToCache("coretech", dataCache);
         
         assertEquals(store.getPublicKey("coretech", "storage", "0"), ZTS_PEM_CERT0);
+        PublicKey publicKeyObj = store.getServicePublicKey("coretech", "storage", "0");
+        assertNotNull(publicKeyObj);
+        assertEquals(Crypto.loadPublicKey(ZTS_PEM_CERT0), publicKeyObj);
+
+        // remove the public key from the pem cache directly and verify that our
+        // public key cache still works fine
+
+        store.publicKeyCache.remove("coretech.storage_0");
+        assertNull(store.getPublicKey("coretech", "storage", "0"));
+        assertNotNull(store.getServicePublicKey("coretech", "storage", "0"));
+
         assertEquals(store.getPublicKey("coretech", "storage", "1"), ZTS_PEM_CERT1);
+        publicKeyObj = store.getServicePublicKey("coretech", "storage", "1");
+        assertNotNull(publicKeyObj);
+        assertEquals(Crypto.loadPublicKey(ZTS_PEM_CERT1), publicKeyObj);
+
+        // now remove the public key from the pem cache using the regular
+        // method which should also remove it from the svc public key cache
+
+        HashMap <String, String> removeKeyMap = new HashMap<>();
+        removeKeyMap.put("coretech.storage_1", ZTS_PEM_CERT1);
+        store.removePublicKeys(removeKeyMap);
+        assertNull(store.getPublicKey("coretech", "storage", "1"));
+        assertNull(store.getServicePublicKey("coretech", "storage", "1"));
+
+        // an unknown key id should always return null
+
         assertNull(store.getPublicKey("coretech", "storage", "2"));
+        assertNull(store.getServicePublicKey("coretech", "storage", "2"));
+
+        // let's also directly add an invalid public key to the pem cache
+
+        store.publicKeyCache.put("coretech.storage_3", "invalid-key");
+        assertNotNull(store.getPublicKey("coretech", "storage", "3"));
+        assertNull(store.getServicePublicKey("coretech", "storage", "3"));
     }
 
     @Test
@@ -1972,7 +2007,7 @@ public class DataStoreTest {
         
         Set<String> accessibleRoles = new HashSet<>();
         DataCache data = store.getDataCache("coretech");
-        String[] requestedRoleList = { "coretech:role.admin" };
+        String[] requestedRoleList = { "admin" };
         store.getAccessibleRoles(data, "coretech", "user_domain.user", requestedRoleList, false, accessibleRoles, false);
         
         assertEquals(accessibleRoles.size(), 1);
@@ -2014,7 +2049,27 @@ public class DataStoreTest {
         assertTrue(accessibleRoles.contains("admin"));
         assertTrue(accessibleRoles.contains("writers"));
     }
-    
+
+    @Test
+    public void testGetRolesForPrincipal() {
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
+                pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+        store.loadAthenzPublicKeys();
+
+        SignedDomain signedDomain = createSignedDomain("coretech", "weather");
+        store.processSignedDomain(signedDomain, true);
+
+        // an unknown domain will return an empty set
+
+        Set<String> roles = store.getRolesForPrincipal("sports", "user_domain.user1");
+        assertTrue(roles.isEmpty());
+
+        roles = store.getRolesForPrincipal("coretech", "user_domain.user1");
+        assertEquals(roles.size(), 1);
+        assertTrue(roles.contains("writers"));
+    }
+
     @Test
     public void testStoreInitNoLastModTimeLocalDomainDelete() {
 
@@ -2097,7 +2152,7 @@ public class DataStoreTest {
             store.init();
             fail();
         } catch (ResourceException ex) {
-            assertEquals(500, ex.getCode());
+            assertEquals(ex.getCode(), 500);
         }
     }
     
@@ -2217,12 +2272,17 @@ public class DataStoreTest {
         assertTrue(accessibleRoles.contains("admin"));
         assertTrue(accessibleRoles.contains("writers"));
     }
-    
+
     @Test
     public void testProcessDomainRoles() {
+        testProcessDomainRoles(false, false);
+        testProcessDomainRoles(true, true);
+        testProcessDomainRoles(true, false);
+    }
+
+    private void testProcessDomainRoles(boolean existingDomainWithNullRoles, boolean existingDomainWithEmptyRoles) {
     
-        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
-                pkey, "0");
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root", pkey, "0");
         DataStore store = new DataStore(clogStore, null, ztsMetric);
 
         List<Role> roles = new ArrayList<>();
@@ -2246,6 +2306,19 @@ public class DataStoreTest {
         domainData.setRoles(roles);
         
         DataCache dataCache = new DataCache();
+
+        // if configured, create an empty domain with no roles
+        // in our cache (either null roles or empty set)
+
+        if (existingDomainWithNullRoles) {
+            DomainData existingDomain = new DomainData();
+            existingDomain.setName("coretech");
+            if (existingDomainWithEmptyRoles) {
+                existingDomain.setRoles(Collections.emptyList());
+            }
+            store.processDomainData(existingDomain);
+        }
+
         store.processDomainRoles(domainData, dataCache);
         assertEquals(dataCache.getMemberRoleSet("user_domain.user").size(), 2);
         
@@ -2965,6 +3038,30 @@ public class DataStoreTest {
     }
 
     @Test
+    public void testProcessJWSDomainCaseSensitiveAssertion() {
+
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
+                pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+        store.loadAthenzPublicKeys();
+
+        // the case-sensitive flag is not part of the policy signature so
+        // setting it after the domain is signed must not invalidate the data
+
+        SignedDomain signedDomain = createSignedDomain("coretech", "weather");
+        com.yahoo.athenz.zms.Assertion assertion = signedDomain.getDomain().getPolicies()
+                .getContents().getPolicies().get(0).getAssertions().get(0);
+        assertion.setCaseSensitive(true);
+        JWSDomain jwsDomain = signJwsDomain(signedDomain.getDomain(), "0");
+        assertTrue(store.processJWSDomain(jwsDomain, false));
+
+        DomainData domainData = store.getDomainData("coretech");
+        assertNotNull(domainData);
+        assertEquals(domainData.getPolicies().getContents().getPolicies().get(0)
+                .getAssertions().get(0).getCaseSensitive(), Boolean.TRUE);
+    }
+
+    @Test
     public void testProcessLocalJWSDomainDisabled() {
 
         ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
@@ -2989,7 +3086,9 @@ public class DataStoreTest {
         ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
                 pkey, "0");
         DataStore store = new DataStore(clogStore, null, ztsMetric);
+        assertFalse(store.isJwsDomainSupport());
         store.jwsDomainSupport = true;
+        assertTrue(store.isJwsDomainSupport());
         store.loadAthenzPublicKeys();
 
         JWSDomain jwsDomain = createJWSDomain("coretech", "weather", "0");
@@ -3426,7 +3525,7 @@ public class DataStoreTest {
         Set<String> accessibleRoles = new HashSet<>();
         String prefix = "coretech" + ROLE_POSTFIX;
         String identity = "user_domain.user1";
-        String[] requestedRoleList = { "coretech:role.admin" };
+        String[] requestedRoleList = { "admin" };
         
         Set<String> trustedResources = new HashSet<>();
         trustedResources.add("coretech:role.admin");
@@ -3446,7 +3545,7 @@ public class DataStoreTest {
         Set<String> accessibleRoles = new HashSet<>();
         String prefix = "coretech" + ROLE_POSTFIX;
         String identity = "user_domain.user1";
-        String[] requestedRoleList = { "coretech:role.admin" };
+        String[] requestedRoleList = { "admin" };
         
         store.processTrustedDomain(dataCache, identity, prefix, requestedRoleList, null, accessibleRoles, false);
         assertEquals(accessibleRoles.size(), 0);
@@ -3462,7 +3561,7 @@ public class DataStoreTest {
         Set<String> accessibleRoles = new HashSet<>();
         String prefix = "coretech" + ROLE_POSTFIX;
         String identity = "user_domain.user3";
-        String[] requestedRoleList = { "coretech:role.admin" };
+        String[] requestedRoleList = { "admin" };
         
         Set<String> trustedResources = new HashSet<>();
         trustedResources.add("coretech:role.admin");
@@ -3503,7 +3602,7 @@ public class DataStoreTest {
         Set<String> accessibleRoles = new HashSet<>();
         String prefix = "coretech" + ROLE_POSTFIX;
         String identity = "user_domain.user1";
-        String[] requestedRoleList = { "coretech:role.writers" }; /* invalid role causing no match */
+        String[] requestedRoleList = { "writers" }; /* invalid role causing no match */
         
         Set<String> trustedResources = new HashSet<>();
         trustedResources.add("coretech:role.admin");
@@ -3524,7 +3623,7 @@ public class DataStoreTest {
         Set<String> accessibleRoles = new HashSet<>();
         String prefix = "coretech" + ROLE_POSTFIX;
         String identity = "user_domain.user1";
-        String[] requestedRoleList = { "coretech:role.admin" };
+        String[] requestedRoleList = { "admin" };
         
         Set<String> trustedResources = new HashSet<>();
         trustedResources.add("coretech:role.admin");
@@ -3595,7 +3694,7 @@ public class DataStoreTest {
         Set<String> accessibleRoles = new HashSet<>();
         String prefix = "coretech2" + ROLE_POSTFIX; /* invalid prefix to cause no match */
         String identity = "user_domain.user1";
-        String[] requestedRoleList = { "coretech:role.readers" };
+        String[] requestedRoleList = { "readers" };
         
         Set<String> trustedResources = new HashSet<>();
         trustedResources.add("coretech:role.admin");
@@ -3646,7 +3745,7 @@ public class DataStoreTest {
         
         Set<String> accessibleRoles = new HashSet<>();
         String prefix = "coretech" + ROLE_POSTFIX;
-        String[] requestedRoleList = { "coretech:role.admin" };
+        String[] requestedRoleList = { "admin" };
         
         Set<MemberRole> memberRoles = new HashSet<>();
         memberRoles.add(new MemberRole("coretech:role.admin", 0));
@@ -3665,7 +3764,7 @@ public class DataStoreTest {
         
         Set<String> accessibleRoles = new HashSet<>();
         String prefix = "coretech" + ROLE_POSTFIX;
-        String[] requestedRoleList = { "coretech:role.admin" };
+        String[] requestedRoleList = { "admin" };
         
         Set<MemberRole> memberRoles = new HashSet<>();
         memberRoles.add(new MemberRole("coretech:role.admin", System.currentTimeMillis() - 1000));
@@ -3702,7 +3801,7 @@ public class DataStoreTest {
         
         Set<String> accessibleRoles = new HashSet<>();
         String prefix = "coretech2" + ROLE_POSTFIX; /* invalid prefix causing no match */
-        String[] requestedRoleList = { "coretech:role.admin" };
+        String[] requestedRoleList = { "admin" };
         
         Set<MemberRole> memberRoles = new HashSet<>();
         memberRoles.add(new MemberRole("coretech:role.admin", 0));
@@ -3771,7 +3870,7 @@ public class DataStoreTest {
         String prefix = "coretech" + ROLE_POSTFIX;
         String identity = "user_domain.user100";
         
-        String[] requestedRoleList = { "coretech:role.tenant.readers" };
+        String[] requestedRoleList = { "tenant.readers" };
 
         store.processTrustMembership(store.getCacheStore().getIfPresent("coretech"), identity, prefix,
                 requestedRoleList, accessibleRoles, false);
@@ -4300,6 +4399,48 @@ public class DataStoreTest {
 
         fetchedRoles = store.getRolesByDomain("unknownDomain");
         assertEquals(fetchedRoles.size(), 0);
+    }
+
+    @Test
+    public void testGetPubKeysByService() {
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
+                pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        List<PublicKeyEntry> pubKeys = List.of(
+                new PublicKeyEntry().setKey(ZTS_Y64_CERT0).setId("0"),
+                new PublicKeyEntry().setKey(ZTS_Y64_CERT1).setId("1")
+        );
+
+        ServiceIdentity service = new ServiceIdentity()
+                .setName("coretech.storage")
+                .setPublicKeys(pubKeys);
+
+        List<ServiceIdentity> services = new ArrayList<>();
+        services.add(service);
+
+        DataCache dataCache = new DataCache();
+        dataCache.processServiceIdentity(service);
+
+        DomainData domainData = new DomainData();
+        domainData.setServices(services);
+        dataCache.setDomainData(domainData);
+
+        store.addDomainToCache("coretech", dataCache);
+
+        // Happy path
+        List<PublicKeyEntry> result = store.getPubKeysByService("coretech", "storage");
+        assertEquals(result.size(), 2);
+        assertListContains(result, i -> i.getId().equals("0") && i.getKey().equals(ZTS_Y64_CERT0), "cert0 not found");
+        assertListContains(result, i -> i.getId().equals("1") && i.getKey().equals(ZTS_Y64_CERT1), "cert1 not found");
+
+        // Domain not found
+        result = store.getPubKeysByService("unknown", "storage");
+        assertEquals(result.size(), 0);
+
+        // Service not found
+        result = store.getPubKeysByService("coretech", "unknown");
+        assertEquals(result.size(), 0);
     }
 
     @Test
@@ -5379,8 +5520,8 @@ public class DataStoreTest {
 
         domainMap.put("domain2", new DomainAttributes().setFetchTime(now - store.domainFetchRefreshTime - 1));
         List<String> domains = store.getDomainRefreshList();
-        assertEquals(1, domains.size());
-        assertEquals("domain2", domains.get(0));
+        assertEquals(domains.size(), 1);
+        assertEquals(domains.get(0), "domain2");
 
         // now let's add domains more than the configured limit
 
@@ -5389,6 +5530,476 @@ public class DataStoreTest {
         }
 
         domains = store.getDomainRefreshList();
-        assertEquals(store.domainFetchCount, domains.size());
+        assertEquals(domains.size(), store.domainFetchCount);
+    }
+
+    @Test
+    public void testGetServiceSecret() {
+
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
+                pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        DataCache dataCache = new DataCache();
+
+        ServiceIdentity service1 = new ServiceIdentity();
+        service1.setName("coretech.storage");
+
+        // generate and store creds value for our service
+
+        final String svcCreds = "athenz-authorization-unit-test-secret";
+        final char[] password = "this-is-our-test-password-for-encryption".toCharArray();
+
+        SecretKey secretKey = Crypto.generateAESSecretKey(password, Crypto.PBKDF2_SHA256_ALGO, 65536, 256);
+        String cipherText = Crypto.encryptWithIVIncluded(Crypto.AES_GCM_ENC_ALGO, svcCreds, secretKey, 16);
+        service1.setCreds(cipherText);
+
+        // another service without creds
+
+        ServiceIdentity service2 = new ServiceIdentity();
+        service2.setName("coretech.api");
+
+        List<ServiceIdentity> services = new ArrayList<>();
+        services.add(service1);
+        dataCache.processServiceIdentity(service1);
+        services.add(service2);
+        dataCache.processServiceIdentity(service2);
+
+        DomainData domainData = new DomainData();
+        domainData.setServices(services);
+        dataCache.setDomainData(domainData);
+
+        store.addDomainToCache("coretech", dataCache);
+
+        // without encryption details we should always get nulls
+
+        assertNull(store.getServiceSecret("coretech", "storage"));
+        assertNull(store.getServiceSecret("coretech", "api"));
+        assertNull(store.getServiceSecret("coretech", "unknown"));
+        assertNull(store.getServiceSecret("unknown", "storage"));
+
+        assertNull(store.getServiceSecret(null, null));
+        assertNull(store.getServiceSecret("coretech", null));
+        assertNull(store.getServiceSecret(null, "storage"));
+
+        // now let's set the encryption details and try again
+
+        store.setServiceCredentialsKey(secretKey, Crypto.AES_GCM_ENC_ALGO);
+
+        // one valid date for our storage service
+
+        assertEquals(store.getServiceSecret("coretech", "storage"), svcCreds.getBytes(StandardCharsets.UTF_8));
+
+        // all others should still return null
+
+        assertNull(store.getServiceSecret("coretech", "api"));
+        assertNull(store.getServiceSecret("coretech", "unknown"));
+        assertNull(store.getServiceSecret("unknown", "storage"));
+
+        assertNull(store.getServiceSecret(null, null));
+        assertNull(store.getServiceSecret("coretech", null));
+        assertNull(store.getServiceSecret(null, "storage"));
+    }
+
+    @Test
+    public void testGetServiceClientId() {
+
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root", pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        // Create a domain with services that have client IDs
+        DataCache dataCache = new DataCache();
+        DomainData domainData = new DomainData();
+        domainData.setName("coretech");
+
+        ServiceIdentity service1 = new ServiceIdentity();
+        service1.setName("coretech.storage");
+        service1.setClientId("client-id-1");
+
+        ServiceIdentity service2 = new ServiceIdentity();
+        service2.setName("coretech.api");
+        service2.setClientId("client-id-2");
+
+        ServiceIdentity service3 = new ServiceIdentity();
+        service3.setName("coretech.backend");
+        // service3 has no client ID
+
+        List<ServiceIdentity> services = new ArrayList<>();
+        services.add(service1);
+        services.add(service2);
+        services.add(service3);
+
+        dataCache.processServiceIdentity(service1);
+        dataCache.processServiceIdentity(service2);
+        dataCache.processServiceIdentity(service3);
+
+        domainData.setServices(services);
+        dataCache.setDomainData(domainData);
+
+        store.addDomainToCache("coretech", dataCache);
+
+        // Test: service with client ID
+        assertEquals(store.getServiceClientId("coretech", "coretech.storage"), "client-id-1");
+        assertEquals(store.getServiceClientId("coretech", "coretech.api"), "client-id-2");
+
+        // Test: service without client ID
+        assertNull(store.getServiceClientId("coretech", "coretech.backend"));
+
+        // Test: non-existent service
+        assertNull(store.getServiceClientId("coretech", "coretech.unknown"));
+
+        // Test: non-existent domain
+        assertNull(store.getServiceClientId("unknown", "unknown.service"));
+    }
+
+    @Test
+    public void testGetServiceClientIdMultipleDomains() {
+
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root", pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        // Create first domain
+        DataCache dataCache1 = new DataCache();
+        DomainData domainData1 = new DomainData();
+        domainData1.setName("coretech");
+
+        ServiceIdentity service1 = new ServiceIdentity();
+        service1.setName("coretech.storage");
+        service1.setClientId("coretech-client-id");
+
+        dataCache1.processServiceIdentity(service1);
+        domainData1.setServices(Arrays.asList(service1));
+        dataCache1.setDomainData(domainData1);
+        store.addDomainToCache("coretech", dataCache1);
+
+        // Create second domain
+        DataCache dataCache2 = new DataCache();
+        DomainData domainData2 = new DomainData();
+        domainData2.setName("sports");
+
+        ServiceIdentity service2 = new ServiceIdentity();
+        service2.setName("sports.api");
+        service2.setClientId("sports-client-id");
+
+        dataCache2.processServiceIdentity(service2);
+        domainData2.setServices(Arrays.asList(service2));
+        dataCache2.setDomainData(domainData2);
+        store.addDomainToCache("sports", dataCache2);
+
+        // Test: verify each domain returns correct client ID
+        assertEquals(store.getServiceClientId("coretech", "coretech.storage"), "coretech-client-id");
+        assertEquals(store.getServiceClientId("sports", "sports.api"), "sports-client-id");
+
+        // Test: verify cross-domain lookup returns null
+        assertNull(store.getServiceClientId("coretech", "sports.api"));
+        assertNull(store.getServiceClientId("sports", "coretech.storage"));
+    }
+
+    @Test
+    public void testGetServiceClientIdEmptyString() {
+
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root", pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        DataCache dataCache = new DataCache();
+        DomainData domainData = new DomainData();
+        domainData.setName("coretech");
+
+        ServiceIdentity service = new ServiceIdentity();
+        service.setName("coretech.storage");
+        service.setClientId("client-id");
+
+        dataCache.processServiceIdentity(service);
+        domainData.setServices(Arrays.asList(service));
+        dataCache.setDomainData(domainData);
+        store.addDomainToCache("coretech", dataCache);
+
+        // Test: empty string domain name
+        assertNull(store.getServiceClientId("", "coretech.storage"));
+
+        // Test: empty string service name
+        assertNull(store.getServiceClientId("coretech", ""));
+    }
+
+    @Test
+    public void testGetServiceClientIdClientIdRemoved() {
+
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root", pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        DataCache dataCache = new DataCache();
+        DomainData domainData = new DomainData();
+        domainData.setName("coretech");
+
+        ServiceIdentity service = new ServiceIdentity();
+        service.setName("coretech.storage");
+        service.setClientId("client-id-1");
+
+        dataCache.processServiceIdentity(service);
+        domainData.setServices(Arrays.asList(service));
+        dataCache.setDomainData(domainData);
+        store.addDomainToCache("coretech", dataCache);
+
+        // Verify initial client ID
+        assertEquals(store.getServiceClientId("coretech", "coretech.storage"), "client-id-1");
+
+        // Update service to remove client ID
+        service.setClientId(null);
+        dataCache.processServiceIdentity(service);
+        store.addDomainToCache("coretech", dataCache);
+
+        // Verify client ID is now null
+        assertNull(store.getServiceClientId("coretech", "coretech.storage"));
+    }
+
+    @Test
+    public void testGetServiceClientIdClientIdUpdated() {
+
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root", pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        DataCache dataCache = new DataCache();
+        DomainData domainData = new DomainData();
+        domainData.setName("coretech");
+
+        ServiceIdentity service = new ServiceIdentity();
+        service.setName("coretech.storage");
+        service.setClientId("client-id-1");
+
+        dataCache.processServiceIdentity(service);
+        domainData.setServices(Arrays.asList(service));
+        dataCache.setDomainData(domainData);
+        store.addDomainToCache("coretech", dataCache);
+
+        // Verify initial client ID
+        assertEquals(store.getServiceClientId("coretech", "coretech.storage"), "client-id-1");
+
+        // Update service with new client ID
+        service.setClientId("client-id-2");
+        dataCache.processServiceIdentity(service);
+        store.addDomainToCache("coretech", dataCache);
+
+        // Verify client ID is updated
+        assertEquals(store.getServiceClientId("coretech", "coretech.storage"), "client-id-2");
+    }
+
+    @Test
+    public void testGetRoleAuditLogFlagThrowsException() {
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
+                pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        try {
+            store.getRole("coretech", "admin", Boolean.TRUE, null, null);
+            fail();
+        } catch (UnsupportedOperationException ignored) {
+        }
+    }
+
+    @Test
+    public void testGetRoleExpandFlagThrowsException() {
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
+                pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        try {
+            store.getRole("coretech", "admin", null, Boolean.TRUE, null);
+            fail();
+        } catch (UnsupportedOperationException ignored) {
+        }
+    }
+
+    @Test
+    public void testGetRolePendingFlagThrowsException() {
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
+                pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        try {
+            store.getRole("coretech", "admin", null, null, Boolean.TRUE);
+            fail();
+        } catch (UnsupportedOperationException ignored) {
+        }
+    }
+
+    @Test
+    public void testGetRoleAllUnsupportedFlagsThrowException() {
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
+                pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        try {
+            store.getRole("coretech", "admin", Boolean.TRUE, Boolean.TRUE, Boolean.TRUE);
+            fail();
+        } catch (UnsupportedOperationException ignored) {
+        }
+    }
+
+    @Test
+    public void testGetRoleDomainNotFound() {
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
+                pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        assertNull(store.getRole("unknownDomain", "admin", null, null, null));
+    }
+
+    @Test
+    public void testGetRoleNullRoles() {
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
+                pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        DataCache dataCache = new DataCache();
+        DomainData domainData = new DomainData();
+        domainData.setRoles(null);
+        dataCache.setDomainData(domainData);
+        store.addDomainToCache("coretech", dataCache);
+
+        assertNull(store.getRole("coretech", "admin", null, null, null));
+    }
+
+    @Test
+    public void testGetRoleEmptyRoles() {
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
+                pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        DataCache dataCache = new DataCache();
+        DomainData domainData = new DomainData();
+        domainData.setRoles(new ArrayList<>());
+        dataCache.setDomainData(domainData);
+        store.addDomainToCache("coretech", dataCache);
+
+        assertNull(store.getRole("coretech", "admin", null, null, null));
+    }
+
+    @Test
+    public void testGetRoleFound() {
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
+                pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        DataCache dataCache = new DataCache();
+
+        Role role = new Role();
+        role.setName("coretech:role.admin");
+        List<RoleMember> members = new ArrayList<>();
+        members.add(new RoleMember().setMemberName("user_domain.user"));
+        role.setRoleMembers(members);
+
+        List<Role> roles = new ArrayList<>();
+        roles.add(role);
+
+        DomainData domainData = new DomainData();
+        domainData.setRoles(roles);
+        dataCache.setDomainData(domainData);
+        store.addDomainToCache("coretech", dataCache);
+
+        Role fetchedRole = store.getRole("coretech", "admin", null, null, null);
+        assertNotNull(fetchedRole);
+        assertEquals(fetchedRole.getName(), "coretech:role.admin");
+        assertEquals(fetchedRole.getRoleMembers().size(), 1);
+        assertEquals(fetchedRole.getRoleMembers().get(0).getMemberName(), "user_domain.user");
+    }
+
+    @Test
+    public void testGetRoleNotFound() {
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
+                pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        DataCache dataCache = new DataCache();
+
+        Role role = new Role();
+        role.setName("coretech:role.admin");
+        List<RoleMember> members = new ArrayList<>();
+        members.add(new RoleMember().setMemberName("user_domain.user"));
+        role.setRoleMembers(members);
+
+        List<Role> roles = new ArrayList<>();
+        roles.add(role);
+
+        DomainData domainData = new DomainData();
+        domainData.setRoles(roles);
+        dataCache.setDomainData(domainData);
+        store.addDomainToCache("coretech", dataCache);
+
+        assertNull(store.getRole("coretech", "writers", null, null, null));
+    }
+
+    @Test
+    public void testGetRoleMultipleRoles() {
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
+                pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        DataCache dataCache = new DataCache();
+
+        Role adminRole = new Role();
+        adminRole.setName("coretech:role.admin");
+        List<RoleMember> adminMembers = new ArrayList<>();
+        adminMembers.add(new RoleMember().setMemberName("user_domain.admin"));
+        adminRole.setRoleMembers(adminMembers);
+
+        Role writersRole = new Role();
+        writersRole.setName("coretech:role.writers");
+        List<RoleMember> writersMembers = new ArrayList<>();
+        writersMembers.add(new RoleMember().setMemberName("user_domain.writer1"));
+        writersMembers.add(new RoleMember().setMemberName("user_domain.writer2"));
+        writersRole.setRoleMembers(writersMembers);
+
+        Role readersRole = new Role();
+        readersRole.setName("coretech:role.readers");
+        List<RoleMember> readersMembers = new ArrayList<>();
+        readersMembers.add(new RoleMember().setMemberName("user_domain.reader"));
+        readersRole.setRoleMembers(readersMembers);
+
+        List<Role> roles = new ArrayList<>();
+        roles.add(adminRole);
+        roles.add(writersRole);
+        roles.add(readersRole);
+
+        DomainData domainData = new DomainData();
+        domainData.setRoles(roles);
+        dataCache.setDomainData(domainData);
+        store.addDomainToCache("coretech", dataCache);
+
+        Role fetchedRole = store.getRole("coretech", "writers", null, null, null);
+        assertNotNull(fetchedRole);
+        assertEquals(fetchedRole.getName(), "coretech:role.writers");
+        assertEquals(fetchedRole.getRoleMembers().size(), 2);
+
+        fetchedRole = store.getRole("coretech", "readers", null, null, null);
+        assertNotNull(fetchedRole);
+        assertEquals(fetchedRole.getName(), "coretech:role.readers");
+        assertEquals(fetchedRole.getRoleMembers().size(), 1);
+
+        assertNull(store.getRole("coretech", "unknown", null, null, null));
+    }
+
+    @Test
+    public void testGetRoleWithFalseBooleanFlags() {
+        ChangeLogStore clogStore = new MockZMSFileChangeLogStore("/tmp/zts_server_unit_tests/zts_root",
+                pkey, "0");
+        DataStore store = new DataStore(clogStore, null, ztsMetric);
+
+        DataCache dataCache = new DataCache();
+
+        Role role = new Role();
+        role.setName("coretech:role.admin");
+        role.setRoleMembers(new ArrayList<>());
+
+        List<Role> roles = new ArrayList<>();
+        roles.add(role);
+
+        DomainData domainData = new DomainData();
+        domainData.setRoles(roles);
+        dataCache.setDomainData(domainData);
+        store.addDomainToCache("coretech", dataCache);
+
+        Role fetchedRole = store.getRole("coretech", "admin", Boolean.FALSE, Boolean.FALSE, Boolean.FALSE);
+        assertNotNull(fetchedRole);
+        assertEquals(fetchedRole.getName(), "coretech:role.admin");
     }
 }

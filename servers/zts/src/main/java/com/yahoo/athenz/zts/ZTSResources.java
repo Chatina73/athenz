@@ -61,13 +61,14 @@ public class ZTSResources {
         @Parameter(description = "action as specified in the policy assertion, i.e. update or read", required = true) @PathParam("action") String action,
         @Parameter(description = "the resource to check access against, i.e. \"media.news:articles\"", required = true) @QueryParam("resource") String resource,
         @Parameter(description = "usually null. If present, it specifies an alternate domain for cross-domain trust relation", required = false) @QueryParam("domain") String domain,
-        @Parameter(description = "usually null. If present, carry out the access check for this principal", required = false) @QueryParam("principal") String checkPrincipal) {
+        @Parameter(description = "usually null. If present, carry out the access check for this principal", required = false) @QueryParam("principal") String checkPrincipal,
+        @Parameter(description = "usually null. If true, match the action and resource of assertions created with the case-sensitive flag in their original case", required = false) @QueryParam("caseSensitive") Boolean caseSensitive) {
         int code = ResourceException.OK;
         ResourceContext context = null;
         try {
             context = this.delegate.newResourceContext(this.servletContext, this.request, this.response, "getResourceAccessExt");
             context.authenticate();
-            return this.delegate.getResourceAccessExt(context, action, resource, domain, checkPrincipal);
+            return this.delegate.getResourceAccessExt(context, action, resource, domain, checkPrincipal, caseSensitive);
         } catch (ResourceException e) {
             code = e.getCode();
             switch (code) {
@@ -863,12 +864,13 @@ public class ZTSResources {
     @Produces(MediaType.APPLICATION_JSON)
     @Operation(description = "")
     public JWKList getJWKList(
-        @Parameter(description = "flag to indicate ec curve names are restricted to RFC values", required = false) @QueryParam("rfc") @DefaultValue("false") Boolean rfc) {
+        @Parameter(description = "flag to indicate ec curve names are restricted to RFC values", required = false) @QueryParam("rfc") @DefaultValue("false") Boolean rfc,
+        @Parameter(description = "service", required = false) @QueryParam("service") @DefaultValue("zts") String service) {
         int code = ResourceException.OK;
         ResourceContext context = null;
         try {
             context = this.delegate.newResourceContext(this.servletContext, this.request, this.response, "getJWKList");
-            return this.delegate.getJWKList(context, rfc);
+            return this.delegate.getJWKList(context, rfc, service);
         } catch (ResourceException e) {
             code = e.getCode();
             switch (code) {
@@ -936,13 +938,14 @@ public class ZTSResources {
         @Parameter(description = "flag to indicate to use full arn in group claim (e.g. sports:role.deployer instead of deployer)", required = false) @QueryParam("fullArn") @DefaultValue("false") Boolean fullArn,
         @Parameter(description = "optional expiry period specified in seconds", required = false) @QueryParam("expiryTime") Integer expiryTime,
         @Parameter(description = "optional output format of json", required = false) @QueryParam("output") String output,
-        @Parameter(description = "flag to indicate to include role name in the audience claim only if we have a single role in response", required = false) @QueryParam("roleInAudClaim") @DefaultValue("false") Boolean roleInAudClaim) {
+        @Parameter(description = "flag to indicate to include role name in the audience claim only if we have a single role in response", required = false) @QueryParam("roleInAudClaim") @DefaultValue("false") Boolean roleInAudClaim,
+        @Parameter(description = "flag to indicate that all requested roles/groups in the scope must be present in the response otherwise return an error", required = false) @QueryParam("allScopePresent") @DefaultValue("false") Boolean allScopePresent) {
         int code = ResourceException.OK;
         ResourceContext context = null;
         try {
             context = this.delegate.newResourceContext(this.servletContext, this.request, this.response, "getOIDCResponse");
             context.authenticate();
-            return this.delegate.getOIDCResponse(context, responseType, clientId, redirectUri, scope, state, nonce, keyType, fullArn, expiryTime, output, roleInAudClaim);
+            return this.delegate.getOIDCResponse(context, responseType, clientId, redirectUri, scope, state, nonce, keyType, fullArn, expiryTime, output, roleInAudClaim, allScopePresent);
         } catch (ResourceException e) {
             code = e.getCode();
             switch (code) {
@@ -961,6 +964,42 @@ public class ZTSResources {
                 throw typedException(code, e, ResourceError.class);
             }
         } finally {
+            this.delegate.recordMetrics(context, code);
+        }
+    }
+
+    @POST
+    @Path("/oauth2/introspect")
+    @Consumes("application/x-www-form-urlencoded")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Operation(description = "OAuth2 Access Token Introspection. The server will carry out the required authorization check of authorize (\"introspect\", \"{domain}:token\"); where domain is the audience of the token.")
+    public IntrospectResponse postIntrospectRequest(
+        @Parameter(description = "token introspect request details", required = true) String request) {
+        int code = ResourceException.OK;
+        ResourceContext context = null;
+        try {
+            context = this.delegate.newResourceContext(this.servletContext, this.request, this.response, "postIntrospectRequest");
+            context.authenticate();
+            return this.delegate.postIntrospectRequest(context, request);
+        } catch (ResourceException e) {
+            code = e.getCode();
+            switch (code) {
+            case ResourceException.BAD_REQUEST:
+                throw typedException(code, e, ResourceError.class);
+            case ResourceException.FORBIDDEN:
+                throw typedException(code, e, ResourceError.class);
+            case ResourceException.NOT_FOUND:
+                throw typedException(code, e, ResourceError.class);
+            case ResourceException.TOO_MANY_REQUESTS:
+                throw typedException(code, e, ResourceError.class);
+            case ResourceException.UNAUTHORIZED:
+                throw typedException(code, e, ResourceError.class);
+            default:
+                System.err.println("*** Warning: undeclared exception (" + code + ") for resource postIntrospectRequest");
+                throw typedException(code, e, ResourceError.class);
+            }
+        } finally {
+            this.delegate.publishChangeMessage(context, code);
             this.delegate.recordMetrics(context, code);
         }
     }
@@ -1199,6 +1238,76 @@ public class ZTSResources {
                 throw typedException(code, e, ResourceError.class);
             default:
                 System.err.println("*** Warning: undeclared exception (" + code + ") for resource postExternalCredentialsRequest");
+                throw typedException(code, e, ResourceError.class);
+            }
+        } finally {
+            this.delegate.publishChangeMessage(context, code);
+            this.delegate.recordMetrics(context, code);
+        }
+    }
+
+    @POST
+    @Path("/usercert")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Operation(description = "Return a TLS certificate for the given principal user")
+    public UserCertificate postUserCertificateRequest(
+        @Parameter(description = "csr request", required = true) UserCertificateRequest req) {
+        int code = ResourceException.OK;
+        ResourceContext context = null;
+        try {
+            context = this.delegate.newResourceContext(this.servletContext, this.request, this.response, "postUserCertificateRequest");
+            return this.delegate.postUserCertificateRequest(context, req);
+        } catch (ResourceException e) {
+            code = e.getCode();
+            switch (code) {
+            case ResourceException.BAD_REQUEST:
+                throw typedException(code, e, ResourceError.class);
+            case ResourceException.FORBIDDEN:
+                throw typedException(code, e, ResourceError.class);
+            case ResourceException.NOT_FOUND:
+                throw typedException(code, e, ResourceError.class);
+            case ResourceException.TOO_MANY_REQUESTS:
+                throw typedException(code, e, ResourceError.class);
+            case ResourceException.UNAUTHORIZED:
+                throw typedException(code, e, ResourceError.class);
+            default:
+                System.err.println("*** Warning: undeclared exception (" + code + ") for resource postUserCertificateRequest");
+                throw typedException(code, e, ResourceError.class);
+            }
+        } finally {
+            this.delegate.publishChangeMessage(context, code);
+            this.delegate.recordMetrics(context, code);
+        }
+    }
+
+    @POST
+    @Path("/extmembercert")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Operation(description = "Return a TLS certificate for the given external member")
+    public ExternalMemberCertificate postExternalMemberCertificateRequest(
+        @Parameter(description = "csr request", required = true) ExternalMemberCertificateRequest req) {
+        int code = ResourceException.OK;
+        ResourceContext context = null;
+        try {
+            context = this.delegate.newResourceContext(this.servletContext, this.request, this.response, "postExternalMemberCertificateRequest");
+            return this.delegate.postExternalMemberCertificateRequest(context, req);
+        } catch (ResourceException e) {
+            code = e.getCode();
+            switch (code) {
+            case ResourceException.BAD_REQUEST:
+                throw typedException(code, e, ResourceError.class);
+            case ResourceException.FORBIDDEN:
+                throw typedException(code, e, ResourceError.class);
+            case ResourceException.NOT_FOUND:
+                throw typedException(code, e, ResourceError.class);
+            case ResourceException.TOO_MANY_REQUESTS:
+                throw typedException(code, e, ResourceError.class);
+            case ResourceException.UNAUTHORIZED:
+                throw typedException(code, e, ResourceError.class);
+            default:
+                System.err.println("*** Warning: undeclared exception (" + code + ") for resource postExternalMemberCertificateRequest");
                 throw typedException(code, e, ResourceError.class);
             }
         } finally {

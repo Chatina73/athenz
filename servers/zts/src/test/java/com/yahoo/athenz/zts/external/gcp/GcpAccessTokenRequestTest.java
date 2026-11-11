@@ -30,9 +30,11 @@ public class GcpAccessTokenRequestTest {
     public void testGcpAccessTokenRequest() {
 
         GcpAccessTokenRequest request = new GcpAccessTokenRequest();
+        request.setDelegates(Collections.singletonList("delegate"));
         request.setLifetime("300s");
         request.setScope(Collections.singletonList("scope"));
 
+        assertEquals(request.getDelegates(), Collections.singletonList("delegate"));
         assertEquals(request.getScope(), Collections.singletonList("scope"));
         assertEquals(request.getLifetime(), "300s");
 
@@ -41,7 +43,7 @@ public class GcpAccessTokenRequestTest {
 
         request.setScopeList("scope1 scope2   scope3");
         List<String> scopes = request.getScope();
-        assertEquals(3, scopes.size());
+        assertEquals(scopes.size(), 3);
         assertTrue(scopes.contains("scope1"));
         assertTrue(scopes.contains("scope2"));
         assertTrue(scopes.contains("scope3"));

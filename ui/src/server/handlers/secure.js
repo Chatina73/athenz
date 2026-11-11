@@ -17,8 +17,14 @@
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const cookieSession = require('cookie-session');
-const csrf = require('csurf');
 const multer = require('multer');
+const { csrfSync } = require('csrf-sync');
+
+const { csrfSynchronisedProtection } = csrfSync({
+    getTokenFromRequest: (req) =>
+        req.body?._csrf || req.headers['x-csrf-token'],
+    ignoredMethods: ['HEAD', 'OPTIONS', 'GET'],
+});
 
 module.exports = function (expressApp, config, secrets) {
     expressApp.use((req, res, next) => {
@@ -84,17 +90,23 @@ module.exports = function (expressApp, config, secrets) {
 
     expressApp.use(multer().none());
 
+    const SESSION_COOKIE_MAX_AGE_DEFAULT = 30 * 60 * 1000; // 30 minutes
+    const sessionCookieMaxAge =
+        config.sessionCookieMaxAge || SESSION_COOKIE_MAX_AGE_DEFAULT;
+
     expressApp.use(
         cookieSession({
             name: 'session',
             secret: secrets.cookieSession,
-            maxAge: 30 * 60 * 1000, // 30 minutes
+            maxAge: sessionCookieMaxAge,
             httpOnly: true,
             secure: true,
+            sameSite: 'strict',
+            domain: config.cookieDomain,
         })
     );
 
-    expressApp.use(csrf());
+    expressApp.use(csrfSynchronisedProtection);
     expressApp.use(function (err, req, res, next) {
         if (err.code !== 'EBADCSRFTOKEN') {
             return next(err);

@@ -10,7 +10,7 @@ all: build_darwin build_linux build_windows test
 
 build: get all
 
-mac:   get build_darwin test
+mac: get build_darwin test
 
 linux: get build_linux test
 
@@ -28,7 +28,7 @@ build_windows:
 
 get:
 	@echo "Getting dependencies..."
-	go get -t -d -tags testing $(GOPKGNAME)/...
+	go get -t -tags testing $(GOPKGNAME)/...
 
 vet:
 	go vet $(GOPKGNAME)/...

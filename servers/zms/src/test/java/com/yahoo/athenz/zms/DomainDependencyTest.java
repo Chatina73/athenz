@@ -53,17 +53,19 @@ public class DomainDependencyTest {
         System.setProperty(ZMS_PROP_SERVICE_PROVIDER_MANAGER_FREQUENCY_SECONDS, String.valueOf(fetchFrequency));
 
         // Reset ServiceProviderManager Singleton
-        Field instance = ServiceProviderManager.class.getDeclaredField("instance");
-        instance.setAccessible(true);
-        instance.set(null, null);
-
+        resetServiceProviderManager();
         zmsTestInitializer.setUp();
     }
 
     @AfterMethod
-    public void clearConnections() {
-        zmsTestInitializer.clearConnections();
-        System.clearProperty(ZMS_PROP_SERVICE_PROVIDER_MANAGER_FREQUENCY_SECONDS);
+    public void shutDown() throws Exception {
+        zmsTestInitializer.shutDown();
+    }
+
+    void resetServiceProviderManager() throws Exception {
+        Field instance = ServiceProviderManager.class.getDeclaredField("instance");
+        instance.setAccessible(true);
+        instance.set(null, null);
     }
 
     @Test
@@ -81,18 +83,18 @@ public class DomainDependencyTest {
         final String fullSubDomainName = topLevelDomainName + "." + subDomainName;
         final String serviceProviderName = "service-provider";
         TopLevelDomain dom1 = zmsTestInitializer.createTopLevelDomainObject(topLevelDomainName,
-                "Test Domain1", "testOrg", zmsTestInitializer.getAdminUser());
-        zmsImpl.postTopLevelDomain(ctx, auditRef, dom1);
+                "Test Domain1", "testOrg", zmsTestInitializer.getAdminUser(), ctx.principal().getFullName());
+        zmsImpl.postTopLevelDomain(ctx, auditRef, null, dom1);
 
         SubDomain subDom1 = zmsTestInitializer.createSubDomainObject(subDomainName,
                 topLevelDomainName, "Sub Test Domain 1", "testOrg", zmsTestInitializer.getAdminUser());
-        zmsImpl.postSubDomain(ctx, topLevelDomainName, auditRef, subDom1);
+        zmsImpl.postSubDomain(ctx, topLevelDomainName, auditRef, null, subDom1);
 
         ServiceIdentity serviceProvider = zmsTestInitializer.createServiceObject(fullSubDomainName,
                 serviceProviderName, "http://localhost", "/usr/bin/java", "root",
                 "users", "host1");
 
-        zmsImpl.putServiceIdentity(ctx, fullSubDomainName, serviceProviderName, auditRef, false, serviceProvider);
+        zmsImpl.putServiceIdentity(ctx, fullSubDomainName, serviceProviderName, auditRef, false, null, serviceProvider);
 
         final String sysAdminDomainName = "sys.auth";
         final String serviceProvidersRoleName = "service_providers";
@@ -106,7 +108,7 @@ public class DomainDependencyTest {
         role.setName(serviceProvidersRoleName);
         role.setRoleMembers(roleMembers);
 
-        zmsImpl.putRole(ctx, sysAdminDomainName, serviceProvidersRoleName, auditRef, false, role);
+        zmsImpl.putRole(ctx, sysAdminDomainName, serviceProvidersRoleName, auditRef, false, null, role);
 
         // Wait for cache to be ServiceProviderManager cache to refresh
 
@@ -133,7 +135,7 @@ public class DomainDependencyTest {
         String secondTopLevelDomain = "test-domain2-dependency";
         TopLevelDomain dom2 = zmsTestInitializer.createTopLevelDomainObject(secondTopLevelDomain,
                 "Test Domain2", "testOrg", zmsTestInitializer.getAdminUser());
-        zmsImpl.postTopLevelDomain(ctx, auditRef, dom2);
+        zmsImpl.postTopLevelDomain(ctx, auditRef, null, dom2);
 
         zmsImpl.putDomainDependency(serviceProviderCtx, secondTopLevelDomain, auditRef, dependentService);
         dependentServiceList = zmsImpl.getDependentServiceList(ctx, secondTopLevelDomain);
@@ -195,7 +197,7 @@ public class DomainDependencyTest {
         // test-domain1-dependency.sub-test-domain1.service-provider is still dependent on it
 
         try {
-            zmsImpl.deleteTopLevelDomain(ctx, secondTopLevelDomain, auditRef);
+            zmsImpl.deleteTopLevelDomain(ctx, secondTopLevelDomain, auditRef, null);
             fail();
         } catch (ResourceException ex) {
             assertEquals(ex.getMessage(), "ResourceException (403): {code: 403, message: \"Remove domain " +
@@ -221,7 +223,7 @@ public class DomainDependencyTest {
         ZMSTestUtils.sleep((1000 * fetchFrequency) + 50);
 
         try {
-            zmsImpl.deleteTopLevelDomain(ctx, secondTopLevelDomain, auditRef);
+            zmsImpl.deleteTopLevelDomain(ctx, secondTopLevelDomain, auditRef, null);
             fail();
         } catch (ResourceException ex) {
             assertEquals(ex.getMessage(), "ResourceException (403): {code: 403, message: \"Service " +
@@ -229,6 +231,12 @@ public class DomainDependencyTest {
                     "'test-domain2-dependency'. Error: Exception thrown during call to provider: Failed " +
                     "to get response from server: https://localhost/service-provider\"}");
         }
+
+        // get the domain dependency list and make sure provider is included
+
+        ServiceIdentityList serviceIdentityList = zmsImpl.getDependentServiceList(sysAdminCtx, secondTopLevelDomain);
+        assertEquals(serviceIdentityList.getNames().size(), 1);
+        assertEquals(serviceIdentityList.getNames().get(0), fullServiceProviderName);
 
         // Now make the service provider client approve deletion of the domains
 
@@ -245,9 +253,9 @@ public class DomainDependencyTest {
                 ctx.principal().getFullName())).thenReturn(response);
         zmsImpl.serviceProviderClient = serviceProviderClient;
 
-        zmsImpl.deleteTopLevelDomain(ctx, secondTopLevelDomain, auditRef);
-        zmsImpl.deleteSubDomain(ctx, topLevelDomainName, subDomainName, auditRef);
-        zmsImpl.deleteTopLevelDomain(ctx, topLevelDomainName, auditRef);
+        zmsImpl.deleteTopLevelDomain(ctx, secondTopLevelDomain, auditRef, null);
+        zmsImpl.deleteSubDomain(ctx, topLevelDomainName, subDomainName, auditRef, null);
+        zmsImpl.deleteTopLevelDomain(ctx, topLevelDomainName, auditRef, null);
     }
 
     @Test
@@ -272,12 +280,12 @@ public class DomainDependencyTest {
         final String fullServiceProviderName = fullSubDomainName + "." + serviceProviderName;
 
         TopLevelDomain dom1 = zmsTestInitializer.createTopLevelDomainObject(topLevelDomainName,
-                "Test Domain1", "testOrg", zmsTestInitializer.getAdminUser());
-        zmsImpl.postTopLevelDomain(ctx, auditRef, dom1);
+                "Test Domain1", "testOrg", zmsTestInitializer.getAdminUser(), ctx.principal().getFullName());
+        zmsImpl.postTopLevelDomain(ctx, auditRef, null, dom1);
 
         SubDomain subDom1 = zmsTestInitializer.createSubDomainObject(subDomainName,
                 topLevelDomainName, "Sub Test Domain 1", "testOrg", zmsTestInitializer.getAdminUser());
-        zmsImpl.postSubDomain(ctx, topLevelDomainName, auditRef, subDom1);
+        zmsImpl.postSubDomain(ctx, topLevelDomainName, auditRef, null, subDom1);
 
         ServiceIdentity serviceProvider = zmsTestInitializer.createServiceObject(fullSubDomainName,
                 serviceProviderName, "http://localhost/service", "/usr/bin/java", "root",
@@ -287,8 +295,8 @@ public class DomainDependencyTest {
                 "some-other-service", "http://localhost/other-service", "/usr/bin/java", "root",
                 "users", "host1");
 
-        zmsImpl.putServiceIdentity(ctx, fullSubDomainName, serviceProviderName, auditRef, false, serviceProvider);
-        zmsImpl.putServiceIdentity(ctx, fullSubDomainName, "some-other-service", auditRef, false, someOtherServiceProvider);
+        zmsImpl.putServiceIdentity(ctx, fullSubDomainName, serviceProviderName, auditRef, false, null, serviceProvider);
+        zmsImpl.putServiceIdentity(ctx, fullSubDomainName, "some-other-service", auditRef, false, null, someOtherServiceProvider);
 
         DependentService dependentService = new DependentService().setService(fullServiceProviderName);
         try {
@@ -322,7 +330,7 @@ public class DomainDependencyTest {
         Role role = new Role();
         role.setName(serviceProvidersRoleName);
         role.setRoleMembers(roleMembers);
-        zmsImpl.putRole(ctx, sysAdminDomainName, serviceProvidersRoleName, auditRef, false, role);
+        zmsImpl.putRole(ctx, sysAdminDomainName, serviceProvidersRoleName, auditRef, false, null, role);
 
         // Wait for cache to be ServiceProviderManager cache to refresh
 
@@ -397,7 +405,7 @@ public class DomainDependencyTest {
         dependentDomainList = zmsImpl.getDependentDomainList(serviceProviderCtx, fullServiceProviderName);
         assertEquals(dependentDomainList.getNames().size(), 1);
         assertEquals(dependentDomainList.getNames().get(0), topLevelDomainName);
-        zmsImpl.deleteMembership(sysAdminCtx, sysAdminDomainName, serviceProvidersRoleName, fullServiceProviderName, auditRef);
+        zmsImpl.deleteMembership(sysAdminCtx, sysAdminDomainName, serviceProvidersRoleName, fullServiceProviderName, auditRef, null);
 
         // Wait for cache to be ServiceProviderManager cache to refresh
 
@@ -418,14 +426,14 @@ public class DomainDependencyTest {
         Membership membership = new Membership();
         membership.setMemberName(fullServiceProviderName);
         zmsImpl.putMembership(sysAdminCtx, sysAdminDomainName, serviceProvidersRoleName, fullServiceProviderName,
-                auditRef, false, membership);
+                auditRef, false, null, membership);
         ZMSTestUtils.sleep((1000 * fetchFrequency) + 50);
         zmsImpl.deleteDomainDependency(sysAdminCtx, topLevelDomainName, fullServiceProviderName, auditRef);
         dependentDomainList = zmsImpl.getDependentDomainList(serviceProviderCtx, fullServiceProviderName);
         assertTrue(dependentDomainList.getNames().isEmpty());
 
-        zmsImpl.deleteSubDomain(ctx, topLevelDomainName, subDomainName, auditRef);
-        zmsImpl.deleteTopLevelDomain(ctx, topLevelDomainName, auditRef);
+        zmsImpl.deleteSubDomain(ctx, topLevelDomainName, subDomainName, auditRef, null);
+        zmsImpl.deleteTopLevelDomain(ctx, topLevelDomainName, auditRef, null);
     }
 
     @Test
@@ -447,8 +455,15 @@ public class DomainDependencyTest {
         ZMSImpl zmsImpl = zmsTestInitializer.zmsInit();
         RsrcCtxWrapper ctx = zmsTestInitializer.getMockDomRsrcCtx();
 
-        ServiceIdentityList dependentServiceList = zmsImpl.getDependentServiceList(ctx, "some.unknown.domain");
-        assertTrue(dependentServiceList.getNames().isEmpty());
+        // asking for domain dependency on a non-existent domain should return 404 not found exception
+
+        try {
+            zmsImpl.getDependentServiceList(ctx, "some.unknown.domain");
+            fail();
+        } catch (ResourceException ex) {
+            assertEquals(ex.getCode(), 404);
+            assertTrue(ex.getMessage().contains("No such domain: some.unknown.domain"));
+        }
     }
 
     @Test
@@ -468,19 +483,19 @@ public class DomainDependencyTest {
         final String fullServiceProviderName = fullSubDomainName + "." + serviceProviderName;
 
         TopLevelDomain dom1 = zmsTestInitializer.createTopLevelDomainObject(topLevelDomainName,
-                "Test Domain1", "testOrg", zmsTestInitializer.getAdminUser());
+                "Test Domain1", "testOrg", zmsTestInitializer.getAdminUser(), ctx.principal().getFullName());
         dom1.setAuditEnabled(true);
-        zmsImpl.postTopLevelDomain(ctx, auditRef, dom1);
+        zmsImpl.postTopLevelDomain(ctx, auditRef, null, dom1);
 
         SubDomain subDom1 = zmsTestInitializer.createSubDomainObject(subDomainName,
                 topLevelDomainName, "Sub Test Domain 1", "testOrg", zmsTestInitializer.getAdminUser());
-        zmsImpl.postSubDomain(ctx, topLevelDomainName, auditRef, subDom1);
+        zmsImpl.postSubDomain(ctx, topLevelDomainName, auditRef, null, subDom1);
 
         ServiceIdentity serviceProvider = zmsTestInitializer.createServiceObject(fullSubDomainName,
                 serviceProviderName, "http://localhost", "/usr/bin/java", "root",
                 "users", "host1");
 
-        zmsImpl.putServiceIdentity(ctx, fullSubDomainName, serviceProviderName, auditRef, false, serviceProvider);
+        zmsImpl.putServiceIdentity(ctx, fullSubDomainName, serviceProviderName, auditRef, false, null, serviceProvider);
 
         // Now make the service a service provider
 
@@ -494,7 +509,7 @@ public class DomainDependencyTest {
         Role role = new Role();
         role.setName(serviceProvidersRoleName);
         role.setRoleMembers(roleMembers);
-        zmsImpl.putRole(ctx, sysAdminDomainName, serviceProvidersRoleName, auditRef, false, role);
+        zmsImpl.putRole(ctx, sysAdminDomainName, serviceProvidersRoleName, auditRef, false, null, role);
 
         // Wait for cache to be ServiceProviderManager cache to refresh
 
@@ -528,8 +543,8 @@ public class DomainDependencyTest {
         }
         zmsImpl.deleteDomainDependency(serviceProviderCtx, topLevelDomainName, fullServiceProviderName, auditRef);
 
-        zmsImpl.deleteSubDomain(ctx, topLevelDomainName, subDomainName, auditRef);
-        zmsImpl.deleteTopLevelDomain(ctx, topLevelDomainName, auditRef);
+        zmsImpl.deleteSubDomain(ctx, topLevelDomainName, subDomainName, auditRef, null);
+        zmsImpl.deleteTopLevelDomain(ctx, topLevelDomainName, auditRef, null);
     }
 
     @Test

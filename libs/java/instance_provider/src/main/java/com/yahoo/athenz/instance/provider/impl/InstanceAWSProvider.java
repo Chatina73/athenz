@@ -18,23 +18,25 @@ package com.yahoo.athenz.instance.provider.impl;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
+import com.yahoo.athenz.common.server.util.config.dynamic.DynamicConfigBoolean;
 import com.yahoo.athenz.common.server.util.config.dynamic.DynamicConfigCsv;
 import com.yahoo.athenz.common.server.util.config.dynamic.DynamicConfigLong;
 import org.eclipse.jetty.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.amazonaws.regions.Regions;
-import com.amazonaws.auth.BasicSessionCredentials;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
-import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
-import com.amazonaws.services.securitytoken.model.GetCallerIdentityRequest;
-import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
+import com.yahoo.athenz.auth.Authorizer;
 import com.yahoo.athenz.auth.KeyStore;
+import com.yahoo.athenz.auth.Principal;
+import com.yahoo.athenz.auth.impl.SimplePrincipal;
+import com.yahoo.athenz.auth.util.AthenzUtils;
+import com.yahoo.athenz.instance.provider.AWSAttestationValidator;
+import com.yahoo.athenz.instance.provider.AWSAttestationValidatorFactory;
 import com.yahoo.athenz.instance.provider.InstanceConfirmation;
 import com.yahoo.athenz.instance.provider.InstanceProvider;
-import com.yahoo.athenz.instance.provider.ResourceException;
+import com.yahoo.athenz.instance.provider.ProviderResourceException;
+import com.yahoo.athenz.common.server.util.IPBlock;
+import com.yahoo.athenz.common.server.util.Utils;
 import com.yahoo.rdl.JSON;
 import com.yahoo.rdl.Struct;
 import com.yahoo.rdl.Timestamp;
@@ -42,6 +44,7 @@ import com.yahoo.rdl.Timestamp;
 import javax.net.ssl.*;
 
 import static com.yahoo.athenz.common.server.util.config.ConfigManagerSingleton.CONFIG_MANAGER;
+import static com.yahoo.athenz.instance.provider.impl.InstanceUtils.error;
 
 public class InstanceAWSProvider implements InstanceProvider {
 
@@ -60,16 +63,31 @@ public class InstanceAWSProvider implements InstanceProvider {
     static final String AWS_PROP_EKS_CLUSTER_NAMES = "athenz.zts.aws_eks_cluster_names";
 
     static final String AWS_PROP_CERT_VALIDITY_STS_ONLY = "athenz.zts.aws_cert_validity_sts_only";
+    static final String AWS_PROP_VALIDATE_IP_ADDRESS    = "athenz.zts.aws_validate_ip_address";
+    static final String AWS_PROP_ALLOWED_IP_ADDRESSES   = "athenz.zts.aws_allowed_ip_addresses";
+
+    static final String AWS_PROP_ATTESTATION_VALIDATOR_FACTORY_CLASS = "athenz.zts.aws_attestation_validator_factory_class";
+    static final String AWS_DEFAULT_ATTESTATION_VALIDATOR_FACTORY_CLASS =
+            "com.yahoo.athenz.instance.provider.impl.DefaultAWSAttestationValidatorFactory";
 
     DynamicConfigLong bootTimeOffsetSeconds; // boot time offset in seconds
     DynamicConfigCsv eksClusterNames;        // list of eks cluster names
 
     long certValidityTime;                   // cert validity for STS creds only case
     boolean supportRefresh = false;
-    String awsRegion;
     Set<String> dnsSuffixes = null;
     List<String> eksDnsSuffixes = null;
     InstanceAWSUtils awsUtils = null;
+    DynamicConfigBoolean validateIPAddress;
+    List<IPBlock> systemAllowedIPAddresses;
+    AWSAttestationValidator attestationValidator;
+    Authorizer authorizer;
+    Principal providerPrincipal;
+
+    @Override
+    public void setAuthorizer(Authorizer authorizer) {
+        this.authorizer = authorizer;
+    }
 
     public long getTimeOffsetInMilli() {
         return bootTimeOffsetSeconds.get() * 1000;
@@ -77,7 +95,7 @@ public class InstanceAWSProvider implements InstanceProvider {
 
     @Override
     public Scheme getProviderScheme() {
-        return Scheme.HTTP;
+        return Scheme.CLASS;
     }
 
     @Override
@@ -87,6 +105,12 @@ public class InstanceAWSProvider implements InstanceProvider {
         // create our helper object to validate aws documents
 
         awsUtils = new InstanceAWSUtils();
+
+        // generate our provider principal object based on the given
+        // provider service name. this is used by our attestation
+        // validators when carrying out any authorization checks
+
+        providerPrincipal = createProviderPrincipal(provider);
 
         // how long the instance must be booted in the past before we
         // stop validating the instance requests
@@ -117,9 +141,50 @@ public class InstanceAWSProvider implements InstanceProvider {
         int certValidityDays = Integer.parseInt(System.getProperty(AWS_PROP_CERT_VALIDITY_STS_ONLY, "7"));
         certValidityTime = TimeUnit.MINUTES.convert(certValidityDays, TimeUnit.DAYS);
 
-        // get the aws region
+        // check if we need to validate the IP addresses in the certificate
 
-        awsRegion = System.getProperty(AWS_PROP_REGION_NAME);
+        validateIPAddress = new DynamicConfigBoolean(CONFIG_MANAGER, AWS_PROP_VALIDATE_IP_ADDRESS, false);
+        final String certAllowedIPAddresses = System.getProperty(AWS_PROP_ALLOWED_IP_ADDRESSES, "");
+        systemAllowedIPAddresses = InstanceUtils.parseIPBlocks(certAllowedIPAddresses);
+
+        // create our attestation validator to verify the instance identity. the
+        // validator is configurable so adopters can swap the mechanism (e.g. STS
+        // temporary credentials vs AWS web identity token) used for validation
+
+        attestationValidator = newAttestationValidatorFactory().create(sslContext, authorizer, providerPrincipal);
+    }
+
+    static Principal createProviderPrincipal(final String provider) {
+
+        // our provider is a service identity in the <domain>.<service> format
+
+        if (StringUtil.isEmpty(provider)) {
+            LOGGER.error("No provider service name specified");
+            return null;
+        }
+        String[] providerComponents = AthenzUtils.splitPrincipalName(provider);
+        if (providerComponents == null) {
+            LOGGER.error("Invalid provider service name: {}", provider);
+            return null;
+        }
+        return SimplePrincipal.create(providerComponents[0], providerComponents[1], (String) null);
+    }
+
+    AWSAttestationValidatorFactory newAttestationValidatorFactory() {
+
+        final String factoryClass = System.getProperty(AWS_PROP_ATTESTATION_VALIDATOR_FACTORY_CLASS,
+                AWS_DEFAULT_ATTESTATION_VALIDATOR_FACTORY_CLASS);
+        LOGGER.info("AWS attestation validator factory class: {}", factoryClass);
+        try {
+            return (AWSAttestationValidatorFactory) Class.forName(factoryClass).getConstructor().newInstance();
+        } catch (Exception ex) {
+            LOGGER.error("Invalid AWS attestation validator factory class: {}", factoryClass, ex);
+            throw new IllegalArgumentException("Invalid AWS attestation validator factory class: " + factoryClass);
+        }
+    }
+
+    void setAttestationValidator(AWSAttestationValidator attestationValidator) {
+        this.attestationValidator = attestationValidator;
     }
 
     protected Set<String> getDnsSuffixes() {
@@ -130,24 +195,28 @@ public class InstanceAWSProvider implements InstanceProvider {
         return eksDnsSuffixes;
     }
 
-    public ResourceException error(String message) {
-        return error(ResourceException.FORBIDDEN, message);
-    }
-    
-    public ResourceException error(int errorCode, String message) {
-        LOGGER.error(message);
-        return new ResourceException(errorCode, message);
+    protected List<String> getEksClusterNames() {
+        return eksClusterNames.getStringsList();
     }
 
     boolean validateAWSAccount(final String awsAccount, final String docAccount, StringBuilder errMsg) {
-        
-        if (!awsAccount.equalsIgnoreCase(docAccount)) {
-            LOGGER.error("ZTS AWS Domain Lookup account id: {}", awsAccount);
-            errMsg.append("mismatch between account values - instance document: ").append(docAccount);
+
+        // the instance document based attestation requires the domain to have
+        // an associated aws account id to compare the document account against
+
+        if (StringUtil.isEmpty(awsAccount)) {
+            errMsg.append("no aws account id associated with the domain");
             return false;
         }
-        
-        return true;
+
+        for (String account : Utils.parseAwsAccounts(awsAccount)) {
+            if (account.equalsIgnoreCase(docAccount)) {
+                return true;
+            }
+        }
+        LOGGER.error("ZTS AWS Domain Lookup account id: {}", awsAccount);
+        errMsg.append("mismatch between account values - instance document: ").append(docAccount);
+        return false;
     }
     
     boolean validateAWSProvider(final String provider, final String region, StringBuilder errMsg) {
@@ -180,12 +249,9 @@ public class InstanceAWSProvider implements InstanceProvider {
 
     protected boolean validateAWSDocument(final String provider, AWSAttestationData info,
             final String awsAccount, final String instanceId, boolean checkTime,
-            StringBuilder privateIp, StringBuilder errMsg) {
-        
+            StringBuilder privateIp, Map<String, String> certSignerAttrs, StringBuilder errMsg) {
+
         final String document = info.getDocument();
-        if (!awsUtils.validateAWSSignature(document, info.getSignature(), errMsg)) {
-            return false;
-        }
         
         // convert our document into a struct that we can extract data
         
@@ -195,14 +261,22 @@ public class InstanceAWSProvider implements InstanceProvider {
             LOGGER.error("Identity Document: {}", document);
             return false;
         }
-        
-        if (!validateAWSProvider(provider, instanceDocument.getString(ATTR_REGION), errMsg)) {
+
+        // now validate our signature
+
+        final String region = instanceDocument.getString(ATTR_REGION);
+        if (!awsUtils.validateAWSSignature(document, info.getSignature(), region, errMsg)) {
+            return false;
+        }
+
+        if (!validateAWSProvider(provider, region, errMsg)) {
             return false;
         }
         
         // verify that the account lookup and the account in the document match
-        
-        if (!validateAWSAccount(awsAccount, instanceDocument.getString(ATTR_ACCOUNT_ID), errMsg)) {
+
+        final String docAccount = instanceDocument.getString(ATTR_ACCOUNT_ID);
+        if (!validateAWSAccount(awsAccount, docAccount, errMsg)) {
             return false;
         }
         
@@ -222,7 +296,15 @@ public class InstanceAWSProvider implements InstanceProvider {
 
         // verify that the boot up time for the instance is now
 
-        return !checkTime || validateInstanceBootTime(instanceDocument, errMsg);
+        if (checkTime && !validateInstanceBootTime(instanceDocument, errMsg)) {
+            return false;
+        }
+
+        // the document is signed by aws so we can pass its account and region to the cert signer
+
+        certSignerAttrs.put(ZTS_CERT_SIGNER_ATTR_AWS_RUNTIME_ACCOUNT, docAccount);
+        certSignerAttrs.put(ZTS_CERT_SIGNER_ATTR_AWS_RUNTIME_REGION, region);
+        return true;
     }
     
     protected String getInstanceId(AWSAttestationData info, Struct instanceDocument, final String reqInstanceId) {
@@ -248,39 +330,39 @@ public class InstanceAWSProvider implements InstanceProvider {
     }
     
     @Override
-    public InstanceConfirmation confirmInstance(InstanceConfirmation confirmation) {
+    public InstanceConfirmation confirmInstance(InstanceConfirmation confirmation) throws ProviderResourceException {
         
         AWSAttestationData info = JSON.fromString(confirmation.getAttestationData(),
                 AWSAttestationData.class);
+        if (info == null) {
+            throw error("Invalid attestation data provided");
+        }
         
         final Map<String, String> instanceAttributes = confirmation.getAttributes();
         final String instanceDomain = confirmation.getDomain();
         final String instanceService = confirmation.getService();
         
-        // before doing anything else we want to make sure our
-        // object has an associated aws account id
-        
+        // extract our aws account id. typically this would be a required
+        // value but if we're issuing an identity based on the oidc token
+        // with authorization, it could be empty
+
         final String awsAccount = InstanceUtils.getInstanceProperty(instanceAttributes, ZTS_INSTANCE_AWS_ACCOUNT);
-        if (StringUtil.isEmpty(awsAccount)) {
-            throw error("Unable to extract AWS Account id");
-        }
-        
+
         // validate that the domain/service given in the confirmation
-        // request match the attestation data
-        
+        // request match the attestation data. the role can represent
+        // either one of two formats: <domain>.<service> or <service>.
+        // with just the <service> format we already verify the <domain>
+        // component based on the aws account id in the arn
+
         final String serviceName = instanceDomain + "." + instanceService;
-        if (!serviceName.equals(info.getRole())) {
+        if (!(serviceName.equals(info.getRole()) || instanceService.equals(info.getRole()))) {
             throw error("Service name mismatch: " + info.getRole() + " vs. " + serviceName);
         }
         
         // validate the certificate host names
         
         StringBuilder instanceId = new StringBuilder(256);
-        if (!InstanceUtils.validateCertRequestSanDnsNames(instanceAttributes, instanceDomain,
-                instanceService, getDnsSuffixes(), getEksDnsSuffixes(), eksClusterNames.getStringsList(),
-                true, instanceId)) {
-            throw error("Unable to validate certificate request hostnames");
-        }
+        validateSanDnsNames(instanceAttributes, instanceDomain, instanceService, instanceId);
         
         // validate our document against given signature if one is provided
         // if there is no instance document then we're going to ask ZTS not
@@ -289,23 +371,33 @@ public class InstanceAWSProvider implements InstanceProvider {
 
         boolean instanceDocumentCreds = info.getDocument() != null;
         StringBuilder privateIp = new StringBuilder(64);
+        Map<String, String> certSignerAttrs = new HashMap<>();
         if (instanceDocumentCreds) {
             StringBuilder errMsg = new StringBuilder(256);
             if (!validateAWSDocument(confirmation.getProvider(), info, awsAccount,
-                    instanceId.toString(), true, privateIp, errMsg)) {
+                    instanceId.toString(), InstanceUtils.shouldCheckBootTime(instanceAttributes),
+                    privateIp, certSignerAttrs, errMsg)) {
                 throw error("Unable to validate AWS document: " + errMsg);
             }
         }
-            
+
+        // validate the IP address in the certificate if enabled
+
+        InstanceUtils.validateCertIPAddresses(validateIPAddress, instanceAttributes, privateIp.toString(),
+                systemAllowedIPAddresses);
+
         // set the attributes to be returned to the ZTS server
 
-        setConfirmationAttributes(confirmation, instanceDocumentCreds, privateIp.toString());
+        setConfirmationAttributes(confirmation, instanceDocumentCreds, privateIp.toString(), instanceId.toString());
+        certSignerAttrs.forEach((name, value) -> InstanceUtils.setCertSignerAttribute(confirmation, name, value));
 
-        // verify that the temporary credentials specified in the request
-        // can be used to assume the given role thus verifying the
-        // instance identity
-        
-        if (!verifyInstanceIdentity(info, awsAccount)) {
+        // verify the instance identity via the configured attestation validator.
+        // depending on the attestation data this either validates the STS
+        // temporary credentials or the AWS web identity token
+
+        StringBuilder identityErrMsg = new StringBuilder(256);
+        if (!attestationValidator.validateIdentity(confirmation, info, awsAccount, identityErrMsg)) {
+            LOGGER.error("Unable to verify instance identity credentials: {}", identityErrMsg);
             throw error("Unable to verify instance identity credentials");
         }
         
@@ -313,7 +405,7 @@ public class InstanceAWSProvider implements InstanceProvider {
     }
 
     @Override
-    public InstanceConfirmation refreshInstance(InstanceConfirmation confirmation) {
+    public InstanceConfirmation refreshInstance(InstanceConfirmation confirmation) throws ProviderResourceException {
         
         // if we don't have an attestation data then we're going to
         // return not found exception unless the provider is required
@@ -321,39 +413,40 @@ public class InstanceAWSProvider implements InstanceProvider {
         
         final String attestationData = confirmation.getAttestationData();
         if (attestationData == null || attestationData.isEmpty()) {
-            int errorCode = supportRefresh ? ResourceException.FORBIDDEN : ResourceException.NOT_FOUND;
+            int errorCode = supportRefresh ? ProviderResourceException.FORBIDDEN : ProviderResourceException.NOT_FOUND;
             throw error(errorCode, "No attestation data provided");
         }
         
         AWSAttestationData info = JSON.fromString(attestationData, AWSAttestationData.class);
-        
+        if (info == null) {
+            throw error("Invalid attestation data provided");
+        }
+
         final Map<String, String> instanceAttributes = confirmation.getAttributes();
         final String instanceDomain = confirmation.getDomain();
         final String instanceService = confirmation.getService();
         
-        // before doing anything else we want to make sure our
-        // object has an associated aws account id
-        
+        // extract our aws account id. typically this would be a required
+        // value but if we're issuing an identity based on the oidc token
+        // with authorization, it could be empty
+
         final String awsAccount = InstanceUtils.getInstanceProperty(instanceAttributes, ZTS_INSTANCE_AWS_ACCOUNT);
-        if (awsAccount == null) {
-            throw error("Unable to extract AWS Account id");
-        }
-
-        // extract the instance id as well
-
-        final String instanceId = InstanceUtils.getInstanceProperty(instanceAttributes,
-                InstanceProvider.ZTS_INSTANCE_ID);
-        if (instanceId == null) {
-            throw error("Unable to extract Instance Id");
-        }
 
         // validate that the domain/service given in the confirmation
-        // request match the attestation data
-        
+        // request match the attestation data. the role can represent
+        // either one of two formats: <domain>.<service> or <service>.
+        // with just the <service> format we already verify the <domain>
+        // component based on the aws account id in the arn
+
         final String serviceName = instanceDomain + "." + instanceService;
-        if (!serviceName.equals(info.getRole())) {
+        if (!(serviceName.equals(info.getRole()) || instanceService.equals(info.getRole()))) {
             throw error("Service name mismatch: " + info.getRole() + " vs. " + serviceName);
         }
+
+        // validate the certificate host names
+
+        StringBuilder instanceId = new StringBuilder(256);
+        validateSanDnsNames(instanceAttributes, instanceDomain, instanceService, instanceId);
 
         // validate our document against given signature if one is provided
         // if there is no instance document then we're going to ask ZTS not
@@ -361,31 +454,49 @@ public class InstanceAWSProvider implements InstanceProvider {
 
         boolean instanceDocumentCreds = info.getDocument() != null;
         StringBuilder privateIp = new StringBuilder(64);
+        Map<String, String> certSignerAttrs = new HashMap<>();
         if (instanceDocumentCreds) {
             StringBuilder errMsg = new StringBuilder(256);
             if (!validateAWSDocument(confirmation.getProvider(), info, awsAccount,
-                    instanceId, false, privateIp, errMsg)) {
+                    instanceId.toString(), false, privateIp, certSignerAttrs, errMsg)) {
                 throw error("Unable to validate AWS document: " + errMsg);
             }
         }
 
+        // validate the IP address in the certificate if enabled
+
+        InstanceUtils.validateCertIPAddresses(validateIPAddress, instanceAttributes, privateIp.toString(),
+                systemAllowedIPAddresses);
+
         // set the attributes to be returned to the ZTS server
 
-        setConfirmationAttributes(confirmation, instanceDocumentCreds, privateIp.toString());
+        setConfirmationAttributes(confirmation, instanceDocumentCreds, privateIp.toString(), instanceId.toString());
+        certSignerAttrs.forEach((name, value) -> InstanceUtils.setCertSignerAttribute(confirmation, name, value));
         
-        // verify that the temporary credentials specified in the request
-        // can be used to assume the given role thus verifying the
-        // instance identity
-        
-        if (!verifyInstanceIdentity(info, awsAccount)) {
+        // verify the instance identity via the configured attestation validator.
+        // depending on the attestation data this either validates the STS
+        // temporary credentials or the AWS web identity token
+
+        StringBuilder identityErrMsg = new StringBuilder(256);
+        if (!attestationValidator.validateIdentity(confirmation, info, awsAccount, identityErrMsg)) {
+            LOGGER.error("Unable to verify instance identity credentials during refresh: {}", identityErrMsg);
             throw error("Unable to verify instance identity credentials");
         }
         
         return confirmation;
     }
-    
+
+    public void validateSanDnsNames(final Map<String, String> instanceAttributes, final String instanceDomain,
+                                    final String instanceService, StringBuilder instanceId) throws ProviderResourceException {
+        if (!InstanceUtils.validateCertRequestSanDnsNames(instanceAttributes, instanceDomain,
+                instanceService, getDnsSuffixes(), getEksDnsSuffixes(), getEksClusterNames(),
+                true, instanceId, null)) {
+            throw error("Unable to validate certificate request hostnames");
+        }
+    }
+
     protected void setConfirmationAttributes(InstanceConfirmation confirmation, boolean instanceDocumentCreds,
-                                   final String privateIp) {
+            final String privateIp, final String instanceId) {
 
         Map<String, String> attributes = new HashMap<>();
         attributes.put(InstanceProvider.ZTS_CERT_SSH, Boolean.toString(instanceDocumentCreds));
@@ -395,67 +506,9 @@ public class InstanceAWSProvider implements InstanceProvider {
         if (!privateIp.isEmpty()) {
             attributes.put(InstanceProvider.ZTS_INSTANCE_PRIVATE_IP, privateIp);
         }
+        if (!instanceId.isEmpty()) {
+            attributes.put(InstanceProvider.ZTS_ATTESTED_SSH_CERT_PRINCIPALS, instanceId);
+        }
         confirmation.setAttributes(attributes);
-    }
-    
-    AWSSecurityTokenService getInstanceClient(AWSAttestationData info) {
-        
-        String access = info.getAccess();
-        if (access == null || access.isEmpty()) {
-            LOGGER.error("getInstanceClient: No access key id available in instance document");
-            return null;
-        }
-        
-        String secret = info.getSecret();
-        if (secret == null || secret.isEmpty()) {
-            LOGGER.error("getInstanceClient: No secret access key available in instance document");
-            return null;
-        }
-        
-        String token = info.getToken();
-        if (token == null || token.isEmpty()) {
-            LOGGER.error("getInstanceClient: No token available in instance document");
-            return null;
-        }
-        
-        BasicSessionCredentials creds = new BasicSessionCredentials(access, secret, token);
-
-        return AWSSecurityTokenServiceClientBuilder.standard()
-                .withCredentials(new AWSStaticCredentialsProvider(creds))
-                .withRegion(Regions.fromName(awsRegion))
-                .build();
-    }
-    
-    boolean verifyInstanceIdentity(AWSAttestationData info, final String awsAccount) {
-        
-        GetCallerIdentityRequest req = new GetCallerIdentityRequest();
-        
-        try {
-            AWSSecurityTokenService client = getInstanceClient(info);
-            if (client == null) {
-                LOGGER.error("verifyInstanceIdentity - unable to get AWS STS client object");
-                return false;
-            }
-            
-            GetCallerIdentityResult res = client.getCallerIdentity(req);
-            if (res == null) {
-                LOGGER.error("verifyInstanceIdentity - unable to get caller identity");
-                return false;
-            }
-             
-            String arn = "arn:aws:sts::" + awsAccount + ":assumed-role/" + info.getRole() + "/";
-            if (!res.getArn().startsWith(arn)) {
-                LOGGER.error("verifyInstanceIdentity - ARN mismatch - request: {} caller-idenity: {}",
-                        arn, res.getArn());
-                return false;
-            }
-            
-            return true;
-            
-        } catch (Exception ex) {
-            LOGGER.error("CloudStore: verifyInstanceIdentity - unable get caller identity: {}",
-                    ex.getMessage());
-            return false;
-        }
     }
 }

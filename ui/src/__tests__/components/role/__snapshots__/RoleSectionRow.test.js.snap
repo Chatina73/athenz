@@ -2,10 +2,9 @@
 
 exports[`RoleRow should render 1`] = `
 .emotion-0 {
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
+  box-sizing: border-box;
   display: flex;
+  padding-left: 15px;
 }
 
 .emotion-2 {
@@ -18,7 +17,17 @@ exports[`RoleRow should render 1`] = `
 }
 
 .emotion-4 {
-  padding-left: 20px;
+  display: inline-flex;
+  -webkit-align-items: center;
+  -webkit-box-align: center;
+  -ms-flex-align: center;
+  align-items: center;
+  gap: 2px;
+  -webkit-flex-shrink: 0;
+  -ms-flex-negative: 0;
+  flex-shrink: 0;
+  vertical-align: middle;
+  box-sizing: border-box;
 }
 
 .emotion-6 {
@@ -55,9 +64,12 @@ exports[`RoleRow should render 1`] = `
   >
     <span
       class="emotion-4 emotion-5"
-    >
+      style="min-width: calc(3 * 1.35em + 4px);"
+    />
+    <span>
        ztssia_cert_rotate
     </span>
+     
   </div>
   <div
     class="emotion-6 emotion-7"
@@ -79,6 +91,7 @@ exports[`RoleRow should render 1`] = `
       <svg
         class="emotion-12"
         data-testid="icon"
+        data-wdio="ztssia_cert_rotate-members"
         height="1.25em"
         id=""
         viewBox="0 0 1024 1024"
@@ -107,6 +120,7 @@ exports[`RoleRow should render 1`] = `
       <svg
         class="emotion-12"
         data-testid="icon"
+        data-wdio=""
         height="1.25em"
         id=""
         viewBox="0 0 1024 1024"
@@ -135,6 +149,7 @@ exports[`RoleRow should render 1`] = `
       <svg
         class="emotion-12"
         data-testid="icon"
+        data-wdio=""
         height="1.25em"
         id=""
         viewBox="0 0 1024 1024"
@@ -157,6 +172,7 @@ exports[`RoleRow should render 1`] = `
       <svg
         class="emotion-12"
         data-testid="icon"
+        data-wdio=""
         height="1.25em"
         id=""
         viewBox="0 0 1024 1024"
@@ -182,6 +198,7 @@ exports[`RoleRow should render 1`] = `
       <svg
         class="emotion-12"
         data-testid="icon"
+        data-wdio=""
         height="1.25em"
         id=""
         viewBox="0 0 1024 1024"
@@ -207,6 +224,7 @@ exports[`RoleRow should render 1`] = `
       <svg
         class="emotion-12"
         data-testid="icon"
+        data-wdio=""
         height="1.25em"
         id=""
         viewBox="0 0 1024 1024"
@@ -232,6 +250,7 @@ exports[`RoleRow should render 1`] = `
       <svg
         class="emotion-12"
         data-testid="icon"
+        data-wdio=""
         height="1.25em"
         id=""
         viewBox="0 0 1024 1024"

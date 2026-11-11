@@ -1,0 +1,830 @@
+/*
+ *  Copyright The Athenz Authors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package io.athenz.server.aws.common.store.impl;
+
+import com.yahoo.athenz.auth.util.Crypto;
+import io.athenz.server.aws.common.utils.Utils;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.http.apache.ApacheHttpClient;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
+import software.amazon.awssdk.services.s3.model.*;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yahoo.athenz.common.server.store.ChangeLogStore;
+import com.yahoo.athenz.common.server.store.impl.ZMSFileChangeLogStoreCommon;
+import com.yahoo.athenz.zms.DomainAttributes;
+import com.yahoo.athenz.zms.JWSDomain;
+import com.yahoo.athenz.zms.SignedDomain;
+import com.yahoo.athenz.zms.SignedDomains;
+import org.eclipse.jetty.util.StringUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.net.ssl.TrustManagerFactory;
+import java.io.File;
+import java.net.URI;
+import java.security.KeyStore;
+import java.security.cert.X509Certificate;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+import static com.yahoo.athenz.common.ServerCommonConsts.ZTS_PROP_AWS_BUCKET_NAME;
+import static com.yahoo.athenz.common.ServerCommonConsts.ZTS_PROP_AWS_REGION_NAME;
+
+public class S3ChangeLogStore implements ChangeLogStore {
+    private static final Logger LOGGER = LoggerFactory.getLogger(S3ChangeLogStore.class);
+
+    long lastModTime;
+    S3Client awsS3Client = null;
+    ZMSFileChangeLogStoreCommon localChangeLogStore = null;
+
+    private String s3BucketName;
+    private String awsRegion;
+    private ObjectMapper jsonMapper;
+    private boolean jwsDomainSupport;
+    private Set<String> domainFilter;
+
+    private static final String NUMBER_OF_THREADS = "athenz.zts.bucket.threads";
+    private static final String DEFAULT_TIMEOUT_SECONDS = "athenz.zts.bucket.threads.timeout";
+    private static final String ZTS_PROP_AWS_S3_ENDPOINT = "athenz.zts.aws_s3_endpoint";
+    private static final String ZTS_PROP_AWS_S3_CA_CERT = "athenz.zts.aws_s3_ca_cert";
+    private static final String ZTS_PROP_S3_CHANGE_LOG_STORE_FILTER = "athenz.zts.s3_change_log_store_domain_filter";
+    static final String ZTS_PROP_S3_CHANGE_LOG_STORE_LOCAL_CACHE = "athenz.zts.s3_change_log_store_local_cache";
+    private final int nThreads = Integer.parseInt(System.getProperty(NUMBER_OF_THREADS, "10"));
+    private final int defaultTimeoutSeconds = Integer.parseInt(System.getProperty(DEFAULT_TIMEOUT_SECONDS, "1800"));
+    protected Map<String, SignedDomain> tempSignedDomainMap = new ConcurrentHashMap<>();
+    protected Map<String, JWSDomain> tempJWSDomainMap = new ConcurrentHashMap<>();
+
+    public S3ChangeLogStore() {
+        init(null);
+        initAwsRegion();
+    }
+
+    public S3ChangeLogStore(String awsRegion) {
+        init(null);
+        this.awsRegion = awsRegion;
+    }
+
+    S3ChangeLogStore(File rootDirectory) {
+        init(rootDirectory == null ? null : rootDirectory.getPath());
+        initAwsRegion();
+    }
+
+    void init(String rootDirectory) {
+        s3BucketName = System.getProperty(ZTS_PROP_AWS_BUCKET_NAME);
+        if (s3BucketName == null || s3BucketName.isEmpty()) {
+            LOGGER.error("S3 Bucket name cannot be null");
+            throw new RuntimeException("S3ChangeLogStore: S3 Bucket name cannot be null");
+        }
+
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("AWSS3ChangeLog: S3 Bucket name: {}", s3BucketName);
+        }
+
+        // initialize our jackson object mapper
+
+        jsonMapper = new ObjectMapper();
+        jsonMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+        // check to see if we have domain filter configuration.  This is useful
+        // when the ZTS is only deployed to issue user certificates and not to store
+        // any data in the datastore. This is useful to reduce the load on the ZTS and
+        // the datastore. With the user certificate support, the datastore is only used
+        // to store the details about the provider service in the configured domain so
+        // there is no need to monitor and load data for all domains. This, of course,
+        // depends on the deployment configuration and the use case. With this setting,
+        // the ZTS instance can be deployed to only issue user certificates and not to
+        // issue any oauth2 access tokens nor service x.509 identity certificates.
+
+        final String domainFilterValue = System.getProperty(ZTS_PROP_S3_CHANGE_LOG_STORE_FILTER);
+        if (domainFilterValue != null) {
+
+            // generate a list of domains to filter. the value is a comma separated list
+            // of domains to filter.
+
+            domainFilter = java.util.Arrays.stream(domainFilterValue.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .collect(java.util.stream.Collectors.toSet());
+
+            if (domainFilter.isEmpty()) {
+                LOGGER.error("S3ChangeLogStore: domain filter configuration is empty, no domains will be filtered");
+                domainFilter = null;
+            }
+        }
+
+        initLocalCache(rootDirectory);
+    }
+
+    void initLocalCache(String rootDirectory) {
+
+        if (!Boolean.parseBoolean(System.getProperty(ZTS_PROP_S3_CHANGE_LOG_STORE_LOCAL_CACHE, "false"))) {
+            return;
+        }
+
+        if (StringUtil.isEmpty(rootDirectory)) {
+            LOGGER.error("S3 local cache root directory cannot be null");
+            throw new RuntimeException("S3ChangeLogStore: local cache root directory cannot be null");
+        }
+
+        localChangeLogStore = new ZMSFileChangeLogStoreCommon(rootDirectory);
+        if (localChangeLogStore.lastModTime == null) {
+            return;
+        }
+
+        try {
+            lastModTime = Long.parseLong(localChangeLogStore.lastModTime);
+        } catch (NumberFormatException ex) {
+            LOGGER.error("S3ChangeLogStore: invalid local cache lastModTime: {}", localChangeLogStore.lastModTime);
+            lastModTime = 0;
+        }
+    }
+
+    boolean isDomainAllowed(String domainName) {
+        return domainFilter == null || domainFilter.contains(domainName);
+    }
+
+    void initAwsRegion() {
+        awsRegion = System.getProperty(ZTS_PROP_AWS_REGION_NAME);
+        if (StringUtil.isEmpty(awsRegion)) {
+            awsRegion = Utils.getAwsRegion(Region.US_EAST_1).id();
+        }
+    }
+
+    @Override
+    public void setJWSDomainSupport(boolean jwsDomainSupport) {
+        this.jwsDomainSupport = jwsDomainSupport;
+    }
+
+    @Override
+    public boolean supportsFullRefresh() {
+        return false;
+    }
+
+    @Override
+    public SignedDomain getLocalSignedDomain(String domainName) {
+
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("getLocalSignedDomain: {}", domainName);
+        }
+
+        if (localChangeLogStore != null) {
+            SignedDomain signedDomain = localChangeLogStore.getLocalSignedDomain(domainName);
+            if (signedDomain == null) {
+                signedDomain = getSignedDomainFromS3(domainName);
+                if (signedDomain != null) {
+                    localChangeLogStore.saveLocalDomain(domainName, signedDomain);
+                }
+            }
+            return signedDomain;
+        }
+
+        // clear the mapping if present and value is stored else null is returned
+
+        SignedDomain signedDomain = tempSignedDomainMap.remove(domainName);
+
+        // when for some reason the getAllSignedDomains() was unsuccessful
+        // signedDomain will be null
+
+        if (signedDomain == null) {
+
+            if (LOGGER.isInfoEnabled()) {
+                LOGGER.info("getLocalSignedDomain: not present in cache, fetching from S3...");
+            }
+
+            signedDomain = getSignedDomainFromS3(domainName);
+        }
+        return signedDomain;
+    }
+
+    @Override
+    public JWSDomain getLocalJWSDomain(String domainName) {
+
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("getLocalJWSDomain: {}", domainName);
+        }
+
+        if (localChangeLogStore != null) {
+            JWSDomain jwsDomain = localChangeLogStore.getLocalJWSDomain(domainName);
+            if (jwsDomain == null) {
+                jwsDomain = getJWSDomainFromS3(domainName);
+                if (jwsDomain != null) {
+                    localChangeLogStore.saveLocalDomain(domainName, jwsDomain);
+                }
+            }
+            return jwsDomain;
+        }
+
+        // clear the mapping if present and value is stored else null is returned
+
+        JWSDomain jwsDomain = tempJWSDomainMap.remove(domainName);
+
+        // when for some reason the getAllJWSDomains() was unsuccessful
+        // jwsDomain will be null
+
+        if (jwsDomain == null) {
+
+            if (LOGGER.isInfoEnabled()) {
+                LOGGER.info("getLocalJWSDomain: not present in cache, fetching from S3...");
+            }
+
+            jwsDomain = getJWSDomainFromS3(domainName);
+        }
+        return jwsDomain;
+    }
+
+    SignedDomain getSignedDomainFromS3(String domainName) {
+
+        S3Client s3Client = getAwsS3Client();
+        SignedDomain signedDomain = getSignedDomain(s3Client, domainName);
+
+        // if we got a failure for any reason, we're going
+        // get a new aws s3 client and try again
+
+        if (signedDomain == null) {
+            s3Client = refreshAwsS3Client(s3Client);
+            signedDomain = getSignedDomain(s3Client, domainName);
+        }
+
+        return signedDomain;
+    }
+
+    JWSDomain getJWSDomainFromS3(String domainName) {
+
+        S3Client s3Client = getAwsS3Client();
+        JWSDomain jwsDomain = getJWSDomain(s3Client, domainName);
+
+        // if we got a failure for any reason, we're going
+        // get a new aws s3 client and try again
+
+        if (jwsDomain == null) {
+            s3Client = refreshAwsS3Client(s3Client);
+            jwsDomain = getJWSDomain(s3Client, domainName);
+        }
+
+        return jwsDomain;
+    }
+
+    S3Client getAwsS3Client() {
+        synchronized (this) {
+            if (awsS3Client == null) {
+                awsS3Client = getS3Client();
+            }
+            return awsS3Client;
+        }
+    }
+
+    S3Client refreshAwsS3Client(S3Client currentClient) {
+        synchronized (this) {
+            if (awsS3Client == currentClient) {
+                closeS3Client(awsS3Client);
+                awsS3Client = null;
+                awsS3Client = getS3Client();
+            }
+            return awsS3Client;
+        }
+    }
+
+    void closeS3Client(S3Client s3Client) {
+        if (s3Client == null) {
+            return;
+        }
+        try {
+            s3Client.close();
+        } catch (Exception ex) {
+            LOGGER.warn("S3ChangeLogStore: unable to close S3 client", ex);
+        }
+    }
+
+    SignedDomain getSignedDomain(S3Client s3, String domainName) {
+
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("getSignedDomain with S3: {}", domainName);
+        }
+
+        SignedDomain signedDomain = null;
+        try {
+            GetObjectRequest getObjectRequest = GetObjectRequest.builder().bucket(s3BucketName).key(domainName).build();
+            try (ResponseInputStream<GetObjectResponse> responseInputStream = s3.getObject(getObjectRequest)) {
+                signedDomain = jsonMapper.readValue(responseInputStream, SignedDomain.class);
+            }
+        } catch (Exception ex) {
+            LOGGER.error("AWSS3ChangeLog: getSignedDomain - unable to get domain {} error: {}",
+                    domainName, ex.getMessage());
+        }
+        return signedDomain;
+    }
+
+    JWSDomain getJWSDomain(S3Client s3, String domainName) {
+
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("getJWSDomain with S3: {}", domainName);
+        }
+
+        JWSDomain jwsDomain = null;
+        try {
+            GetObjectRequest getObjectRequest = GetObjectRequest.builder().bucket(s3BucketName).key(domainName).build();
+            try (ResponseInputStream<GetObjectResponse> responseInputStream = s3.getObject(getObjectRequest)) {
+                jwsDomain = jsonMapper.readValue(responseInputStream, JWSDomain.class);
+            }
+        } catch (Exception ex) {
+            LOGGER.error("AWSS3ChangeLog: getJWSDomain - unable to get domain {} error: {}",
+                    domainName, ex.getMessage());
+        }
+        return jwsDomain;
+    }
+
+    @Override
+    public void removeLocalDomain(String domainName) {
+        // in AWS our Athenz syncer is responsible for pushing new
+        // changes including removing deleted domain to S3 so this
+        // api is just a no-op unless local file cache is enabled
+
+        if (localChangeLogStore == null) {
+            return;
+        }
+        localChangeLogStore.removeLocalDomain(domainName);
+    }
+
+    @Override
+    public void saveLocalDomain(String domainName, SignedDomain signedDomain) {
+        // in AWS our Athenz syncer is responsible for pushing new
+        // changes into S3 so this api is just a no-op unless local
+        // file cache is enabled
+
+        if (localChangeLogStore == null) {
+            return;
+        }
+        localChangeLogStore.saveLocalDomain(domainName, signedDomain);
+    }
+
+    @Override
+    public void saveLocalDomain(String domainName, JWSDomain jwsDomain) {
+        // in AWS our Athenz syncer is responsible for pushing new
+        // changes into S3 so this api is just a no-op unless local
+        // file cache is enabled
+
+        if (localChangeLogStore == null) {
+            return;
+        }
+        localChangeLogStore.saveLocalDomain(domainName, jwsDomain);
+    }
+
+    /**
+     * list the objects in the zts bucket. If the mod time is specified as 0
+     * then we want to list all objects otherwise, we only list objects
+     * that are newer than the specified timestamp
+     * @param s3 AWS S3 client object
+     * @param domains collection to be updated to include domain names
+     * @param modTime only include domains newer than this timestamp
+     */
+    void listObjects(S3Client s3, Collection<String> domains, long modTime) {
+
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("listObjects: Retrieving domains from {} with mod time > {}",
+                    s3BucketName, modTime);
+        }
+
+        ListObjectsV2Request request = ListObjectsV2Request.builder().bucket(s3BucketName).build();
+        ListObjectsV2Response response = s3.listObjectsV2(request);
+
+        String objectName;
+        while (response != null) {
+
+            // process each entry in our result set and add the domain
+            // name to our return list
+
+            final List<S3Object> objectSummaries = response.contents();
+            boolean listTruncated = response.isTruncated();
+
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("listObjects: retrieved {} objects, more objects available - {}",
+                        objectSummaries.size(), listTruncated);
+            }
+
+            for (S3Object objectSummary : objectSummaries) {
+
+                // if mod time is specified then make sure we automatically skip
+                // any domains older than the specified value
+
+                if (modTime > 0 && objectSummary.lastModified().toEpochMilli() <= modTime) {
+                    continue;
+                }
+
+                // for now skip any folders/objects that start with '.'
+
+                objectName = objectSummary.key();
+                if (objectName.charAt(0) == '.') {
+                    continue;
+                }
+
+                // if we have a domain filter and the domain is not in the filter, skip it
+
+
+                if (domainFilter != null && !domainFilter.contains(objectName)) {
+                    continue;
+                }
+
+                domains.add(objectName);
+            }
+
+            // check if the object listing is truncated or not (break out in this case)
+            // technically we can skip this call and just call listNextBatchOfResults
+            // since that returns null if the object listing is not truncated but
+            // this direct check here makes the logic easier to follow
+
+            if (!listTruncated) {
+                break;
+            }
+
+            request = ListObjectsV2Request.builder().bucket(s3BucketName)
+                    .continuationToken(response.nextContinuationToken())
+                    .build();
+            response = s3.listObjectsV2(request);
+        }
+    }
+
+    @Override
+    public List<String> getLocalDomainList() {
+
+        if (localChangeLogStore != null) {
+            List<String> localDomains = localChangeLogStore.getLocalDomainList();
+            localDomains.removeIf(domain -> !isDomainAllowed(domain));
+            if (!fetchMissingLocalDomains(localDomains)) {
+                setLastModificationTimestamp(null);
+            }
+            return localDomains;
+        }
+
+        // check to see if we need to maintain our last modification time.
+        // this will be necessary if our last mod time field is null. We need
+        // to save the timestamp at the beginning just in case we end up getting
+        // paged results and while processing the last page, the Syncer pushes
+        // updated domains from the earlier pages
+
+        if (lastModTime == 0) {
+            lastModTime = System.currentTimeMillis();
+        }
+
+        // we are going to initialize our s3 client here since
+        // this is the first entry point before we start
+        // fetching all the domains individually
+
+        awsS3Client = getS3Client();
+
+        ArrayList<String> domains = new ArrayList<>();
+        listObjects(awsS3Client, domains, 0);
+        tempSignedDomainMap.clear();
+        tempJWSDomainMap.clear();
+
+        // we are trying to get the signed domain list from the s3 bucket twice here.
+        // The function get AllSignedDomains will return false when an InterruptedException
+        // is thrown. If it can't be done successfully then we throw a RuntimeException.
+
+        if (!getAllDomains(domains)) {
+            getAllDomains(domains);
+        }
+
+        return domains;
+    }
+
+    boolean fetchMissingLocalDomains(List<String> localDomains) {
+
+        // Without a last modification timestamp, startup will already fetch
+        // all domains from S3 through the regular update path.
+
+        if (localChangeLogStore.lastModTime == null) {
+            return true;
+        }
+
+        try (S3Client s3Client = getS3Client()) {
+            HashSet<String> domains = new HashSet<>();
+            listObjects(s3Client, domains, 0);
+
+            Set<String> localDomainSet = new HashSet<>(localDomains);
+            boolean fetchedAllMissingDomains = true;
+            int fetchedDomains = 0;
+            for (String domainName : domains) {
+                if (localDomainSet.contains(domainName)) {
+                    continue;
+                }
+
+                if (jwsDomainSupport) {
+                    JWSDomain jwsDomain = getJWSDomain(s3Client, domainName);
+                    if (jwsDomain == null) {
+                        fetchedAllMissingDomains = false;
+                        continue;
+                    }
+                    localChangeLogStore.saveLocalDomain(domainName, jwsDomain);
+                } else {
+                    SignedDomain signedDomain = getSignedDomain(s3Client, domainName);
+                    if (signedDomain == null) {
+                        fetchedAllMissingDomains = false;
+                        continue;
+                    }
+                    localChangeLogStore.saveLocalDomain(domainName, signedDomain);
+                }
+
+                localDomains.add(domainName);
+                localDomainSet.add(domainName);
+                fetchedDomains++;
+            }
+
+            if (fetchedDomains > 0) {
+                LOGGER.info("S3ChangeLogStore: fetched {} missing domain(s) into local cache", fetchedDomains);
+            }
+            return fetchedAllMissingDomains;
+        } catch (Exception ex) {
+            LOGGER.error("S3ChangeLogStore: unable to retrieve domain list from S3", ex);
+            return false;
+        }
+    }
+
+    @Override
+    public Map<String, DomainAttributes> getLocalDomainAttributeList() {
+        if (localChangeLogStore == null) {
+            return null;
+        }
+        Map<String, DomainAttributes> domainAttributes = localChangeLogStore.getLocalDomainAttributeList();
+        domainAttributes.entrySet().removeIf(entry -> !isDomainAllowed(entry.getKey()));
+        return domainAttributes;
+    }
+
+    public boolean getAllDomains(List<String> domains) {
+
+        if (LOGGER.isInfoEnabled()) {
+            LOGGER.info("Getting all domains from S3 with multiple threads...");
+        }
+
+        ExecutorService threadPoolExecutor = getExecutorService();
+        S3Client tempS3 = getS3Client();
+        for (String domain: domains) {
+            threadPoolExecutor.execute(new S3ChangeLogStore.ObjectS3Thread(domain, tempSignedDomainMap,
+                    tempJWSDomainMap, tempS3, jwsDomainSupport));
+        }
+
+        // shutdown() ensures no further tasks can be submitted to the ExecutorService
+
+        threadPoolExecutor.shutdown();
+
+        // If an Exception is thrown then we clear the HashMap where the SignedDomains are stored,
+        // and also we use the shutdownNow() function to cancel currently executing tasks.
+
+        try {
+            if (LOGGER.isInfoEnabled()) {
+                LOGGER.info("Waiting for completion of all getdomain tasks...");
+            }
+
+            threadPoolExecutor.awaitTermination(defaultTimeoutSeconds, TimeUnit.SECONDS);
+
+            if (LOGGER.isInfoEnabled()) {
+                LOGGER.info("Executor completed all of its tasks");
+            }
+
+        } catch (InterruptedException ex) {
+            LOGGER.error("Interrupted Exception in getAllSignedDomains", ex);
+            tempSignedDomainMap.clear();
+            tempJWSDomainMap.clear();
+            threadPoolExecutor.shutdownNow();
+            return false;
+        }
+
+        return true;
+    }
+
+    @Override
+    public Set<String> getServerDomainList() {
+
+        // for the server domain list operation since it's called
+        // periodically by the thread to see if any domains have
+        // been deleted, we're going to get a new s3 client
+        // instead of using our original client
+
+        try (S3Client s3Client = getS3Client()) {
+            HashSet<String> domains = new HashSet<>();
+            listObjects(s3Client, domains, 0);
+            return domains;
+        } catch (Exception ex) {
+            LOGGER.error("S3ChangeLogStore: unable to retrieve domain list from S3", ex);
+            return null;
+        }
+    }
+
+    /**
+     * with S3 change log store there is no need to carry out the domain check
+     * operations since during startup we read the domains from our domain
+     * S3 bucket and not from ZMS directly
+     * @return list of SignedDomain objects (always null)
+     */
+    @Override
+    public SignedDomains getServerDomainModifiedList() {
+        return null;
+    }
+
+    @Override
+    public SignedDomain getServerSignedDomain(String domainName) {
+        return null;
+    }
+
+    @Override
+    public JWSDomain getServerJWSDomain(String domainName) {
+        return null;
+    }
+
+    List<String> getUpdatedDomainList(S3Client s3, StringBuilder lastModTimeBuffer) {
+
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Retrieving updating domains from S3...");
+        }
+
+        // We need save the timestamp at the beginning just in case we end up getting
+        // paged results and while processing the last page, S3 gets pushed
+        // updated domains from the earlier pages
+
+        lastModTimeBuffer.append(System.currentTimeMillis());
+
+        // AWS S3 API does not provide support for listing objects filtered
+        // based on its last modification timestamp, so we need to get
+        // the full list and filter ourselves
+
+        // instead of using our fetched s3 client, we're going to
+        // obtain a new one to get the changes
+
+        List<String> domains = new ArrayList<>();
+        listObjects(s3, domains, lastModTime);
+
+        if (LOGGER.isInfoEnabled()) {
+            LOGGER.info("Retrieved {} updated domains", domains.size());
+        }
+
+        return domains;
+    }
+
+    @Override
+    public SignedDomains getUpdatedSignedDomains(StringBuilder lastModTimeBuffer) {
+
+        // get the updated domain list and fetch each one individually
+
+        S3Client s3 = getS3Client();
+        List<String> domains = getUpdatedDomainList(s3, lastModTimeBuffer);
+
+        List<SignedDomain> signedDomainList = new ArrayList<>();
+        for (String domain : domains) {
+            SignedDomain signedDomain = getSignedDomain(s3, domain);
+            if (signedDomain != null) {
+                signedDomainList.add(signedDomain);
+            }
+        }
+
+        SignedDomains signedDomains = new SignedDomains();
+        signedDomains.setDomains(signedDomainList);
+        return signedDomains;
+    }
+
+    @Override
+    public List<JWSDomain> getUpdatedJWSDomains(StringBuilder lastModTimeBuffer) {
+
+        // get the updated domain list and fetch each one individually
+
+        S3Client s3 = getS3Client();
+        List<String> domains = getUpdatedDomainList(s3, lastModTimeBuffer);
+
+        List<JWSDomain> jwsDomainList = new ArrayList<>();
+        for (String domain : domains) {
+            JWSDomain jwsDomain = getJWSDomain(s3, domain);
+            if (jwsDomain != null) {
+                jwsDomainList.add(jwsDomain);
+            }
+        }
+
+        return jwsDomainList;
+    }
+
+    @Override
+    public void setLastModificationTimestamp(String newLastModTime) {
+        if (newLastModTime == null) {
+            lastModTime = 0;
+        } else {
+            lastModTime = Long.parseLong(newLastModTime);
+        }
+        if (localChangeLogStore != null) {
+            localChangeLogStore.setLastModificationTimestamp(newLastModTime);
+        }
+    }
+
+    S3Client getS3Client() {
+        if (StringUtil.isEmpty(awsRegion)) {
+            throw new RuntimeException("S3ChangeLogStore: Couldn't detect AWS region");
+        }
+
+        S3ClientBuilder s3ClientBuilder = S3Client.builder().region(Region.of(awsRegion));
+
+        // check if we have a custom endpoint
+        String s3Endpoint = System.getProperty(ZTS_PROP_AWS_S3_ENDPOINT);
+        if (!StringUtil.isEmpty(s3Endpoint)) {
+            s3ClientBuilder.endpointOverride(URI.create(s3Endpoint));
+        }
+
+        // check if we have a custom ca cert
+        String s3CaCert = System.getProperty(ZTS_PROP_AWS_S3_CA_CERT);
+        if (!StringUtil.isEmpty(s3CaCert)) {
+            try {
+                ApacheHttpClient.Builder httpClientBuilder = ApacheHttpClient.builder();
+                X509Certificate[] certs = Crypto.loadX509Certificates(s3CaCert);
+                KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+                keyStore.load(null, null); // Initialize empty keystore
+                int i = 0;
+                for (X509Certificate cert : certs) {
+                    keyStore.setCertificateEntry("custom-ca-" + i++, cert);
+                }
+                TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+                tmf.init(keyStore);
+
+                httpClientBuilder.tlsTrustManagersProvider(tmf::getTrustManagers);
+                s3ClientBuilder.httpClient(httpClientBuilder.build());
+            } catch (Exception ex) {
+                LOGGER.error("S3ChangeLogStore: unable to load custom ca cert: {}", s3CaCert, ex);
+                throw new RuntimeException("S3ChangeLogStore: unable to load custom ca cert");
+            }
+        }
+
+        return s3ClientBuilder.build();
+    }
+
+    public ExecutorService getExecutorService() {
+        return Executors.newFixedThreadPool(nThreads);
+    }
+
+    class ObjectS3Thread implements Runnable {
+
+        String domainName;
+        S3Client s3;
+        Map<String, JWSDomain> jwsDomainMap;
+        Map<String, SignedDomain> signedDomainMap;
+        boolean jwsSupport;
+
+        public ObjectS3Thread(String domainName, Map<String, SignedDomain> signedDomainMap,
+                Map<String, JWSDomain> jwsDomainMap, S3Client s3, boolean jwsSupport) {
+
+            this.domainName = domainName;
+            this.s3 = s3;
+            this.signedDomainMap = signedDomainMap;
+            this.jwsDomainMap = jwsDomainMap;
+            this.jwsSupport = jwsSupport;
+        }
+
+        @Override
+        public void run() {
+            if (jwsSupport) {
+                saveJWSDomain();
+            } else {
+                saveSignedDomain();
+            }
+        }
+
+        void saveSignedDomain() {
+            SignedDomain signedDomain = null;
+            try {
+                signedDomain = getSignedDomain(s3, domainName);
+            } catch (Exception ex) {
+                LOGGER.error("AWSS3ChangeLogThread: ObjectS3Thread- getSignedDomain - unable to get domain {} error: {}",
+                        domainName, ex.getMessage());
+            }
+            if (signedDomain != null) {
+                signedDomainMap.put(domainName, signedDomain);
+            }
+        }
+
+        void saveJWSDomain() {
+            JWSDomain jwsDomain = null;
+            try {
+                jwsDomain = getJWSDomain(s3, domainName);
+            } catch (Exception ex) {
+                LOGGER.error("AWSS3ChangeLogThread: ObjectS3Thread- getJWSDomain - unable to get domain {} error: {}",
+                        domainName, ex.getMessage());
+            }
+            if (jwsDomain != null) {
+                jwsDomainMap.put(domainName, jwsDomain);
+            }
+        }
+    }
+}

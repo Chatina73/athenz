@@ -17,18 +17,19 @@ import React from 'react';
 import styled from '@emotion/styled';
 import Button from '../denali/Button';
 import { MODAL_TIME_OUT } from '../constants/constants';
-import RequestUtils from '../utils/RequestUtils';
 import { DnToggle } from '@denali-design/react';
 // import 'denali-css/css/denali.css';
 import { connect } from 'react-redux';
-import { selectInboundOutboundList } from '../../redux/selectors/microsegmentation';
+import {
+    selectInboundOutboundList,
+    selectInboundOutboundListWithFilter,
+} from '../../redux/selectors/microsegmentation';
 import AddSegmentation from './AddSegmentation';
 import RuleTable from './RuleTable';
 import { getInboundOutbound } from '../../redux/thunks/microsegmentation';
 import GroupTable from './GroupTable';
 import { selectDomainAuditEnabled } from '../../redux/selectors/domainData';
 import { selectIsLoading } from '../../redux/selectors/loading';
-import { selectFeatureFlag } from '../../redux/selectors/domains';
 import { ReduxPageLoader } from '../denali/ReduxPageLoader';
 
 const MembersSectionDiv = styled.div`
@@ -88,28 +89,18 @@ class RulesList extends React.Component {
     }
 
     reloadData() {
-        this.props
-            .getInboundOutbound(this.props.domain)
-            .then(() => {
+        this.setState({
+            showAddSegmentation: false,
+            showAddStaticInstances: false,
+        });
+        setTimeout(
+            () =>
                 this.setState({
-                    // segmentationData: this.props.data,
-                    showAddSegmentation: false,
-                    showAddStaticInstances: false,
-                });
-                setTimeout(
-                    () =>
-                        this.setState({
-                            showSuccess: false,
-                            successMessage: '',
-                        }),
-                    MODAL_TIME_OUT
-                );
-            })
-            .catch((err) => {
-                this.setState({
-                    errorMessage: RequestUtils.xhrErrorCheckHelper(err),
-                });
-            });
+                    showSuccess: false,
+                    successMessage: '',
+                }),
+            MODAL_TIME_OUT
+        );
     }
 
     closeModal() {
@@ -130,6 +121,7 @@ class RulesList extends React.Component {
                 showAddSegment={this.state.showAddSegmentation}
                 justificationRequired={this.props.isDomainAuditEnabled}
                 pageFeatureFlag={this.props.pageFeatureFlag}
+                showError={this.props.showError}
             />
         ) : (
             ''
@@ -193,6 +185,7 @@ class RulesList extends React.Component {
                         caption='Inbound'
                         pageFeatureFlag={this.props.pageFeatureFlag}
                         api={this.api}
+                        showError={this.props.showError}
                     />
                 ) : null}
                 <br />
@@ -206,6 +199,7 @@ class RulesList extends React.Component {
                         caption='Outbound'
                         pageFeatureFlag={this.props.pageFeatureFlag}
                         api={this.api}
+                        showError={this.props.showError}
                     />
                 ) : null}
                 {!showInbound && !showOutbound && this.state.tabularView ? (
@@ -232,7 +226,9 @@ const mapStateToProps = (state, props) => {
     return {
         ...props,
         isLoading: selectIsLoading(state),
-        data: selectInboundOutboundList(state),
+        data: props.filterByService
+            ? selectInboundOutboundListWithFilter(state, props.filterByService)
+            : selectInboundOutboundList(state),
         isDomainAuditEnabled: selectDomainAuditEnabled(state),
     };
 };

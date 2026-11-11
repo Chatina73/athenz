@@ -93,7 +93,7 @@ const makeAlertClass = (props) => css`
         flex: 0 0 28px;
         padding: 14px;
         & .alert-icon {
-            align-items: flex-start;
+            align-items: center;
             display: flex;
             justify-content: center;
         }
@@ -111,6 +111,10 @@ const makeAlertClass = (props) => css`
             padding: 14px 14px 14px 0;
             & .title {
                 ${cssFontWeights.bold};
+            }
+            & .close-button {
+                align-items: center;
+                display: flex;
             }
         }
         & .description {
@@ -226,6 +230,7 @@ class Alert extends React.Component {
                         <div
                             className='close-button'
                             onClick={this.props.onClose}
+                            data-wdio={'alert-close'}
                         >
                             <Icon
                                 color={rgba(colors.grey800, 0.4)}

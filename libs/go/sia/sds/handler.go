@@ -20,7 +20,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/AthenZ/athenz/libs/go/sia/options"
+	"io"
+	"log"
+	"os"
+	"sync"
+
+	sc "github.com/AthenZ/athenz/libs/go/sia/config"
+	"github.com/AthenZ/athenz/libs/go/sia/spiffe"
 	"github.com/AthenZ/athenz/libs/go/sia/util"
 	envoyCore "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoyTls "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
@@ -29,23 +35,28 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
-	"io"
-	"log"
-	"os"
-	"sync"
 )
 
 type ServerHandler struct {
-	Mutex       sync.RWMutex
-	Options     *options.Options
-	Subscribers map[string]*Subscriber
+	Mutex        sync.RWMutex
+	Options      *sc.Options
+	Subscribers  map[string]*Subscriber
+	SpiffeParser spiffe.URIParser
 }
 
-func NewServerHandler(opts *options.Options) *ServerHandler {
+func NewServerHandler(opts *sc.Options) *ServerHandler {
+	return NewServerHandlerWithSpiffeParser(opts, nil)
+}
+
+func NewServerHandlerWithSpiffeParser(opts *sc.Options, parser spiffe.URIParser) *ServerHandler {
+	if parser == nil {
+		parser = spiffe.GetDefaultParser()
+	}
 	return &ServerHandler{
-		Options:     opts,
-		Subscribers: make(map[string]*Subscriber),
-		Mutex:       sync.RWMutex{},
+		Options:      opts,
+		Subscribers:  make(map[string]*Subscriber),
+		Mutex:        sync.RWMutex{},
+		SpiffeParser: parser,
 	}
 }
 
@@ -212,6 +223,10 @@ func (handler *ServerHandler) getStreamResponse(sub *Subscriber, info ClientInfo
 }
 
 func (handler *ServerHandler) getResponse(req *envoyDiscovery.DiscoveryRequest, info ClientInfo, subId string, resp *envoyDiscovery.DiscoveryResponse) error {
+	spiffeParser := handler.SpiffeParser
+	if spiffeParser == nil {
+		spiffeParser = spiffe.GetDefaultParser()
+	}
 
 	for _, resource := range req.ResourceNames {
 		log.Printf("Response: %s: requesting secret: %s\n", subId, resource)
@@ -220,7 +235,7 @@ func (handler *ServerHandler) getResponse(req *envoyDiscovery.DiscoveryRequest, 
 	// parse the requested resource name
 	for _, spiffeUri := range req.ResourceNames {
 		// let's check if this is a CA Bundle certificate spiffe uri
-		_, namespace, name := util.ParseCASpiffeUri(spiffeUri)
+		_, namespace, name := spiffeParser.ParseCAURI(spiffeUri)
 		if namespace != "" && name != "" {
 			tlsCABundle, err := handler.getTLSCABundleSecret(spiffeUri, namespace, name)
 			if err != nil {
@@ -228,7 +243,7 @@ func (handler *ServerHandler) getResponse(req *envoyDiscovery.DiscoveryRequest, 
 			}
 			resp.Resources = append(resp.Resources, tlsCABundle)
 		} else {
-			_, _, domain, service := util.ParseServiceSpiffeUri(spiffeUri)
+			_, _, domain, service, _ := spiffeParser.ParseServiceURI(spiffeUri)
 			if domain == "" || service == "" {
 				log.Printf("Response: %s: unable to parse spiffe uri: %s\n", subId, spiffeUri)
 				continue
@@ -281,7 +296,7 @@ func (handler *ServerHandler) NotifySubscribers() {
 	handler.Mutex.RUnlock()
 }
 
-func (handler *ServerHandler) authenticateRequest(info ClientInfo, node *envoyCore.Node, domain, service string) (*options.Service, error) {
+func (handler *ServerHandler) authenticateRequest(info ClientInfo, node *envoyCore.Node, domain, service string) (*sc.Service, error) {
 
 	if domain != handler.Options.Domain {
 		return nil, fmt.Errorf("invalid domain name: %s, expected: %s", domain, handler.Options.Domain)
@@ -311,7 +326,7 @@ func (handler *ServerHandler) authenticateRequest(info ClientInfo, node *envoyCo
 	return nil, fmt.Errorf("unknown service: %s", service)
 }
 
-func (handler *ServerHandler) getTLSCertificateSecret(spiffeUri string, svc *options.Service) (*anypb.Any, error) {
+func (handler *ServerHandler) getTLSCertificateSecret(spiffeUri string, svc *sc.Service) (*anypb.Any, error) {
 
 	keyFile := util.GetSvcKeyFileName(handler.Options.KeyDir, svc.KeyFilename, handler.Options.Domain, svc.Name)
 	keyPEM, err := os.ReadFile(keyFile)

@@ -18,12 +18,12 @@
 
 package com.yahoo.athenz.common.server.http;
 
-import org.apache.http.StatusLine;
+import org.apache.hc.core5.http.message.StatusLine;
 
 public class HttpDriverResponse {
-    private int statusCode;
-    private String message;
-    private StatusLine statusLine;
+    private final int statusCode;
+    private final String message;
+    private final StatusLine statusLine;
 
     public HttpDriverResponse(int statusCode, String message, StatusLine statusLine) {
         this.statusCode = statusCode;

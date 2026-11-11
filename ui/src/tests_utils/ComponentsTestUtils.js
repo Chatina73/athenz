@@ -18,7 +18,6 @@ import { render } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import { initStore } from '../redux/store';
 import { getExpiryTime } from '../redux/utils';
-
 export const renderWithRedux = (component, initialState = {}) => {
     return render(
         <Provider store={initStore(initialState)}>{component}</Provider>
@@ -152,6 +151,26 @@ export const mockRolesApiCalls = () => {
     };
 };
 
+export const mockPoliciesApiCalls = () => {
+    return {
+        getPolicies: jest.fn().mockReturnValue(
+            new Promise((resolve, reject) => {
+                resolve([]);
+            })
+        ),
+        getPolicy: jest.fn().mockReturnValue(
+            new Promise((resolve, reject) => {
+                resolve({});
+            })
+        ),
+        // getRoleMembers: jest.fn().mockReturnValue(
+        //     new Promise((resolve, reject) => {
+        //         resolve({});
+        //     })
+        // ),
+    };
+};
+
 export const mockAllDomainDataApiCalls = (domainDetails, headerDetails) => {
     return {
         getDomain: jest.fn().mockReturnValue(
@@ -189,5 +208,20 @@ export const mockAllDomainDataApiCalls = (domainDetails, headerDetails) => {
                 resolve({});
             })
         ),
+        getReviewGroups: jest.fn().mockReturnValue([]),
+        getReviewRoles: jest.fn().mockReturnValue([]),
+        getPageFeatureFlag: jest.fn().mockResolvedValue({}),
     };
+};
+
+export const getStateWithUserList = (userList, initialState = {}) => {
+    return { ...initialState, user: userList };
+};
+
+export const getStateWithDomainDataAndUserList = (
+    domainData,
+    userList,
+    initialState = {}
+) => {
+    return { ...initialState, domainData: domainData, user: userList };
 };

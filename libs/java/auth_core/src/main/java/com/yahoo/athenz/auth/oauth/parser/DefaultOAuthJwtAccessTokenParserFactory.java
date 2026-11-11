@@ -16,7 +16,7 @@
 package com.yahoo.athenz.auth.oauth.parser;
 
 import java.util.function.BiFunction;
-import com.yahoo.athenz.auth.KeyStore;
+import com.yahoo.athenz.auth.oauth.token.OAuthJwtAccessTokenException;
 
 /**
  * Default implementation of OAuthJwtAccessTokenParserFactory
@@ -25,14 +25,13 @@ public class DefaultOAuthJwtAccessTokenParserFactory implements OAuthJwtAccessTo
 
     public static final String SYSTEM_PROP_PREFIX = "athenz.auth.oauth.jwt.parser.";
     public static final String JWKS_URL = "jwks_url";
-    public static final BiFunction<String, String, String> GET_PROPERTY = (String key, String def) -> {
-        return System.getProperty(SYSTEM_PROP_PREFIX + key, def);
-    };
+    public static final BiFunction<String, String, String> GET_PROPERTY =
+            (String key, String def) -> System.getProperty(SYSTEM_PROP_PREFIX + key, def);
 
     @Override
-    public OAuthJwtAccessTokenParser create(KeyStore keyStore) throws IllegalArgumentException {
+    public OAuthJwtAccessTokenParser create() throws OAuthJwtAccessTokenException {
         final String jwksUrl = GET_PROPERTY.apply(JWKS_URL, null);
-        return new DefaultOAuthJwtAccessTokenParser(keyStore, jwksUrl);
+        return new DefaultOAuthJwtAccessTokenParser(jwksUrl);
     }
 
 }

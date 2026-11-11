@@ -21,6 +21,7 @@ import com.yahoo.athenz.auth.Principal;
 import com.yahoo.athenz.auth.impl.SimplePrincipal;
 import com.yahoo.athenz.common.config.AuthzDetailsEntity;
 import com.yahoo.athenz.common.config.AuthzDetailsField;
+import com.yahoo.athenz.common.server.ServerResourceException;
 import com.yahoo.athenz.zms.*;
 import com.yahoo.rdl.Struct;
 import com.yahoo.rdl.Timestamp;
@@ -384,11 +385,11 @@ public class AuthzHelperTest {
 
     @Test
     public void testRetrieveResourceDomainA() {
-        assertEquals("trustdomain", AuthzHelper.retrieveResourceDomain("resource", "assume_role", "trustdomain"));
-        assertEquals("domain1", AuthzHelper.retrieveResourceDomain("domain1:resource", "assume_role", null));
-        assertEquals("domain1", AuthzHelper.retrieveResourceDomain("domain1:resource", "read", null));
-        assertEquals("domain1", AuthzHelper.retrieveResourceDomain("domain1:resource", "read", "trustdomain"));
-        assertEquals("domain1", AuthzHelper.retrieveResourceDomain("domain1:a:b:c:d:e", "read", "trustdomain"));
+        assertEquals(AuthzHelper.retrieveResourceDomain("resource", "assume_role", "trustdomain"), "trustdomain");
+        assertEquals(AuthzHelper.retrieveResourceDomain("domain1:resource", "assume_role", null), "domain1");
+        assertEquals(AuthzHelper.retrieveResourceDomain("domain1:resource", "read", null), "domain1");
+        assertEquals(AuthzHelper.retrieveResourceDomain("domain1:resource", "read", "trustdomain"), "domain1");
+        assertEquals(AuthzHelper.retrieveResourceDomain("domain1:a:b:c:d:e", "read", "trustdomain"), "domain1");
         assertNull(AuthzHelper.retrieveResourceDomain("domain1-invalid", "read", null));
     }
 
@@ -397,6 +398,21 @@ public class AuthzHelperTest {
         assertEquals(AuthzHelper.extractResourceDomainName("domain:entity"), "domain");
         assertEquals(AuthzHelper.extractResourceDomainName("domain:entity:value2"), "domain");
         assertEquals(AuthzHelper.extractResourceDomainName("domain:https://web.athenz.com/data"), "domain");
+    }
+
+    @Test
+    public void testLowerDomainInResource() {
+        assertEquals(AuthzHelper.lowerDomainInResource("DOMAIN:ResourcE1"), "domain:ResourcE1");
+        assertEquals(AuthzHelper.lowerDomainInResource("domain:ResOurcE1"), "domain:ResOurcE1");
+        assertEquals(AuthzHelper.lowerDomainInResource("domain:resource1"), "domain:resource1");
+        assertEquals(AuthzHelper.lowerDomainInResource("DOMAIN:ResourcE2(ResourcE3)"), "domain:ResourcE2(ResourcE3)");
+        assertEquals(AuthzHelper.lowerDomainInResource("DOMAIN:ResourcE1/ResourcE2"), "domain:ResourcE1/ResourcE2");
+        assertEquals(AuthzHelper.lowerDomainInResource("DOMAIN:resource4[*]/data1"), "domain:resource4[*]/data1");
+        assertEquals(AuthzHelper.lowerDomainInResource("justResource"), "justResource");
+        assertEquals(AuthzHelper.lowerDomainInResource("WrongDelimiter.NoOp"), "WrongDelimiter.NoOp");
+        assertEquals(AuthzHelper.lowerDomainInResource("DOMAIN:Many:Delimiters:THIS:TIME"), "domain:Many:Delimiters:THIS:TIME");
+        assertEquals(AuthzHelper.lowerDomainInResource(""), "");
+        assertNull(AuthzHelper.lowerDomainInResource(null));
     }
 
     @Test
@@ -887,7 +903,7 @@ public class AuthzHelperTest {
     }
 
     @Test
-    public void testConvertEntityToAuthzDetailsEntity() throws JsonProcessingException {
+    public void testConvertEntityToAuthzDetailsEntity() throws JsonProcessingException, ServerResourceException {
 
         Entity entity = new Entity();
         entity.setName("athenz:entity.zts.authorization_details_set1");
@@ -981,5 +997,91 @@ public class AuthzHelperTest {
         assertion.setAction("assume_role");
         assertTrue(AuthzHelper.assumeRoleNameMatch("domain1:role.role1", assertion));
         assertFalse(AuthzHelper.assumeRoleNameMatch("domain2:role.role1", assertion));
+    }
+
+    @Test
+    public void testParseCaseSensitiveMode() {
+        assertEquals(AuthzHelper.parseCaseSensitiveMode("disabled"), AuthzHelper.CaseSensitiveMode.DISABLED);
+        assertEquals(AuthzHelper.parseCaseSensitiveMode("Monitor"), AuthzHelper.CaseSensitiveMode.MONITOR);
+        assertEquals(AuthzHelper.parseCaseSensitiveMode("ENFORCE"), AuthzHelper.CaseSensitiveMode.ENFORCE);
+        assertEquals(AuthzHelper.parseCaseSensitiveMode("unknown"), AuthzHelper.CaseSensitiveMode.DISABLED);
+        assertEquals(AuthzHelper.parseCaseSensitiveMode(""), AuthzHelper.CaseSensitiveMode.DISABLED);
+    }
+
+    @Test
+    public void testAssertionActionResourceMatchDisabledMode() {
+
+        Assertion assertion = new Assertion().setAction("Read").setResource("domain:Data.*")
+                .setCaseSensitive(true);
+
+        // in disabled mode we never need the original values
+
+        assertTrue(AuthzHelper.assertionActionResourceMatch(assertion, "read", "domain:data.file",
+                null, null, AuthzHelper.CaseSensitiveMode.DISABLED, "domain"));
+        assertFalse(AuthzHelper.assertionActionResourceMatch(assertion, "update", "domain:data.file",
+                null, null, AuthzHelper.CaseSensitiveMode.DISABLED, "domain"));
+        assertFalse(AuthzHelper.assertionActionResourceMatch(assertion, "read", "domain:info.file",
+                null, null, AuthzHelper.CaseSensitiveMode.DISABLED, "domain"));
+    }
+
+    @Test
+    public void testAssertionActionResourceMatchMonitorMode() {
+
+        Assertion assertion = new Assertion().setAction("Read").setResource("domain:Data.*")
+                .setCaseSensitive(true);
+
+        // matched case-insensitive but not exactly - the result is still
+        // a match since we only log the mismatch in monitor mode
+
+        assertTrue(AuthzHelper.assertionActionResourceMatch(assertion, "read", "domain:data.file",
+                "read", "domain:data.File", AuthzHelper.CaseSensitiveMode.MONITOR, "domain"));
+
+        // exact match
+
+        assertTrue(AuthzHelper.assertionActionResourceMatch(assertion, "read", "domain:data.file",
+                "Read", "domain:Data.File", AuthzHelper.CaseSensitiveMode.MONITOR, "domain"));
+
+        // no match at all
+
+        assertFalse(AuthzHelper.assertionActionResourceMatch(assertion, "update", "domain:data.file",
+                "Update", "domain:Data.File", AuthzHelper.CaseSensitiveMode.MONITOR, "domain"));
+
+        // regular assertions are never checked for exact match so
+        // the original values are not required
+
+        Assertion regular = new Assertion().setAction("Read").setResource("domain:Data.*");
+        assertTrue(AuthzHelper.assertionActionResourceMatch(regular, "read", "domain:data.file",
+                null, null, AuthzHelper.CaseSensitiveMode.MONITOR, "domain"));
+        regular.setCaseSensitive(false);
+        assertTrue(AuthzHelper.assertionActionResourceMatch(regular, "read", "domain:data.file",
+                null, null, AuthzHelper.CaseSensitiveMode.MONITOR, "domain"));
+    }
+
+    @Test
+    public void testAssertionActionResourceMatchEnforceMode() {
+
+        Assertion assertion = new Assertion().setAction("Read").setResource("domain:Data.*")
+                .setCaseSensitive(true);
+
+        assertTrue(AuthzHelper.assertionActionResourceMatch(assertion, "read", "domain:data.file",
+                "Read", "domain:Data.File", AuthzHelper.CaseSensitiveMode.ENFORCE, "domain"));
+        assertFalse(AuthzHelper.assertionActionResourceMatch(assertion, "read", "domain:data.file",
+                "read", "domain:Data.File", AuthzHelper.CaseSensitiveMode.ENFORCE, "domain"));
+        assertFalse(AuthzHelper.assertionActionResourceMatch(assertion, "read", "domain:data.file",
+                "Read", "domain:data.File", AuthzHelper.CaseSensitiveMode.ENFORCE, "domain"));
+
+        // regular assertions are always matched case-insensitive
+
+        Assertion regular = new Assertion().setAction("Read").setResource("domain:Data.*");
+        assertTrue(AuthzHelper.assertionActionResourceMatch(regular, "read", "domain:data.file",
+                "READ", "domain:DATA.FILE", AuthzHelper.CaseSensitiveMode.ENFORCE, "domain"));
+    }
+
+    @Test
+    public void testAssertionExactActionResourceMatch() {
+        Assertion assertion = new Assertion().setAction("Read").setResource("domain:Data.*");
+        assertTrue(AuthzHelper.assertionExactActionResourceMatch(assertion, "Read", "domain:Data.File"));
+        assertFalse(AuthzHelper.assertionExactActionResourceMatch(assertion, "read", "domain:Data.File"));
+        assertFalse(AuthzHelper.assertionExactActionResourceMatch(assertion, "Read", "domain:data.File"));
     }
 }

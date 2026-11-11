@@ -7,8 +7,9 @@ include "ServiceIdentity.tdl";
 resource ServiceIdentity PUT "/domain/{domain}/service/{service}" {
     DomainName domain; //name of the domain
     SimpleName service; //name of the service
-    String      auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
     Bool returnObj (optional, default=false, header="Athenz-Return-Object"); //Return object param updated object back.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
     ServiceIdentity detail; //ServiceIdentity object to be added/updated in the domain
     authorize ("update", "{domain}:service.{service}");
     expected NO_CONTENT, OK;
@@ -42,7 +43,8 @@ resource ServiceIdentity GET "/domain/{domain}/service/{service}" {
 resource ServiceIdentity DELETE "/domain/{domain}/service/{service}" {
     DomainName domain; //name of the domain
     SimpleName service; //name of the service to be deleted
-    String      auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
     authorize ("delete", "{domain}:service.{service}");
     expected NO_CONTENT;
     exceptions {
@@ -60,8 +62,8 @@ resource ServiceIdentities GET "/domain/{domainName}/services?publickeys={public
     DomainName domainName; //name of the domain
     Bool publickeys (optional, default=false); // return list of public keys in the service
     Bool hosts (optional, default=false); // return list of hosts in the service
-    CompoundName tagKey (optional); //flag to query all services that have a given tagName
-    CompoundName tagValue (optional); //flag to query all services that have a given tag name and value
+    TagKey tagKey (optional); //flag to query all services that have a given tagName
+    TagCompoundValue tagValue (optional); //flag to query all services that have a given tag name and value
     authenticate;
     exceptions {
         ResourceError BAD_REQUEST;
@@ -107,6 +109,7 @@ resource PublicKeyEntry PUT "/domain/{domain}/service/{service}/publickey/{id}" 
     SimpleName service; //name of the service
     String id; //the identifier of the public key to be added
     String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
     PublicKeyEntry publicKeyEntry; //PublicKeyEntry object to be added/updated in the service
     authorize ("update", "{domain}:service.{service}");
     expected NO_CONTENT;
@@ -128,6 +131,7 @@ resource PublicKeyEntry DELETE "/domain/{domain}/service/{service}/publickey/{id
     SimpleName service; //name of the service
     String id; //the identifier of the public key to be deleted
     String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
     authorize ("update", "{domain}:service.{service}");
     expected NO_CONTENT;
     exceptions {
@@ -141,13 +145,67 @@ resource PublicKeyEntry DELETE "/domain/{domain}/service/{service}/publickey/{id
 }
 
 //Set the specified service metadata. Caller must have update privileges on the sys.auth domain.
+//For OAuth DCR clientid updates, client ID self-update is also allowed when the
+//server property and domain clientIdSelfUpdate flag are enabled, the caller is the
+//target service principal, and the target domain policy grants update on
+//resource service.<service>.clientid.<clientid>.
 resource ServiceIdentity PUT "/domain/{domain}/service/{service}/meta/system/{attribute}" {
     DomainName domain; //name of the domain
     SimpleName service; //name of the service
     SimpleName attribute; //name of the system attribute to be modified
     String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
     ServiceIdentitySystemMeta detail; //ServiceIdentitySystemMeta object with updated attribute values
-    authorize ("update", "sys.auth:meta.service.{attribute}.{domain}");
+    authenticate;
+    expected NO_CONTENT;
+    exceptions {
+        ResourceError NOT_FOUND;
+        ResourceError BAD_REQUEST;
+        ResourceError FORBIDDEN;
+        ResourceError UNAUTHORIZED;
+        ResourceError CONFLICT;
+        ResourceError TOO_MANY_REQUESTS;
+    }
+}
+
+// Set the resource ownership for the given service
+resource ResourceServiceIdentityOwnership PUT "/domain/{domainName}/service/{service}/ownership" {
+    DomainName domainName; //name of the domain
+    SimpleName service; //name of the service
+    String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    ResourceServiceIdentityOwnership resourceOwnership; //resource ownership to be set for the given service
+    authorize ("update", "{domainName}:meta.service.ownership.{service}");
+    expected NO_CONTENT;
+    exceptions {
+        ResourceError BAD_REQUEST;
+        ResourceError NOT_FOUND;
+        ResourceError FORBIDDEN;
+        ResourceError UNAUTHORIZED;
+        ResourceError TOO_MANY_REQUESTS;
+    }
+}
+
+// Search for all services across all domains that match the specified service name.
+// The service name can be a substring match based on the option substringMatch query
+// parameter. The domainFilter query parameter can be used to limit the domain names.
+resource ServiceIdentities GET "/service/{serviceName}?substringMatch={substringMatch}&domainFilter={domainFilter}" (name=searchServiceIdentities) {
+    SimpleName serviceName; //name of the service (could be substring)
+    Bool substringMatch (optional, default=false); //substring match for service name
+    DomainName domainFilter (optional); //domain filter match for service name
+    authenticate;
+    exceptions {
+        ResourceError BAD_REQUEST;
+        ResourceError TOO_MANY_REQUESTS;
+    }
+}
+
+//Add the specified credentials for the service.
+resource CredsEntry PUT "/domain/{domain}/service/{service}/creds" (name=PutServiceCredsEntry) {
+    DomainName domain; //name of the domain
+    SimpleName service; //name of the service
+    String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
+    CredsEntry credEntry; //CredsEntry object to be added/updated in the service
+    authorize ("update", "{domain}:service.{service}");
     expected NO_CONTENT;
     exceptions {
         ResourceError NOT_FOUND;

@@ -21,10 +21,15 @@ import {
     selectUserDomains,
     selectAuthorityAttributes,
     selectFeatureFlag,
+    selectShowInstances,
+    selectShowProviders,
+    selectShowMicrosegmentation,
+    selectShowCloudAccountDetails,
     selectUserLink,
     selectHeaderDetails,
     selectProductMasterLink,
     selectPendingMembersList,
+    selectZmsUrl,
 } from '../../../redux/selectors/domains';
 import {
     configDom,
@@ -124,14 +129,93 @@ describe('test domains selectors', () => {
         });
     });
     describe('test selectFeatureFlag selector', () => {
-        it('should return true', () => {
-            const featureFlag = true;
-            expect(selectFeatureFlag(stateWithDomainsData)).toEqual(
-                featureFlag
-            );
+        it('should return true for boolean featureFlag', () => {
+            expect(selectFeatureFlag(stateWithDomainsData)).toEqual(true);
+        });
+        it('should return enabled value for object featureFlag', () => {
+            const state = {
+                domains: {
+                    featureFlag: { enabled: true, showInstances: false },
+                },
+            };
+            expect(selectFeatureFlag(state)).toEqual(true);
         });
         it('should return false', () => {
             expect(selectFeatureFlag(stateWithoutDomainsData)).toEqual(false);
+        });
+    });
+    describe('test selectShowInstances selector', () => {
+        it('should return true by default', () => {
+            expect(selectShowInstances(stateWithDomainsData)).toEqual(true);
+        });
+        it('should return false when explicitly disabled', () => {
+            const state = {
+                domains: {
+                    featureFlag: { enabled: true, showInstances: false },
+                },
+            };
+            expect(selectShowInstances(state)).toEqual(false);
+        });
+        it('should return true when not set in object', () => {
+            const state = {
+                domains: { featureFlag: { enabled: true } },
+            };
+            expect(selectShowInstances(state)).toEqual(true);
+        });
+    });
+    describe('test selectShowProviders selector', () => {
+        it('should return true by default', () => {
+            expect(selectShowProviders(stateWithDomainsData)).toEqual(true);
+        });
+        it('should return false when explicitly disabled', () => {
+            const state = {
+                domains: {
+                    featureFlag: { enabled: true, showProviders: false },
+                },
+            };
+            expect(selectShowProviders(state)).toEqual(false);
+        });
+    });
+    describe('test selectShowMicrosegmentation selector', () => {
+        it('should return true by default', () => {
+            expect(selectShowMicrosegmentation(stateWithDomainsData)).toEqual(
+                true
+            );
+        });
+        it('should return false when explicitly disabled', () => {
+            const state = {
+                domains: {
+                    featureFlag: {
+                        enabled: true,
+                        showMicrosegmentation: false,
+                    },
+                },
+            };
+            expect(selectShowMicrosegmentation(state)).toEqual(false);
+        });
+    });
+    describe('test selectShowCloudAccountDetails selector', () => {
+        it('should return true by default', () => {
+            expect(selectShowCloudAccountDetails(stateWithDomainsData)).toEqual(
+                true
+            );
+        });
+        it('should return false when explicitly disabled', () => {
+            const state = {
+                domains: {
+                    featureFlag: {
+                        enabled: true,
+                        showCloudAccountDetails: false,
+                    },
+                },
+            };
+            expect(selectShowCloudAccountDetails(state)).toEqual(false);
+        });
+        it('should return true when not set in object', () => {
+            const state = {
+                domains: { featureFlag: { enabled: true } },
+            };
+            expect(selectShowCloudAccountDetails(state)).toEqual(true);
         });
     });
     describe('test selectUserLink selector', () => {
@@ -262,6 +346,20 @@ describe('test domains selectors', () => {
             expect(
                 selectPendingMembersList(stateWithoutDomainsData, domainName)
             ).toEqual({});
+        });
+    });
+    describe('test selectZmsUrl', () => {
+        it('selectZmsUrl returns zmsUrl from header details', () => {
+            const state = {
+                domains: {
+                    headerDetails: {
+                        zmsUrl: 'https://zms.example.com:4443/zms/v1',
+                    },
+                },
+            };
+            expect(selectZmsUrl(state)).toBe(
+                'https://zms.example.com:4443/zms/v1'
+            );
         });
     });
 });

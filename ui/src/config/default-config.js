@@ -15,8 +15,69 @@
  */
 'use strict';
 
+const resourceOwnershipUiDefaults = {
+    icon: 'terraform',
+    label: 'Terraform',
+    managedIconTooltip:
+        'This resource is managed by {{label}} (ownership in ZMS).',
+    membersManagedIconTooltip:
+        'Role membership is managed by {{label}} (members owner).',
+    cliSuggestionBody:
+        'This resource is {{label}}-managed and cannot be edited via the Athenz UI. To maintain environment stability, always apply changes through {{label}} configuration. While the zms-cli can force immediate updates, doing so creates configuration drift, leaving the resource out-of-sync and requiring manual intervention to reconcile.',
+    cliSuggestionEmergencyHeading: 'Use only in emergencies:',
+    cliSuggestionGuideFooter: 'For detailed guidance, refer to',
+};
+
+const resourceOwnershipGuideLinkDefaults = {
+    title: 'resource-ownership-guide',
+    url: 'https://github.com/AthenZ/athenz/blob/master/docs/design/resource_ownership.md',
+    target: '_blank',
+};
+
+const testdata = {
+    user1: {
+        name: 'John Doe',
+        id_short: 'johndoe',
+        id: 'user.johndoe',
+        type: 'user',
+        domain: 'home.johndoe',
+    },
+    businessServiceName: 'TestServiceName',
+    userHeadless1: {
+        id: 'unix.user',
+        type: 'unix',
+    },
+    /**
+     * Athenz domain names and related identifiers for functional *.spec.js tests.
+     */
+    functionalTest: 'functional-test',
+    functionalTestNonAdmin: 'functional-test-non-admin',
+    /** Domain with externally managed roles/policies/services for resource-ownership.spec.js */
+    functionalTestResourceOwnership: 'functional-test-ownership',
+    /**
+     * Resource names in functionalTestResourceOwnership
+     */
+    functionalTestResourceOwnershipFixtures: {
+        role: 'ownership-test-role',
+        policy: 'ownership-test-policy',
+        service: 'ownership-test-service',
+        publicKeyId: '0',
+    },
+    delegatedParent: 'delegated-parent',
+    auditEnabled: 'audit-enabled',
+    principalFilter: 'principal-filter',
+    principalFilterUser: 'user',
+    microsegPolicyInstanceHost: 'test.test.tst1.com',
+    microsegSourceService: 'domain.source-service',
+    microsegHostEnforce: 'enforce.host.com',
+    microsegHostReport: 'report.host.com',
+    microsegSourceService1: 'domain.source-service-one',
+    microsegSourceService2: 'domain.source-service-two',
+};
+
 const config = {
     local: {
+        testdata: { ...testdata },
         timeZone: 'America/Los_Angeles',
         language: 'en-US',
         zms: process.env.ZMS_SERVER_URL || 'https://localhost:4443/zms/v1/',
@@ -27,6 +88,8 @@ const config = {
         msd: process.env.MSD_LOGIN_URL || 'https://localhost:4443/msd/v1/',
         zts: process.env.ZTS_LOGIN_URL || 'https://localhost:4443/zts/v1/',
         ums: process.env.UMS_LOGIN_URL || 'https://localhost:4443/ums/v1/',
+        cloud_sso:
+            process.env.ZMS_SERVER_URL || 'https://localhost:4443/zms/v1/',
         authHeader: 'Athenz-Principal-Auth',
         strictSSL: false,
         user: 'ui-server',
@@ -84,6 +147,8 @@ const config = {
             url: '',
             target: '_blank',
         },
+        resourceOwnershipGuideLink: { ...resourceOwnershipGuideLinkDefaults },
+        resourceOwnershipUi: { ...resourceOwnershipUiDefaults },
         servicePageConfig: {
             keyCreationLink: {
                 title: 'Key Creation',
@@ -92,12 +157,22 @@ const config = {
             },
             keyCreationMessage:
                 'Instances bootstrapped using Athenz Identity Providers can get Service Identity X.509 certificates automatically.',
+            showInstances: true,
+            showProviders: true,
         },
         cookieName: 'Athenz-Principal-Auth',
         cookieMaxAge: 60 * 60 * 1000,
         loginPath: '/login',
         uiKeyPath: process.env.UI_CERT_KEY_PATH || 'keys/ui_key.pem',
         uiCertPath: process.env.UI_CERT_PATH || 'keys/ui_cert.pem',
+        serverKeyPath: process.env.UI_CERT_KEY_PATH || 'keys/ui_key.pem',
+        serverCertPath: process.env.UI_CERT_PATH || 'keys/ui_cert.pem',
+        ssl: {
+            reloadEnabled: process.env.ENABLE_SSL_AUTO_RELOAD === 'true',
+            reloadIntervalMs:
+                parseInt(process.env.SSL_CERT_RELOAD_INTERVAL_MS, 10) ||
+                12 * 60 * 60 * 1000, // 12 hours default
+        },
         userFileName: 'users_data.json',
         userFilePath: process.env.UI_CONF_PATH || 'src/config',
         cookieSession:
@@ -109,6 +184,7 @@ const config = {
             {
                 id: 'aws_instance_launch_provider',
                 name: 'AWS EC2/EKS/Fargate launches instances for the service',
+                service: 'athens.aws.us-east-1',
             },
         ],
         createDomainMessage:
@@ -124,9 +200,16 @@ const config = {
         ],
         statusPath: process.env.UI_SESSION_SECRET_PATH || 'keys/cookie-session',
         featureFlag: true,
+        showMicrosegmentation: true,
+        showCloudAccountDetails: true,
         pageFeatureFlag: {
             microsegmentation: {
                 policyValidation: true,
+                snapshots: false,
+                snapshotsGuideLink: '',
+            },
+            roleGroupReview: {
+                roleGroupReviewFeatureFlag: true,
             },
         },
         serviceHeaderLinks: [
@@ -149,8 +232,12 @@ const config = {
         numberOfRetry: 2,
         serverCipherSuites:
             'TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256:TLS_DHE_RSA_WITH_AES_128_GCM_SHA256:TLS_DHE_RSA_WITH_AES_256_GCM_SHA384:TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256',
+        callCloudSSO: true,
+        organizationDomain: 'audit-domain-name',
+        allowedDevOrigins: ['localhost'],
     },
     unittest: {
+        testdata: { ...testdata },
         zmsConnectSrcUrl: 'https://localhost:4443',
         athenzDomainService: 'athenz.unit-test',
         authKeyVersion: '1',
@@ -170,6 +257,18 @@ const config = {
             },
         ],
         featureFlag: true,
+        pageFeatureFlag: {
+            microsegmentation: {
+                policyValidation: true,
+                snapshots: true,
+                snapshotsGuideLink: '',
+            },
+            roleGroupReview: {
+                roleGroupReviewFeatureFlag: true,
+            },
+        },
+        resourceOwnershipGuideLink: { ...resourceOwnershipGuideLinkDefaults },
+        resourceOwnershipUi: { ...resourceOwnershipUiDefaults },
         serviceHeaderLinks: [
             {
                 description:
@@ -190,6 +289,8 @@ const config = {
         numberOfRetry: 2,
         serverCipherSuites:
             'TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256:TLS_DHE_RSA_WITH_AES_128_GCM_SHA256:TLS_DHE_RSA_WITH_AES_256_GCM_SHA384:TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256',
+        callCloudSSO: true,
+        allowedDevOrigins: ['localhost'],
     },
 };
 
@@ -199,3 +300,5 @@ module.exports = function () {
     c.env = env;
     return c;
 };
+module.exports.resourceOwnershipGuideLinkDefaults =
+    resourceOwnershipGuideLinkDefaults;

@@ -15,47 +15,22 @@
  */
 package com.yahoo.athenz.instance.provider.impl;
 
-import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
 import com.yahoo.athenz.auth.KeyStore;
 
 import javax.net.ssl.SSLContext;
 
 public class MockInstanceAWSECSProvider extends InstanceAWSECSProvider {
 
-    boolean signatureResult = true;
-    boolean identityResult = true;
-    boolean identitySuper = false;
-    AWSSecurityTokenService stsClient;
+    final MockAWSAttestationValidator mockValidator = new MockAWSAttestationValidator();
 
     @Override
     public void initialize(String provider, String providerEndpoint, SSLContext sslContext, KeyStore keyStore) {
         super.initialize(provider, providerEndpoint, sslContext, keyStore);
         awsUtils = new MockInstanceAWSUtils();
-    }
-
-    void setSignatureResult(boolean value) {
-        ((MockInstanceAWSUtils) awsUtils).setSignatureResult(value);
+        setAttestationValidator(mockValidator);
     }
 
     void setIdentityResult(boolean value) {
-        identityResult = value;
-    }
-    
-    void setIdentitySuper(boolean value) {
-        identitySuper = value;
-    }
-    
-    void setStsClient(AWSSecurityTokenService client) {
-        stsClient = client;
-    }
-    
-    @Override
-    public boolean verifyInstanceIdentity(AWSAttestationData info, final String awsAccount) {
-        return identitySuper ? super.verifyInstanceIdentity(info, awsAccount) : identityResult;
-    }
-    
-    @Override
-    public AWSSecurityTokenService getInstanceClient(AWSAttestationData info) {
-        return stsClient != null ? stsClient : super.getInstanceClient(info);
+        mockValidator.identityResult = value;
     }
 }

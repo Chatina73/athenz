@@ -16,14 +16,20 @@
 
 package com.yahoo.athenz.instance.provider.impl;
 
-
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
+import com.yahoo.athenz.auth.Authorizer;
 import com.yahoo.athenz.auth.KeyStore;
+import com.yahoo.athenz.auth.Principal;
+import com.yahoo.athenz.auth.impl.SimplePrincipal;
+import com.yahoo.athenz.common.server.db.RolesProvider;
+import com.yahoo.athenz.common.server.util.config.dynamic.DynamicConfigBoolean;
 import com.yahoo.athenz.common.server.util.config.dynamic.DynamicConfigCsv;
 import com.yahoo.athenz.common.server.util.config.dynamic.DynamicConfigLong;
+import com.yahoo.athenz.common.server.util.IPBlock;
+import com.yahoo.athenz.instance.provider.ExternalCredentialsProvider;
 import com.yahoo.athenz.instance.provider.InstanceConfirmation;
 import com.yahoo.athenz.instance.provider.InstanceProvider;
-import com.yahoo.athenz.instance.provider.ResourceException;
+import com.yahoo.athenz.instance.provider.ProviderResourceException;
 import com.yahoo.rdl.JSON;
 import com.yahoo.rdl.Timestamp;
 import org.eclipse.jetty.util.StringUtil;
@@ -36,6 +42,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 import static com.yahoo.athenz.common.server.util.config.ConfigManagerSingleton.CONFIG_MANAGER;
+import static com.yahoo.athenz.instance.provider.impl.InstanceUtils.error;
 
 public class InstanceGCPProvider implements InstanceProvider {
 
@@ -48,24 +55,44 @@ public class InstanceGCPProvider implements InstanceProvider {
     static final String GCP_PROP_CERT_VALIDITY            = "athenz.zts.gcp_cert_validity";
     static final String GCP_SSH_CERT_PRINCIPAL_SEPARATOR  = ",";
     static final String GCP_PROP_GKE_CLUSTER_NAMES        = "athenz.zts.gcp_gke_cluster_names";
+    static final String GCP_PROP_VALIDATE_IP_ADDRESS      = "athenz.zts.gcp_validate_ip_address";
+    static final String GCP_PROP_ALLOWED_IP_ADDRESSES     = "athenz.zts.gcp_allowed_ip_addresses";
+    static final String GCP_ASSUME_IDENTITY_ACTION        = "gcp.assume_identity";
 
     DynamicConfigLong bootTimeOffsetSeconds; // boot time offset in seconds
     long certValidityTime;                   // cert validity for STS creds only case
-    boolean supportRefresh = false;
     String gcpRegion;
     Set<String> dnsSuffixes = null;
     List<String> gkeDnsSuffixes = null;
     InstanceGCPUtils gcpUtils = null;
     DynamicConfigCsv gkeClusterNames;        // list of eks cluster names
+    ExternalCredentialsProvider externalCredentialsProvider = null;
+    RolesProvider rolesProvider = null;
+    DynamicConfigBoolean validateIPAddress;
+    List<IPBlock> systemAllowedIPAddresses;
+    Authorizer authorizer = null;
 
     public long getTimeOffsetInMilli() {
         return bootTimeOffsetSeconds.get() * 1000;
     }
 
+    public RolesProvider getRolesProvider() {
+        return rolesProvider;
+    }
+
+    public ExternalCredentialsProvider getExternalCredentialsProvider() {
+        return externalCredentialsProvider;
+    }
+
+    public void setInstanceGcpUtils(InstanceGCPUtils instanceGcpUtils) {
+        this.gcpUtils = instanceGcpUtils;
+    }
+
     @Override
     public Scheme getProviderScheme() {
-        return Scheme.HTTP;
+        return Scheme.CLASS;
     }
+
     @Override
     public void initialize(String provider, String endpoint, SSLContext sslContext, KeyStore keyStore) {
 
@@ -105,19 +132,39 @@ public class InstanceGCPProvider implements InstanceProvider {
         // get our dynamic list of gke cluster names
 
         gkeClusterNames = new DynamicConfigCsv(CONFIG_MANAGER, GCP_PROP_GKE_CLUSTER_NAMES, null);
+
+        // check if we need to validate the IP addresses in the certificate
+
+        validateIPAddress = new DynamicConfigBoolean(CONFIG_MANAGER, GCP_PROP_VALIDATE_IP_ADDRESS, false);
+        final String certAllowedIPAddresses = System.getProperty(GCP_PROP_ALLOWED_IP_ADDRESSES, "");
+        systemAllowedIPAddresses = InstanceUtils.parseIPBlocks(certAllowedIPAddresses);
     }
 
-    public ResourceException error(String message) {
-        return error(ResourceException.FORBIDDEN, message);
+    @Override
+    public void setRolesProvider(RolesProvider rolesProvider) {
+        this.rolesProvider = rolesProvider;
     }
 
-    public ResourceException error(int errorCode, String message) {
-        LOGGER.error(message);
-        return new ResourceException(errorCode, message);
+    @Override
+    public void setExternalCredentialsProvider(ExternalCredentialsProvider externalCredentialsProvider) {
+        this.externalCredentialsProvider = externalCredentialsProvider;
+    }
+
+    @Override
+    public void setAuthorizer(Authorizer authorizer) {
+        this.authorizer = authorizer;
     }
 
     protected Set<String> getDnsSuffixes() {
         return dnsSuffixes;
+    }
+
+    protected List<String> getGkeDnsSuffixes() {
+        return gkeDnsSuffixes;
+    }
+
+    protected List<String> getGkeClusterNames() {
+        return gkeClusterNames.getStringsList();
     }
 
     boolean validateGCPProject(final String gcpProject, final String docProject, StringBuilder errMsg) {
@@ -213,7 +260,7 @@ public class InstanceGCPProvider implements InstanceProvider {
     }
 
     @Override
-    public InstanceConfirmation confirmInstance(InstanceConfirmation confirmation) {
+    public InstanceConfirmation confirmInstance(InstanceConfirmation confirmation) throws ProviderResourceException {
 
         GCPAttestationData attestationData = JSON.fromString(confirmation.getAttestationData(),
                 GCPAttestationData.class);
@@ -234,13 +281,12 @@ public class InstanceGCPProvider implements InstanceProvider {
         // validate the certificate host names
 
         StringBuilder instanceId = new StringBuilder(256);
-        if (!InstanceUtils.validateCertRequestSanDnsNames(instanceAttributes, instanceDomain,
-                instanceService, getDnsSuffixes(), gkeDnsSuffixes, gkeClusterNames.getStringsList(), true, instanceId)) {
-            throw error("Unable to validate certificate request hostnames");
-        }
+        validateSanDnsNames(instanceAttributes, instanceDomain, instanceService, instanceId);
+
+        // validate the attestation data
 
         validateAttestationData(confirmation, attestationData, derivedAttestationData, gcpProject,
-                instanceId.toString(), true, errMsg);
+                instanceId.toString(), InstanceUtils.shouldCheckBootTime(instanceAttributes), errMsg);
 
         // if we're given an instance name uri in the csr, then we should
         // validate that as well
@@ -252,7 +298,11 @@ public class InstanceGCPProvider implements InstanceProvider {
         // we are using gcpProject name instead of domain name here since there is a 1:1
         // mapping between gcp project and Athenz domain.
 
-        validateAthenzService(derivedAttestationData, instanceService, gcpProject);
+        validateAthenzService(derivedAttestationData, instanceService, gcpProject, instanceDomain);
+
+        // validate the IP address in the certificate if enabled
+
+        InstanceUtils.validateCertIPAddresses(validateIPAddress, instanceAttributes, null, systemAllowedIPAddresses);
 
         // set the attributes to be returned to the ZTS server
         // additional metadata is only available on GCE so using that
@@ -264,15 +314,14 @@ public class InstanceGCPProvider implements InstanceProvider {
     }
 
     @Override
-    public InstanceConfirmation refreshInstance(InstanceConfirmation confirmation) {
+    public InstanceConfirmation refreshInstance(InstanceConfirmation confirmation) throws ProviderResourceException {
+
         // if we don't have an attestation data then we're going to
-        // return not found exception unless the provider is required
-        // to support refresh and in that case we'll return forbidden
+        // return not forbidden exception
 
         final String attestationDataStr = confirmation.getAttestationData();
-        if (attestationDataStr == null || attestationDataStr.isEmpty()) {
-            int errorCode = supportRefresh ? ResourceException.FORBIDDEN : ResourceException.NOT_FOUND;
-            throw error(errorCode, "No attestation data provided during refresh");
+        if (StringUtil.isEmpty(attestationDataStr)) {
+            throw error("No attestation data provided during refresh");
         }
 
         GCPAttestationData attestationData = JSON.fromString(attestationDataStr, GCPAttestationData.class);
@@ -280,6 +329,7 @@ public class InstanceGCPProvider implements InstanceProvider {
         StringBuilder errMsg = new StringBuilder(256);
 
         final Map<String, String> instanceAttributes = confirmation.getAttributes();
+        final String instanceDomain = confirmation.getDomain();
         final String instanceService = confirmation.getService();
 
         // make sure request is for a valid gcp project
@@ -289,16 +339,13 @@ public class InstanceGCPProvider implements InstanceProvider {
             throw error("Unable to find GCP Project id");
         }
 
-        // extract the instance id as well
+        // validate the certificate host names
 
-        final String instanceId = InstanceUtils.getInstanceProperty(instanceAttributes,
-                InstanceProvider.ZTS_INSTANCE_ID);
-        if (instanceId == null) {
-            throw error("Unable to extract Instance Id");
-        }
+        StringBuilder instanceId = new StringBuilder(256);
+        validateSanDnsNames(instanceAttributes, instanceDomain, instanceService, instanceId);
 
         validateAttestationData(confirmation, attestationData, derivedAttestationData,
-                gcpProject, instanceId, false, errMsg);
+                gcpProject, instanceId.toString(), false, errMsg);
 
         // if we're given an instance name uri in the csr, then we should
         // validate that as well
@@ -308,7 +355,11 @@ public class InstanceGCPProvider implements InstanceProvider {
         // validate that the domain/service given in the confirmation
         // request match the attestation data
 
-        validateAthenzService(derivedAttestationData, instanceService, gcpProject);
+        validateAthenzService(derivedAttestationData, instanceService, gcpProject, instanceDomain);
+
+        // validate the IP address in the certificate if enabled
+
+        InstanceUtils.validateCertIPAddresses(validateIPAddress, instanceAttributes, null, systemAllowedIPAddresses);
 
         // set the attributes to be returned to the ZTS server
 
@@ -317,8 +368,18 @@ public class InstanceGCPProvider implements InstanceProvider {
         return confirmation;
     }
 
-    private void validateAttestationData(InstanceConfirmation confirmation, GCPAttestationData attestationData, GCPDerivedAttestationData derivedAttestationData, String gcpProject, String instanceId,
-                                         boolean checkTime, StringBuilder errMsg) {
+    public void validateSanDnsNames(final Map<String, String> instanceAttributes, final String instanceDomain,
+            final String instanceService, StringBuilder instanceId) throws ProviderResourceException {
+        if (!InstanceUtils.validateCertRequestSanDnsNames(instanceAttributes, instanceDomain,
+                instanceService, getDnsSuffixes(), getGkeDnsSuffixes(), getGkeClusterNames(),
+                true, instanceId, null)) {
+            throw error("Unable to validate certificate request hostnames");
+        }
+    }
+
+    private void validateAttestationData(InstanceConfirmation confirmation, GCPAttestationData attestationData,
+            GCPDerivedAttestationData derivedAttestationData, String gcpProject, String instanceId,
+            boolean checkTime, StringBuilder errMsg) throws ProviderResourceException {
 
         // validate the instance identity token
 
@@ -328,7 +389,8 @@ public class InstanceGCPProvider implements InstanceProvider {
         }
     }
 
-    void validateInstanceNameUri(GCPAdditionalAttestationData attestationData, final Map<String, String> attributes) {
+    void validateInstanceNameUri(GCPAdditionalAttestationData attestationData, final Map<String, String> attributes)
+            throws ProviderResourceException {
 
         final String uriList = InstanceUtils.getInstanceProperty(attributes, InstanceProvider.ZTS_INSTANCE_SAN_URI);
         if (StringUtil.isEmpty(uriList)) {
@@ -358,7 +420,9 @@ public class InstanceGCPProvider implements InstanceProvider {
         }
     }
 
-    private void validateAthenzService(GCPDerivedAttestationData derivedAttestationData, String instanceService, String gcpProject) {
+    private void validateAthenzService(GCPDerivedAttestationData derivedAttestationData, final String instanceService,
+            final String gcpProject, final String instanceDomain) throws ProviderResourceException {
+
         // validate that the gcp project/service given in the confirmation
         // request match the attestation data
         // we are using gcp project name instead of domain name here since there is a 1:1
@@ -367,7 +431,25 @@ public class InstanceGCPProvider implements InstanceProvider {
         final String serviceName = gcpProject + "." + instanceService;
         final String attestedServiceName = gcpUtils.getServiceNameFromAttestedData(derivedAttestationData);
         if (!serviceName.equals(attestedServiceName)) {
-            throw error("Service name mismatch: attested=" + attestedServiceName + " vs. requested=" + serviceName);
+
+            // if the values don't match, we're going to perform an authorization
+            // check to see if the principal is authorized to request on behalf
+            // of the given service. this will allow us to support cases where
+            // multiple gcp services are allowed to assume the same athenz service
+
+            Principal principal = SimplePrincipal.create(instanceDomain, instanceService, (String) null);
+
+            // for the resource we're going to use the same resource as we do for the
+            // gcp.assume_service action: {athenz-domain}:services/{gcp-service-name}
+
+            if (!attestedServiceName.startsWith(gcpProject + ".")) {
+                throw error("Attested service name: " + attestedServiceName + " does not start with expected project name: " + gcpProject);
+            }
+            final String resource = instanceDomain + ":services/" + attestedServiceName.substring(gcpProject.length() + 1);
+            boolean accessCheck = authorizer.access(GCP_ASSUME_IDENTITY_ACTION, resource, principal, null);
+            if (!accessCheck) {
+                throw error("Service name mismatch: attested=" + attestedServiceName + " vs. requested=" + serviceName);
+            }
         }
     }
 

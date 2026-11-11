@@ -17,60 +17,110 @@
 package attestation
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"strings"
 
-	"github.com/AthenZ/athenz/libs/go/sia/aws/options"
 	"github.com/AthenZ/athenz/libs/go/sia/aws/stssession"
-	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/aws-sdk-go-v2/service/sts/types"
 )
 
 type AttestationData struct {
-	Role      string `json:"role,omitempty"`      //the IAM role. This must match the athenz service identity
-	Access    string `json:"access,omitempty"`    //the temp creds access key id
-	Secret    string `json:"secret,omitempty"`    //the temp creds secret key
-	Token     string `json:"token,omitempty"`     //the temp creds session token
-	Document  string `json:"document,omitempty"`  //for EC2 instance document
-	Signature string `json:"signature,omitempty"` //for EC2 instance document pkcs7 signature
+	Role          string `json:"role,omitempty"`          //the IAM role. This must match the athenz service identity
+	CommonName    string `json:"commonName,omitempty"`    //The common name for CSR. Different from Role if we're using service name only
+	Access        string `json:"access,omitempty"`        //the temp creds access key id
+	Secret        string `json:"secret,omitempty"`        //the temp creds secret key
+	Token         string `json:"token,omitempty"`         //the temp creds session token
+	Document      string `json:"document,omitempty"`      //for EC2 instance document
+	Signature     string `json:"signature,omitempty"`     //for EC2 instance document pkcs7 signature
+	IdentityToken string `json:"identityToken,omitempty"` //AWS web identity token (JWT); when set, ZTS uses the local JWT validation path
 }
 
 // New creates a new AttestationData with values fed to it and from the result of STS Assume Role.
 // This requires an identity document along with its signature. The aws account and region will
 // be extracted from the identity document.
-func New(opts *options.Options, service string) (*AttestationData, error) {
-
-	role := fmt.Sprintf("%s.%s", opts.Domain, service)
-	tok, err := getSTSToken(opts.UseRegionalSTS, opts.Region, opts.Account, role)
-	if err != nil {
-		return nil, err
+func New(domain, service, region, account, ec2Document, ec2Signature string, useRegionalSTS, omitDomain bool, rolePath string) (string, error) {
+	commonName := fmt.Sprintf("%s.%s", domain, service)
+	var role string
+	if omitDomain {
+		role = service
+	} else {
+		role = commonName
 	}
-	return &AttestationData{
-		Role:      role,
-		Document:  opts.EC2Document,
-		Signature: opts.EC2Signature,
-		Access:    *tok.Credentials.AccessKeyId,
-		Secret:    *tok.Credentials.SecretAccessKey,
-		Token:     *tok.Credentials.SessionToken,
-	}, nil
+	tok, err := getSTSToken(useRegionalSTS, region, account, role, rolePath)
+	if err != nil {
+		return "", err
+	}
+	data, err := json.Marshal(&AttestationData{
+		Role:       role,
+		CommonName: commonName,
+		Document:   ec2Document,
+		Signature:  ec2Signature,
+		Access:     *tok.Credentials.AccessKeyId,
+		Secret:     *tok.Credentials.SecretAccessKey,
+		Token:      *tok.Credentials.SessionToken,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return string(data), nil
 }
 
-func getSTSToken(useRegionalSTS bool, region, account, role string) (*sts.AssumeRoleOutput, error) {
+func getSTSToken(useRegionalSTS bool, region, account, role, rolePath string) (*sts.AssumeRoleOutput, error) {
 	// Attempt STS AssumeRole
-	stsSession, err := stssession.New(useRegionalSTS, region)
+	stsClient, err := stssession.New(useRegionalSTS, region)
 	if err != nil {
 		log.Printf("unable to create new session: %v\n", err)
 		return nil, err
 	}
-	stsService := sts.New(stsSession)
-	roleArn := fmt.Sprintf("arn:aws:iam::%s:role/%s", account, role)
+	var roleArn string
+	if rolePath != "" {
+	    roleArn = fmt.Sprintf("arn:aws:iam::%s:role/%s/%s", account, rolePath, role)
+    } else {
+        roleArn = fmt.Sprintf("arn:aws:iam::%s:role/%s", account, role)
+    }
 	log.Printf("Trying to assume role: %v\n", roleArn)
-	return stsService.AssumeRole(&sts.AssumeRoleInput{
+	return stsClient.AssumeRole(context.TODO(), &sts.AssumeRoleInput{
 		RoleArn:         &roleArn,
 		RoleSessionName: &role,
 	})
+}
+
+// NewWebIdentity creates AttestationData populated with an AWS-issued OIDC web identity
+// token (JWT) instead of STS temporary credentials. ZTS routes to its local JWT
+// validation path when identityToken is non-empty. audience is the intended recipient
+// of the token (typically the ZTS URL). signingAlgorithm must be "RS256" or "ES384".
+// durationSeconds sets the token lifetime and must be between 60 and 3600 (inclusive)
+// to account for clock skew tolerance; the default is 300 s (5 min).
+// tags is an optional list of key/value pairs added as custom claims to the JWT.
+func NewWebIdentity(domain, service, region, audience, signingAlgorithm string, useRegionalSTS, omitDomain bool, durationSeconds int32, tags []types.Tag, ec2Document, ec2Signature string) (string, error) {
+	commonName := fmt.Sprintf("%s.%s", domain, service)
+	var role string
+	if omitDomain {
+		role = service
+	} else {
+		role = commonName
+	}
+	tok, err := stssession.GetWebIdentityToken(useRegionalSTS, region, audience, signingAlgorithm, durationSeconds, tags)
+	if err != nil {
+		return "", err
+	}
+	data, err := json.Marshal(&AttestationData{
+		Role:          role,
+		CommonName:    commonName,
+		Document:      ec2Document,
+		Signature:     ec2Signature,
+		IdentityToken: tok,
+	})
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func GetECSTaskId() string {
@@ -105,17 +155,4 @@ func GetECSTaskId() string {
 		return ""
 	}
 	return taskId
-}
-
-// GetAttestationData fetches attestation data for all the services mentioned in the config file
-func GetAttestationData(opts *options.Options) ([]*AttestationData, error) {
-	data := []*AttestationData{}
-	for _, svc := range opts.Services {
-		a, err := New(opts, svc.Name)
-		if err != nil {
-			return nil, err
-		}
-		data = append(data, a)
-	}
-	return data, nil
 }

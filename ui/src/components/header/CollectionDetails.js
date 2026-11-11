@@ -16,8 +16,8 @@
 import styled from '@emotion/styled';
 import DateUtils from '../utils/DateUtils';
 import React from 'react';
-import { selectTimeZone } from '../../redux/selectors/domains';
 import { connect } from 'react-redux';
+import { selectTimeZone } from '../../redux/selectors/domains';
 
 const DomainSectionDiv = styled.div`
     margin: 20px 0;
@@ -68,11 +68,30 @@ class CollectionDetails extends React.Component {
                         <ValueDiv>{modifiedDate}</ValueDiv>
                         <LabelDiv>MODIFIED DATE</LabelDiv>
                     </SectionDiv>
-                    <SectionDiv>
-                        <ValueDiv>{lastReviewedDate}</ValueDiv>
-                        <LabelDiv>REVIEWED DATE</LabelDiv>
-                    </SectionDiv>
+                    {this.props.categroy !== 'policy' &&
+                    this.props.categroy !== 'service' ? (
+                        <SectionDiv>
+                            <ValueDiv>{lastReviewedDate}</ValueDiv>
+                            <LabelDiv>REVIEWED DATE</LabelDiv>
+                        </SectionDiv>
+                    ) : null}
+                    {this.props.collectionDetails.description ? (
+                        <SectionDiv>
+                            <ValueDiv>
+                                {this.props.collectionDetails.description}
+                            </ValueDiv>
+                            <LabelDiv>Description</LabelDiv>
+                        </SectionDiv>
+                    ) : null}
                 </DetailsDiv>
+                {this.props.category === 'policy' ? (
+                    <SectionDiv>
+                        <ValueDiv>
+                            {this.props.collectionDetails.version}
+                        </ValueDiv>
+                        <LabelDiv>POLICY VERSION</LabelDiv>
+                    </SectionDiv>
+                ) : null}
             </DomainSectionDiv>
         );
     }

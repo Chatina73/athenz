@@ -5,6 +5,129 @@
     "comment": "The User Management Service (UMS) API",
     "types": [
         {
+            "EnumTypeDef": {
+                "type": "Enum",
+                "name": "AthenzEntityAction",
+                "elements": [
+                    {
+                        "symbol": "create"
+                    },
+                    {
+                        "symbol": "delete"
+                    },
+                    {
+                        "symbol": "update"
+                    }
+                ]
+            }
+        },
+        {
+            "EnumTypeDef": {
+                "type": "Enum",
+                "name": "AthenzEntityType",
+                "elements": [
+                    {
+                        "symbol": "domain"
+                    },
+                    {
+                        "symbol": "role"
+                    },
+                    {
+                        "symbol": "group"
+                    },
+                    {
+                        "symbol": "service"
+                    },
+                    {
+                        "symbol": "policy"
+                    },
+                    {
+                        "symbol": "entity"
+                    }
+                ]
+            }
+        },
+        {
+            "EnumTypeDef": {
+                "type": "Enum",
+                "name": "AthenzDependencyResponseStatus",
+                "elements": [
+                    {
+                        "symbol": "allow"
+                    },
+                    {
+                        "symbol": "deny"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "AthenzDependencyRequest",
+                "fields": [
+                    {
+                        "name": "operation",
+                        "type": "AthenzEntityAction",
+                        "optional": false,
+                        "comment": "domain action like, create/delete/..."
+                    },
+                    {
+                        "name": "domainName",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "domain name"
+                    },
+                    {
+                        "name": "objectType",
+                        "type": "AthenzEntityType",
+                        "optional": false,
+                        "comment": "entity type like, domain/role/..."
+                    },
+                    {
+                        "name": "objectName",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "name of the athenz entity"
+                    },
+                    {
+                        "name": "principal",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "principal of the executing operation"
+                    },
+                    {
+                        "name": "provider",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "provider service identity"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "AthenzDependencyResponse",
+                "fields": [
+                    {
+                        "name": "status",
+                        "type": "AthenzDependencyResponseStatus",
+                        "optional": false,
+                        "comment": "whether the request is allowed or denied"
+                    },
+                    {
+                        "name": "message",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "reason for denial"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
             "StringTypeDef": {
                 "type": "String",
                 "name": "SimpleName",
@@ -177,7 +300,31 @@
                 "type": "String",
                 "name": "ClusterInfo",
                 "comment": "Cluster info",
-                "pattern": "[a-z0-9][a-z0-9-]*"
+                "pattern": "[a-z0-9][a-z0-9.]*[a-z0-9-]*"
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "TagValue",
+                "comment": "Tag Value",
+                "pattern": "[a-zA-Z0-9_:,\\/][a-zA-Z0-9_:,\\/-]*"
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "TagCompoundValue",
+                "comment": "Tag Compound Value",
+                "pattern": "([a-zA-Z0-9_:,\\/][a-zA-Z0-9_:,\\/-]*\\.)*[a-zA-Z0-9_:,\\/][a-zA-Z0-9_:,\\/-]*"
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "RestrictToValue",
+                "comment": "Restrict To tag value",
+                "pattern": "([a-zA-Z0-9_:,\\/][a-zA-Z0-9_:,\\/-]*\\.)*[a-zA-Z0-9_:,\\/][a-zA-Z0-9_:,\\/-]*"
             }
         },
         {
@@ -210,6 +357,12 @@
                         "symbol": "SSH_IN_SUDO_RR"
                     },
                     {
+                        "symbol": "SSH_IN_PUSHSHELL"
+                    },
+                    {
+                        "symbol": "SSH_IN_NOLOGIN"
+                    },
+                    {
                         "symbol": "LOCAL"
                     }
                 ]
@@ -233,6 +386,38 @@
             }
         },
         {
+            "EnumTypeDef": {
+                "type": "Enum",
+                "name": "Environment",
+                "elements": [
+                    {
+                        "symbol": "def"
+                    },
+                    {
+                        "symbol": "development"
+                    },
+                    {
+                        "symbol": "integration"
+                    },
+                    {
+                        "symbol": "qa"
+                    },
+                    {
+                        "symbol": "staging"
+                    },
+                    {
+                        "symbol": "sandbox"
+                    },
+                    {
+                        "symbol": "production"
+                    },
+                    {
+                        "symbol": "productionExpiryOptional"
+                    }
+                ]
+            }
+        },
+        {
             "StructTypeDef": {
                 "type": "Struct",
                 "name": "CalypsoCliVersion",
@@ -248,6 +433,26 @@
                         "type": "Bool",
                         "optional": false,
                         "comment": "Indicate whether its emergency version"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "ProfileDeleteError",
+                "fields": [
+                    {
+                        "name": "rolesNotDeleted",
+                        "type": "Array",
+                        "optional": false,
+                        "items": "EntityName"
+                    },
+                    {
+                        "name": "message",
+                        "type": "String",
+                        "optional": false
                     }
                 ],
                 "closed": false
@@ -363,6 +568,12 @@
                         "optional": false,
                         "comment": "list of users in the groups",
                         "items": "EntityName"
+                    },
+                    {
+                        "name": "systemGroup",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "flag indicating it's a system group or not"
                     }
                 ],
                 "closed": false
@@ -636,6 +847,12 @@
                         "items": "UserRole"
                     },
                     {
+                        "name": "systemGroup",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "used only for unix group, indicating it's a system group or not"
+                    },
+                    {
                         "name": "sshTouchless",
                         "type": "Bool",
                         "optional": true,
@@ -856,6 +1073,20 @@
                         "items": "HeadlessRole"
                     },
                     {
+                        "name": "environment",
+                        "type": "Environment",
+                        "optional": true,
+                        "comment": "Environment for the profile",
+                        "default": "def"
+                    },
+                    {
+                        "name": "elevatedClearance",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "If true, all roles in the profile will have elevated clearance",
+                        "default": false
+                    },
+                    {
                         "name": "sshStrict",
                         "type": "Bool",
                         "optional": true,
@@ -934,7 +1165,7 @@
                     {
                         "name": "commandList",
                         "type": "String",
-                        "optional": false,
+                        "optional": true,
                         "comment": "list of cmds, ex: \"/usr/bin/yinst; ls /home/y/var/db/*\""
                     }
                 ],
@@ -1017,7 +1248,13 @@
                         "name": "text",
                         "type": "String",
                         "optional": false,
-                        "comment": "Text describes the error"
+                        "comment": "Text describes the error in detail"
+                    },
+                    {
+                        "name": "title",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "Short description of error"
                     },
                     {
                         "name": "stdout",
@@ -1058,6 +1295,14 @@
                         "type": "Timestamp",
                         "optional": true,
                         "comment": "timestamp of the error last reported by Calypso CLI"
+                    },
+                    {
+                        "name": "metadata",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "Metadata of the host sent by calypso CLI",
+                        "items": "String",
+                        "keys": "String"
                     }
                 ],
                 "closed": false
@@ -1172,6 +1417,42 @@
     ],
     "resources": [
         {
+            "type": "AthenzDependencyRequest",
+            "method": "POST",
+            "path": "/dependency-check",
+            "comment": "update permission on the domain",
+            "inputs": [
+                {
+                    "name": "request",
+                    "type": "AthenzDependencyRequest",
+                    "comment": "request",
+                    "pathParam": false,
+                    "optional": false,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": false,
+                "action": "access",
+                "resource": "sys.calypso:dependency"
+            },
+            "expected": "OK",
+            "exceptions": {
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                }
+            }
+        },
+        {
             "type": "ProfileRoleMembers",
             "method": "GET",
             "path": "/domain/{domainName}/profile/{profileName}/member",
@@ -1199,6 +1480,15 @@
                     "comment": "host name which will be used for retrieving members for",
                     "pathParam": false,
                     "queryParam": "hostname",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "restrictTo",
+                    "type": "RestrictToValue",
+                    "comment": "restrictTo tag values will be used for retrieving members",
+                    "pathParam": false,
+                    "queryParam": "restrictTo",
                     "optional": true,
                     "flag": false
                 }
@@ -1388,6 +1678,16 @@
                     "pathParam": true,
                     "optional": false,
                     "flag": false
+                },
+                {
+                    "name": "deleteAllRoles",
+                    "type": "Bool",
+                    "comment": "If true, all roles used in the profile will be deleted. If false, only roles with prefix ums.<profileName>. will be deleted",
+                    "pathParam": false,
+                    "queryParam": "deleteAllRoles",
+                    "optional": false,
+                    "flag": false,
+                    "default": false
                 },
                 {
                     "name": "auditRef",

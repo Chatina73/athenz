@@ -16,12 +16,12 @@
 
 package com.yahoo.athenz.common.server.status;
 
-import static com.yahoo.athenz.common.server.rest.ResourceException.INTERNAL_SERVER_ERROR;
-import static com.yahoo.athenz.common.server.rest.ResourceException.symbolForCode;
+import static com.yahoo.athenz.common.server.ServerResourceException.INTERNAL_SERVER_ERROR;
+import static com.yahoo.athenz.common.server.ServerResourceException.symbolForCode;
 
 public class StatusCheckException extends Exception {
-    private int httpCode;
-    private String msg;
+    private final int httpCode;
+    private final String msg;
 
     public StatusCheckException() {
         this.httpCode = INTERNAL_SERVER_ERROR;

@@ -21,28 +21,27 @@ package com.yahoo.athenz.db.dynamodb;
 import com.yahoo.athenz.auth.PrivateKeyStore;
 
 public class DynamoDBClientSettings {
-    private String certPath;
-    private String domainName;
-    private String roleName;
-    private String trustStore;
-    private String trustStorePassword;
-    private String ztsURL;
-    private String region;
-    private String keyPath;
+    private final String certPath;
+    private final String domainName;
+    private final String roleName;
+    private final String trustStore;
+    private final String trustStorePassword;
+    private final String ztsURL;
+    private final String region;
+    private final String keyPath;
+    private final String appName;
+    private final PrivateKeyStore keyStore;
+    private final String externalId;
+    private final Integer minExpiryTime;
+    private final Integer maxExpiryTime;
+    private final String keyGroupName;
+    private final boolean isAsyncClient;
 
-    public DynamoDBClientSettings(String certPath,
-                                  String domainName,
-                                  String roleName,
-                                  String trustStore,
-                                  String trustStorePassword,
-                                  String ztsURL,
-                                  String region,
-                                  String keyPath,
-                                  String appName,
-                                  PrivateKeyStore keyStore,
-                                  String externalId,
-                                  Integer minExpiryTime,
-                                  Integer maxExpiryTime) {
+    public DynamoDBClientSettings(String certPath, String domainName, String roleName, String trustStore,
+            String trustStorePassword, String ztsURL, String region, String keyPath, String appName,
+            PrivateKeyStore keyStore, String externalId, Integer minExpiryTime, Integer maxExpiryTime,
+            String keyGroupName, boolean isAsyncClient) {
+
         this.certPath = certPath;
         this.domainName = domainName;
         this.roleName = roleName;
@@ -56,13 +55,9 @@ public class DynamoDBClientSettings {
         this.externalId = externalId;
         this.minExpiryTime = minExpiryTime;
         this.maxExpiryTime = maxExpiryTime;
+        this.keyGroupName = keyGroupName;
+        this.isAsyncClient = isAsyncClient;
     }
-
-    private String appName;
-    private PrivateKeyStore keyStore;
-    private String externalId;
-    private Integer minExpiryTime;
-    private Integer maxExpiryTime;
 
     public boolean areCredentialsProvided() {
         return (keyPath != null && !keyPath.isEmpty() &&
@@ -116,16 +111,15 @@ public class DynamoDBClientSettings {
         return maxExpiryTime;
     }
 
-    @Deprecated
-    public String getTrustStorePassword() {
-        return String.valueOf(getTrustStorePasswordChars());
-    }
-
-    char[] getTrustStorePasswordChars() {
+    public char[] getTrustStorePasswordChars() {
         if (keyStore == null) {
             return null;
         }
 
-        return keyStore.getSecret(appName, trustStorePassword);
+        return keyStore.getSecret(appName, keyGroupName, trustStorePassword);
+    }
+
+    public boolean isAsyncClient() {
+        return isAsyncClient;
     }
 }

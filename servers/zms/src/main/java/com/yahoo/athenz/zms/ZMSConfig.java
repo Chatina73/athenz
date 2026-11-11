@@ -16,7 +16,9 @@
 package com.yahoo.athenz.zms;
 
 import com.yahoo.athenz.auth.Authority;
+import com.yahoo.athenz.zms.config.AuditTemplate;
 import com.yahoo.athenz.zms.config.SolutionTemplates;
+import com.yahoo.rdl.Validator;
 
 import java.util.List;
 
@@ -27,8 +29,11 @@ public class ZMSConfig {
     private String userDomainPrefix;
     private String headlessUserDomainPrefix;
     private List<String> addlUserCheckDomainPrefixList;
-    private SolutionTemplates serverSolutionTemplates;
+    private volatile SolutionTemplates serverSolutionTemplates;
     private Authority userAuthority;
+    private Validator validator;
+    private AuditTemplate auditTemplate;
+    private boolean auditTemplateDomainFeatureFlagCheck;
 
     public String getUserDomain() {
         return userDomain;
@@ -84,5 +89,29 @@ public class ZMSConfig {
 
     public void setUserAuthority(Authority userAuthority) {
         this.userAuthority = userAuthority;
+    }
+
+    public Validator getValidator() {
+        return validator;
+    }
+
+    public void setValidator(Validator validator) {
+        this.validator = validator;
+    }
+
+    public AuditTemplate getAuditTemplate() {
+        return auditTemplate;
+    }
+
+    public void setAuditTemplate(AuditTemplate auditTemplate) {
+        this.auditTemplate = auditTemplate;
+    }
+
+    public boolean isAuditTemplateDomainFeatureFlagCheck() {
+        return auditTemplateDomainFeatureFlagCheck;
+    }
+
+    public void setAuditTemplateDomainFeatureFlagCheck(boolean auditTemplateDomainFeatureFlagCheck) {
+        this.auditTemplateDomainFeatureFlagCheck = auditTemplateDomainFeatureFlagCheck;
     }
 }

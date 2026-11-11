@@ -168,9 +168,6 @@ exports[`PendingApprovalTable should render 1`] = `
   font-size: 14px;
   font-weight: 300;
   box-sizing: border-box;
-  display: -webkit-inline-box;
-  display: -webkit-inline-flex;
-  display: -ms-inline-flexbox;
   display: inline-flex;
   -webkit-box-flex-flow: column nowrap;
   -webkit-flex-flow: column nowrap;
@@ -284,9 +281,6 @@ exports[`PendingApprovalTable should render 1`] = `
 }
 
 .emotion-24 {
-  display: -webkit-box;
-  display: -webkit-flex;
-  display: -ms-flexbox;
   display: flex;
 }
 
@@ -479,6 +473,7 @@ exports[`PendingApprovalTable should render 1`] = `
             />
             <input
               class=" form-control input"
+              id="workflowHeaderExpiry"
               placeholder="Expiration (Optional)"
               readonly="readonly"
               tabindex="0"
@@ -491,6 +486,7 @@ exports[`PendingApprovalTable should render 1`] = `
               <svg
                 class="emotion-28"
                 data-testid="icon"
+                data-wdio=""
                 height="1.25em"
                 id=""
                 viewBox="0 0 1024 1024"
@@ -527,6 +523,7 @@ exports[`PendingApprovalTable should render 1`] = `
             />
             <input
               class=" form-control input"
+              id="workflowHeaderReviewReminder"
               placeholder="Reminder (Optional)"
               readonly="readonly"
               tabindex="0"
@@ -539,6 +536,7 @@ exports[`PendingApprovalTable should render 1`] = `
               <svg
                 class="emotion-28"
                 data-testid="icon"
+                data-wdio=""
                 height="1.25em"
                 id=""
                 viewBox="0 0 1024 1024"
@@ -564,6 +562,7 @@ exports[`PendingApprovalTable should render 1`] = `
           <svg
             class="emotion-42"
             data-testid="icon"
+            data-wdio=""
             height="1.25em"
             id=""
             viewBox="0 0 1024 1024"
@@ -590,6 +589,7 @@ exports[`PendingApprovalTable should render 1`] = `
           <svg
             class="emotion-42"
             data-testid="icon"
+            data-wdio=""
             height="1.25em"
             id=""
             viewBox="0 0 1024 1024"

@@ -18,8 +18,13 @@
 
 package com.yahoo.athenz.zms;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.io.Resources;
-import com.wix.mysql.EmbeddedMysql;
+import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jose.JWSObject;
+import com.nimbusds.jose.JWSVerifier;
+import com.nimbusds.jose.crypto.RSASSAVerifier;
+import com.nimbusds.jose.util.Base64URL;
 import com.yahoo.athenz.auth.Authority;
 import com.yahoo.athenz.auth.Principal;
 import com.yahoo.athenz.auth.impl.FilePrivateKeyStore;
@@ -28,7 +33,9 @@ import com.yahoo.athenz.auth.util.Crypto;
 import com.yahoo.athenz.common.server.log.AuditLogger;
 import com.yahoo.athenz.common.server.log.impl.DefaultAuditLogger;
 import com.yahoo.athenz.common.server.notification.NotificationManager;
+import com.yahoo.athenz.common.server.rest.ServerResourceContext;
 import com.yahoo.athenz.common.server.util.ResourceUtils;
+import com.yahoo.athenz.zms.provider.ServiceProviderManager;
 import com.yahoo.rdl.Struct;
 import com.yahoo.rdl.Timestamp;
 import jakarta.servlet.ServletContext;
@@ -37,20 +44,23 @@ import org.mockito.MockitoAnnotations;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.testcontainers.containers.MySQLContainer;
+
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.interfaces.RSAPublicKey;
+import java.text.ParseException;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static com.yahoo.athenz.common.ServerCommonConsts.METRIC_DEFAULT_FACTORY_CLASS;
 import static com.yahoo.athenz.zms.ZMSConsts.*;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.fail;
+import static org.testng.Assert.*;
 
 public class ZMSTestInitializer {
     public static final String ZMS_PROP_PUBLIC_KEY = "athenz.zms.publickey";
@@ -69,7 +79,7 @@ public class ZMSTestInitializer {
     //
 
     private final RsrcCtxWrapper mockDomRsrcCtx = Mockito.mock(RsrcCtxWrapper.class);
-    private final com.yahoo.athenz.common.server.rest.ResourceContext mockDomRestRsrcCtx = Mockito.mock(com.yahoo.athenz.common.server.rest.ResourceContext.class);
+    private final ServerResourceContext mockDomRestRsrcCtx = Mockito.mock(ServerResourceContext.class);
     private AuditLogger auditLogger = null; // default audit logger
 
     public static final String MOCKCLIENTADDR = "10.11.12.13";
@@ -92,10 +102,11 @@ public class ZMSTestInitializer {
     public static synchronized int getRandomProductId() {
         return BASE_PRODUCT_ID + domainProductId.nextInt(99999999);
     }
-    private EmbeddedMysql mysqld;
+    private static MySQLContainer<?> mysqld;
 
     public void startMemoryMySQL() {
         mysqld = ZMSTestUtils.startMemoryMySQL(DB_USER, DB_PASS);
+        ZMSTestUtils.clearDatabase(mysqld, DB_PASS);
     }
 
     public void stopMemoryMySQL() {
@@ -104,14 +115,22 @@ public class ZMSTestInitializer {
 
     public void setDatabaseReadOnlyMode(boolean readOnlyMode) {
         zms.dbService.defaultRetryCount = 3;
-        ZMSTestUtils.setDatabaseReadOnlyMode(mysqld, readOnlyMode);
+        try {
+            ZMSTestUtils.setDatabaseReadOnlyMode(mysqld, readOnlyMode, DB_PASS);
+        } catch (IOException | InterruptedException e) {
+            fail();
+        }
+    }
+
+    public void refreshExternalMemberValidators() {
+        zms.externalMemberValidatorManager.refreshValidators();
     }
 
     public void setUp() throws Exception {
         MockitoAnnotations.openMocks(this);
 
-        System.setProperty(ZMSConsts.ZMS_PROP_OBJECT_STORE_FACTORY_CLASS, "com.yahoo.athenz.zms.store.impl.JDBCObjectStoreFactory");
-        System.setProperty(ZMSConsts.ZMS_PROP_JDBC_RW_STORE, "jdbc:mysql://localhost:3310/zms_server");
+        System.setProperty(ZMSConsts.ZMS_PROP_OBJECT_STORE_FACTORY_CLASS, "com.yahoo.athenz.common.server.store.impl.JDBCObjectStoreFactory");
+        System.setProperty(ZMSConsts.ZMS_PROP_JDBC_RW_STORE, mysqld.getJdbcUrl());
         System.setProperty(ZMSConsts.ZMS_PROP_JDBC_RW_USER, DB_USER);
         System.setProperty(ZMSConsts.ZMS_PROP_JDBC_RW_PASSWORD, DB_PASS);
 
@@ -140,6 +159,7 @@ public class ZMSTestInitializer {
                 "role,group,policy,service,domain,entity,tenancy,template");
         System.setProperty(ZMSConsts.ZMS_PROP_VALIDATE_ASSERTION_ROLES, "true");
         System.setProperty(ZMSConsts.ZMS_PROP_PRINCIPAL_STATE_UPDATER_DISABLE_TIMER, "true");
+        System.setProperty(ZMSConsts.ZMS_PROP_DB_HEALTH_CHECK_DISABLE_TIMER, "true");
         System.setProperty(ZMSConsts.ZMS_PROP_MAX_POLICY_VERSIONS, "5");
 
         String certPath = Resources.getResource("service.provider.cert.pem").getPath();
@@ -154,10 +174,28 @@ public class ZMSTestInitializer {
         initializeZms();
     }
 
-    public void clearConnections() {
-        if (zms != null && zms.objectStore != null) {
+    public void shutDown() {
+        if (zms == null) {
+            return;
+        }
+        if (zms.objectStore != null) {
             zms.objectStore.clearConnections();
         }
+        if (zms.externalMemberValidatorManager != null) {
+            zms.externalMemberValidatorManager.shutdown();
+        }
+        zms.shutdownSolutionTemplatesReloadScheduler();
+        zms.shutdownAuthorizedServicesReloadScheduler();
+
+        ServiceProviderManager.getInstance(zms.dbService, zms).shutdown();
+        try {
+            Field instance = ServiceProviderManager.class.getDeclaredField("instance");
+            instance.setAccessible(true);
+            instance.set(null, null);
+        } catch (Exception ignored) {
+        }
+
+        System.clearProperty(ZMS_PROP_SERVICE_PROVIDER_MANAGER_FREQUENCY_SECONDS);
     }
 
     public com.yahoo.athenz.zms.ResourceContext createResourceContext(Principal prince) {
@@ -165,8 +203,8 @@ public class ZMSTestInitializer {
     }
 
     public com.yahoo.athenz.zms.ResourceContext createResourceContext(Principal prince, String apiName) {
-        com.yahoo.athenz.common.server.rest.ResourceContext rsrcCtx =
-                Mockito.mock(com.yahoo.athenz.common.server.rest.ResourceContext.class);
+        ServerResourceContext rsrcCtx =
+                Mockito.mock(ServerResourceContext.class);
         when(rsrcCtx.principal()).thenReturn(prince);
         when(rsrcCtx.request()).thenReturn(mockServletRequest);
         when(rsrcCtx.response()).thenReturn(mockServletResponse);
@@ -190,8 +228,8 @@ public class ZMSTestInitializer {
             return createResourceContext(principal, apiName);
         }
 
-        com.yahoo.athenz.common.server.rest.ResourceContext rsrcCtx =
-                Mockito.mock(com.yahoo.athenz.common.server.rest.ResourceContext.class);
+        ServerResourceContext rsrcCtx =
+                Mockito.mock(ServerResourceContext.class);
         when(rsrcCtx.principal()).thenReturn(principal);
         when(rsrcCtx.request()).thenReturn(request);
         when(rsrcCtx.response()).thenReturn(mockServletResponse);
@@ -261,7 +299,7 @@ public class ZMSTestInitializer {
         ServiceIdentity service = createServiceObject("sys.auth", "zms",
                 "http://localhost", "/usr/bin/java", "root", "users", "host1");
 
-        zmsObj.putServiceIdentity(mockDomRsrcCtx, "sys.auth", "zms", auditRef, false, service);
+        zmsObj.putServiceIdentity(mockDomRsrcCtx, "sys.auth", "zms", auditRef, false, null, service);
         return zmsObj;
     }
 
@@ -310,24 +348,12 @@ public class ZMSTestInitializer {
         return mbr;
     }
 
-    public TopLevelDomain createTopLevelDomainObject(String name,
-                                                      String description, String org, String admin) {
-
-        TopLevelDomain dom = new TopLevelDomain();
-        dom.setName(name);
-        dom.setDescription(description);
-        dom.setOrg(org);
-        dom.setYpmId(getRandomProductId());
-
-        List<String> admins = new ArrayList<>();
-        admins.add(admin);
-        dom.setAdminUsers(admins);
-
-        return dom;
+    public TopLevelDomain createTopLevelDomainObject(String name, String description, String org, String ...admins) {
+        return createTopLevelDomainObject(name, description, org, 0, admins);
     }
 
-    public TopLevelDomain createTopLevelDomainObject(String name,
-                                                     String description, String org, String admin, int memberPurgeExpiryDays) {
+    public TopLevelDomain createTopLevelDomainObject(String name, String description, String org,
+            int memberPurgeExpiryDays, String ...admins) {
 
         TopLevelDomain dom = new TopLevelDomain();
         dom.setName(name);
@@ -335,10 +361,13 @@ public class ZMSTestInitializer {
         dom.setOrg(org);
         dom.setYpmId(getRandomProductId());
         dom.setMemberPurgeExpiryDays(memberPurgeExpiryDays);
-        List<String> admins = new ArrayList<>();
-        admins.add(admin);
-        dom.setAdminUsers(admins);
+        dom.setAdminUsers(new ArrayList<>(List.of(admins)));
         return dom;
+    }
+
+    public TopLevelDomain createTopLevelDomainObject(String name, String description, String org,
+            String admin, int memberPurgeExpiryDays) {
+        return createTopLevelDomainObject(name, description, org, memberPurgeExpiryDays, admin);
     }
 
     public UserDomain createUserDomainObject(String name, String description, String org) {
@@ -351,24 +380,21 @@ public class ZMSTestInitializer {
         return dom;
     }
 
-    public SubDomain createSubDomainObject(String name, String parent,
-                                            String description, String org, String admin) {
+    public SubDomain createSubDomainObject(String name, String parent, String description,
+            String org, String ...admins) {
 
         SubDomain dom = new SubDomain();
         dom.setName(name);
         dom.setDescription(description);
         dom.setOrg(org);
         dom.setParent(parent);
-
-        List<String> admins = new ArrayList<>();
-        admins.add(admin);
-        dom.setAdminUsers(admins);
+        dom.setAdminUsers(new ArrayList<>(List.of(admins)));
 
         return dom;
     }
 
-    public DomainMeta createDomainMetaObject(String description, String org,
-                                              Boolean enabled, Boolean auditEnabled, String account, Integer productId) {
+    public DomainMeta createDomainMetaObject(String description, String org, Boolean enabled,
+            Boolean auditEnabled, String account, Integer productId) {
 
         DomainMeta meta = new DomainMeta();
         meta.setDescription(description);
@@ -410,7 +436,8 @@ public class ZMSTestInitializer {
 
         for (RoleMember member : members) {
             RoleMember expected = expectedMembersMap.get(member.getMemberName());
-            if (!Objects.equals(member.getExpiration(), expected.getExpiration()) || !Objects.equals(member.getReviewReminder(), expected.getReviewReminder())) {
+            if (!Objects.equals(member.getExpiration(), expected.getExpiration()) ||
+                    !Objects.equals(member.getReviewReminder(), expected.getReviewReminder())) {
                 fail("Member " + member.getMemberName() + " not matching expected Expiration/Review dates");
             }
         }
@@ -465,16 +492,14 @@ public class ZMSTestInitializer {
         return group;
     }
 
-    public Role createRoleObject(String domainName, String roleName,
-                                  String trust) {
+    public Role createRoleObject(String domainName, String roleName, String trust) {
         Role role = new Role();
         role.setName(ResourceUtils.roleResourceName(domainName, roleName));
         role.setTrust(trust);
         return role;
     }
 
-    public Role createRoleObject(String domainName, String roleName,
-                                  String trust, String member1, String member2) {
+    public Role createRoleObject(String domainName, String roleName, String trust, String member1, String member2) {
 
         List<RoleMember> members = new ArrayList<>();
         if (member1 != null) {
@@ -486,8 +511,7 @@ public class ZMSTestInitializer {
         return createRoleObject(domainName, roleName, trust, members);
     }
 
-    public Role createRoleObject(String domainName, String roleName,
-                                  String trust, List<RoleMember> members) {
+    public Role createRoleObject(String domainName, String roleName, String trust, List<RoleMember> members) {
 
         Role role = new Role();
         role.setName(ResourceUtils.roleResourceName(domainName, roleName));
@@ -498,7 +522,6 @@ public class ZMSTestInitializer {
 
         return role;
     }
-
 
     public RoleMember createRoleMemberWithExpiration(String name, boolean alreadyExpired, int expiryDaysInterval) {
         return new RoleMember()
@@ -512,31 +535,27 @@ public class ZMSTestInitializer {
                 .setExpiration(ZMSTestUtils.buildExpiration(expiryDaysInterval, alreadyExpired));
     }
 
-    public Policy createPolicyObject(String domainName, String policyName,
-                                      String roleName, String action,  String resource,
-                                      AssertionEffect effect) {
+    public Policy createPolicyObject(String domainName, String policyName, String roleName,
+            String action,  String resource, AssertionEffect effect) {
         return createPolicyObject(domainName, policyName, roleName, true,
                 action, resource, effect, null, true);
     }
 
-    public Policy createPolicyObject(String domainName, String policyName,
-                                      String roleName, String action,  String resource,
-                                      AssertionEffect effect, String version, boolean active) {
+    public Policy createPolicyObject(String domainName, String policyName, String roleName, String action,
+            String resource, AssertionEffect effect, String version, boolean active) {
         return createPolicyObject(domainName, policyName, roleName, true,
                 action, resource, effect, version, active);
     }
 
-    public Policy createPolicyObject(String domainName, String policyName,
-                                      String roleName, boolean generateRoleName, String action,
-                                      String resource, AssertionEffect effect)
-    {
+    public Policy createPolicyObject(String domainName, String policyName, String roleName,
+            boolean generateRoleName, String action, String resource, AssertionEffect effect) {
         return createPolicyObject(domainName, policyName, roleName, generateRoleName, action,
                 resource, effect, null, true);
     }
 
-    public Policy createPolicyObject(String domainName, String policyName,
-                                      String roleName, boolean generateRoleName, String action,
-                                      String resource, AssertionEffect effect, String version, boolean active) {
+    public Policy createPolicyObject(String domainName, String policyName, String roleName,
+            boolean generateRoleName, String action, String resource, AssertionEffect effect,
+            String version, boolean active) {
 
         Policy policy = new Policy();
         policy.setName(ResourceUtils.policyResourceName(domainName, policyName));
@@ -570,9 +589,8 @@ public class ZMSTestInitializer {
                 domainName + ":*", AssertionEffect.ALLOW, version, active);
     }
 
-    public ServiceIdentity createServiceObject(String domainName,
-                                                String serviceName, String endPoint, String executable,
-                                                String user, String group, String host) {
+    public ServiceIdentity createServiceObject(String domainName, String serviceName, String endPoint,
+            String executable, String user, String group, String host) {
 
         ServiceIdentity service = new ServiceIdentity();
         service.setExecutable(executable);
@@ -596,9 +614,11 @@ public class ZMSTestInitializer {
             service.setProviderEndpoint(endPoint);
         }
 
-        List<String> hosts = new ArrayList<>();
-        hosts.add(host);
-        service.setHosts(hosts);
+        if (host != null) {
+            List<String> hosts = new ArrayList<>();
+            hosts.add(host);
+            service.setHosts(hosts);
+        }
 
         return service;
     }
@@ -616,19 +636,19 @@ public class ZMSTestInitializer {
     }
 
     public void setupTenantDomainProviderService(ZMSImpl zms, String tenantDomain, String providerDomain,
-                                                  String providerService, String providerEndpoint) {
+            String providerService, String providerEndpoint) {
 
         // create domain for tenant
         //
         TopLevelDomain dom1 = createTopLevelDomainObject(tenantDomain,
                 "Test Tenant Domain1", "testOrg", adminUser);
-        zms.postTopLevelDomain(mockDomRsrcCtx, auditRef, dom1);
+        zms.postTopLevelDomain(mockDomRsrcCtx, auditRef, null, dom1);
 
         // create domain for provider
         //
         TopLevelDomain domProv = createTopLevelDomainObject(providerDomain,
                 "Test Provider Domain1", "testOrg", adminUser);
-        zms.postTopLevelDomain(mockDomRsrcCtx, auditRef, domProv);
+        zms.postTopLevelDomain(mockDomRsrcCtx, auditRef, null, domProv);
 
         // create service identity for providerDomain.providerService
         //
@@ -636,48 +656,15 @@ public class ZMSTestInitializer {
                 providerDomain, providerService, providerEndpoint,
                 "/usr/bin/java", "root", "users", "localhost");
 
-        zms.putServiceIdentity(mockDomRsrcCtx, providerDomain, providerService, auditRef, false, service);
-    }
-
-    public void setupPrincipalSystemMetaDelete(ZMSImpl zms, final String principal,
-                                                final String domainName, final String ...attributeNames) {
-
-        Role role = createRoleObject("sys.auth", "metaadmin", null, principal, null);
-        zms.putRole(mockDomRsrcCtx, "sys.auth", "metaadmin", auditRef, false, role);
-
-        Policy policy = new Policy();
-        policy.setName("metaadmin");
-
-        List<Assertion> assertList = new ArrayList<>();
-        Assertion assertion;
-
-        for (String attributeName : attributeNames) {
-            assertion = new Assertion();
-            assertion.setAction("delete");
-            assertion.setEffect(AssertionEffect.ALLOW);
-            assertion.setResource("sys.auth:meta.domain." + attributeName + "." + domainName);
-            assertion.setRole("sys.auth:role.metaadmin");
-            assertList.add(assertion);
-        }
-
-        policy.setAssertions(assertList);
-
-        zms.putPolicy(mockDomRsrcCtx, "sys.auth", "metaadmin", auditRef, false, policy);
-    }
-
-    public void cleanupPrincipalSystemMetaDelete(ZMSImpl zms) {
-
-        zms.deletePolicy(mockDomRsrcCtx, "sys.auth", "metaadmin", auditRef);
-        zms.deleteRole(mockDomRsrcCtx, "sys.auth", "metaadmin", auditRef);
+        zms.putServiceIdentity(mockDomRsrcCtx, providerDomain, providerService, auditRef, false, null, service);
     }
 
     public void setupTenantDomainProviderService(String tenantDomain, String providerDomain,
-                                                  String providerService, String providerEndpoint) {
+            String providerService, String providerEndpoint) {
         setupTenantDomainProviderService(zms, tenantDomain, providerDomain, providerService, providerEndpoint);
     }
 
     public Tenancy createTenantObject(String domain, String service) {
-
         return createTenantObject(domain, service, true);
     }
 
@@ -707,7 +694,7 @@ public class ZMSTestInitializer {
         return mockDomRsrcCtx;
     }
 
-    public com.yahoo.athenz.common.server.rest.ResourceContext getMockDomRestRsrcCtx() {
+    public ServerResourceContext getMockDomRestRsrcCtx() {
         return mockDomRestRsrcCtx;
     }
 
@@ -775,8 +762,8 @@ public class ZMSTestInitializer {
         MockHttpServletRequest servletRequest = new MockHttpServletRequest();
         MockHttpServletResponse servletResponse = new MockHttpServletResponse();
         RsrcCtxWrapper wrapperCtx = new RsrcCtxWrapper(null, servletRequest, servletResponse, null, false,
-                null, new Object(), apiName, true);
-        com.yahoo.athenz.common.server.rest.ResourceContext ctx = wrapperCtx.context();
+                null, new Object(), apiName, true, null, null);
+        ServerResourceContext ctx = wrapperCtx.context();
 
         Authority adminPrincipalAuthority = new com.yahoo.athenz.common.server.debug.DebugPrincipalAuthority();
         String adminUnsignedCreds = "v=U1;d=" + princDomainName + ";n=" + princName;
@@ -800,12 +787,89 @@ public class ZMSTestInitializer {
 
         TopLevelDomain dom1 = createTopLevelDomainObject(admindomain,
                 "Test Domain1", "testOrg", getAdminUser());
-        getZms().postTopLevelDomain(sysAdminCtx, getAuditRef(), dom1);
-
+        getZms().postTopLevelDomain(sysAdminCtx, getAuditRef(), null, dom1);
 
         Membership membership = new Membership();
         membership.setMemberName(admindomain + "." + serviceprincipal);
-        getZms().putMembership(sysAdminCtx, "sys.auth", "admin", admindomain + "." + serviceprincipal, getAuditRef(), false, membership);
+        getZms().putMembership(sysAdminCtx, "sys.auth", "admin", admindomain + "." + serviceprincipal,
+                getAuditRef(), false, null, membership);
         return contextWithMockPrincipal(caller, admindomain, serviceprincipal);
+    }
+
+    public void createTopLevelDomain(final String domainName) {
+
+        TopLevelDomain dom = createTopLevelDomainObject(domainName,
+                "Test " + domainName, "testOrg", getAdminUser());
+        zms.postTopLevelDomain(mockDomRsrcCtx, auditRef, null, dom);
+    }
+
+    public void deleteTopLevelDomain(final String domainName) {
+        zms.deleteTopLevelDomain(mockDomRsrcCtx, domainName, auditRef, null);
+    }
+
+    public DomainData getDomainData(JWSDomain jwsDomain) throws ParseException, JOSEException, JsonProcessingException {
+        assertNotNull(jwsDomain);
+
+        JWSObject jwsObject = new JWSObject(Base64URL.from(jwsDomain.getProtectedHeader()),
+                Base64URL.from(jwsDomain.getPayload()), Base64URL.from(jwsDomain.getSignature()));
+
+        JWSVerifier verifier = new RSASSAVerifier((RSAPublicKey) Crypto.extractPublicKey(zms.privateKey.getKey()));
+        assertTrue(jwsObject.verify(verifier));
+
+        return zms.jsonMapper.readValue(jwsObject.getPayload().toString(), DomainData.class);
+    }
+
+    public void makeServiceProviders(ZMSImpl zmsImpl, RsrcCtxWrapper ctx, List<String> providerNames,
+            long fetchDomainDependencyFrequency) {
+
+        // Create Service Provider
+
+        final String sysAdminDomainName = "sys.auth";
+        final String serviceProvidersRoleName = "service_providers";
+        List<RoleMember> roleMembers = providerNames.stream().map(provider -> {
+            RoleMember authorizedServiceRoleMember = new RoleMember();
+            authorizedServiceRoleMember.setMemberName(provider.toLowerCase());
+            return authorizedServiceRoleMember;
+        }).collect(Collectors.toList());
+        Role role = new Role();
+        role.setName(serviceProvidersRoleName);
+        role.setRoleMembers(roleMembers);
+
+        zmsImpl.putRole(ctx, sysAdminDomainName, serviceProvidersRoleName, auditRef, false, null, role);
+
+        // Wait for cache to be ServiceProviderManager cache to refresh
+
+        ZMSTestUtils.sleep((1000 * fetchDomainDependencyFrequency) + 50);
+    }
+
+    public void setupPrincipalSystemMetaDelete(ZMSImpl zmsImpl, final String principal,
+            final String domainName, final String object, final String... attributeNames) {
+
+        final String resourceName =  "meta" + object + "admin";
+        Role role = createRoleObject("sys.auth", resourceName, null, principal, null);
+        zmsImpl.putRole(mockDomRsrcCtx, "sys.auth", resourceName, auditRef, false, null, role);
+
+        Policy policy = new Policy();
+        policy.setName(resourceName);
+
+        List<Assertion> assertList = new ArrayList<>();
+        for (String attributeName : attributeNames) {
+            Assertion assertion = new Assertion();
+            assertion.setAction("delete");
+            assertion.setEffect(AssertionEffect.ALLOW);
+            assertion.setResource("sys.auth:meta." + object + "." + attributeName + "." + domainName);
+            assertion.setRole(role.getName());
+            assertList.add(assertion);
+        }
+        policy.setAssertions(assertList);
+
+        zmsImpl.putPolicy(mockDomRsrcCtx, "sys.auth", resourceName, auditRef, false, null, policy);
+    }
+
+    public void cleanupPrincipalSystemMetaDelete(ZMSImpl zmsImpl, final String object) {
+
+        final String resourceName =  "meta" + object + "admin";
+        zmsImpl.deletePolicy(mockDomRsrcCtx, "sys.auth", resourceName, auditRef, null);
+        zmsImpl.deleteRole(mockDomRsrcCtx, "sys.auth", resourceName, auditRef, null);
     }
 }

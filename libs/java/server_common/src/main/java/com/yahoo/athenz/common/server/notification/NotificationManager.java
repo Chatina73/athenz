@@ -17,6 +17,9 @@
 package com.yahoo.athenz.common.server.notification;
 
 import com.yahoo.athenz.auth.Authority;
+import com.yahoo.athenz.auth.PrivateKeyStore;
+import com.yahoo.athenz.common.server.ServerResourceException;
+import com.yahoo.athenz.common.server.db.DomainProvider;
 import org.eclipse.jetty.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,33 +29,39 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import static com.yahoo.athenz.common.server.notification.NotificationServiceConstants.NOTIFICATION_PROP_SERVICE_FACTORY_CLASS;
-
 public class NotificationManager {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(NotificationManager.class);
 
-    private List<NotificationService> notificationServices = new ArrayList<>();
+    private final List<NotificationService> notificationServices = new ArrayList<>();
     private ScheduledExecutorService scheduledExecutor;
-    private List<NotificationTask> notificationTasks;
+    private final List<NotificationTask> notificationTasks;
     private final Authority notificationUserAuthority;
+    private final NotificationObjectStore notificationObjectStore;
 
-    public NotificationManager(List<NotificationTask> notificationTasks, Authority notificationUserAuthority) {
+    public NotificationManager(List<NotificationTask> notificationTasks, Authority notificationUserAuthority,
+            PrivateKeyStore privateKeyStore, DomainProvider domainProvider, NotificationObjectStore notificationObjectStore) {
+
         this.notificationTasks = notificationTasks;
         this.notificationUserAuthority = notificationUserAuthority;
-        String notificationServiceFactoryClasses = System.getProperty(NOTIFICATION_PROP_SERVICE_FACTORY_CLASS);
+        this.notificationObjectStore = notificationObjectStore;
+
+        final String notificationServiceFactoryClasses = System.getProperty(
+                NotificationServiceConstants.NOTIFICATION_PROP_SERVICE_FACTORY_CLASS);
         if (!StringUtil.isEmpty(notificationServiceFactoryClasses)) {
             String[] notificationServiceFactoryClassArray = notificationServiceFactoryClasses.split(",");
             for (String notificationServiceFactoryClass : notificationServiceFactoryClassArray) {
                 NotificationServiceFactory notificationServiceFactory;
                 try {
-                    notificationServiceFactory = (NotificationServiceFactory) Class.forName(notificationServiceFactoryClass.trim()).newInstance();
-                    NotificationService notificationService = notificationServiceFactory.create();
+                    notificationServiceFactory = (NotificationServiceFactory) Class.forName(
+                            notificationServiceFactoryClass.trim()).getDeclaredConstructor().newInstance();
+                    NotificationService notificationService = notificationServiceFactory.create(privateKeyStore);
                     if (notificationService != null) {
+                        notificationService.setDomainProvider(domainProvider);
                         notificationServices.add(notificationService);
                     }
-                } catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
-                    LOGGER.error("Invalid NotificationServiceFactory class: {} error: {}", notificationServiceFactoryClass, e.getMessage());
+                } catch (Exception ex) {
+                    LOGGER.error("Invalid NotificationServiceFactory class: {}", notificationServiceFactoryClass, ex);
                 }
             }
             LOGGER.info("Loaded Notification Services: {}", String.join(",", getLoadedNotificationServices()));
@@ -67,11 +76,19 @@ public class NotificationManager {
         }
     }
 
-    public NotificationManager(final List<NotificationServiceFactory> notificationServiceFactories, List<NotificationTask> notificationTasks, Authority notificationUserAuthority) {
+    public NotificationManager(final List<NotificationServiceFactory> notificationServiceFactories,
+            List<NotificationTask> notificationTasks, Authority notificationUserAuthority,
+            PrivateKeyStore privateKeyStore, NotificationObjectStore notificationObjectStore) {
         this.notificationTasks = notificationTasks;
         this.notificationUserAuthority = notificationUserAuthority;
+        this.notificationObjectStore = notificationObjectStore;
         notificationServiceFactories.stream().filter(Objects::nonNull).forEach(notificationFactory -> {
-            NotificationService notificationService = notificationFactory.create();
+            NotificationService notificationService = null;
+            try {
+                notificationService = notificationFactory.create(privateKeyStore);
+            } catch (ServerResourceException ex) {
+                LOGGER.error("unable to create NotificationService", ex);
+            }
             if (notificationService != null) {
                 notificationServices.add(notificationService);
             }
@@ -87,14 +104,20 @@ public class NotificationManager {
 
     public void sendNotifications(List<Notification> notifications) {
         if (isNotificationFeatureAvailable()) {
-            notifications.stream().filter(Objects::nonNull).forEach(notification -> {
-                notificationServices.stream().filter(Objects::nonNull).forEach(service -> service.notify(notification));
-            });
+            notifications.stream().filter(Objects::nonNull).forEach(
+                    notification -> notificationServices.stream()
+                            .filter(Objects::nonNull).forEach(service -> {
+                                try {
+                                    service.notify(notification);
+                                } catch (ServerResourceException ex) {
+                                    LOGGER.error("unable to send notification", ex);
+                                }
+                            }));
         }
     }
 
     public boolean isNotificationFeatureAvailable () {
-        return notificationServices != null && notificationServices.size() > 0;
+        return !notificationServices.isEmpty();
     }
 
     private boolean enableScheduledNotifications() {
@@ -123,16 +146,20 @@ public class NotificationManager {
             // NotificationTask running
             for (NotificationTask notificationTask: notificationTasks) {
                 try {
-                    List<Notification> notifications = notificationTask.getNotifications();
+                    List<Notification> notifications = notificationTask.getNotifications(notificationObjectStore);
                     notifications.stream()
                             .filter(Objects::nonNull)
-                            .forEach(notification -> {
-                                notificationServices.forEach(service -> service.notify(notification));
-                            });
-                    int numberOfNotificationsSent = (notifications != null) ? notifications.size() : 0;
-                    LOGGER.info("PeriodicNotificationsSender: Sent {} notifications of type {}.", numberOfNotificationsSent, notificationTask.getDescription());
+                            .forEach(notification -> notificationServices.forEach(service -> {
+                                try {
+                                    service.notify(notification);
+                                } catch (ServerResourceException ex) {
+                                    LOGGER.error("PeriodicNotificationsSender: unable to send notification", ex);
+                                }
+                            }));
+                    LOGGER.info("PeriodicNotificationsSender: Sent {} notifications of type {}",
+                            notifications.size(), notificationTask.getDescription());
                 } catch (Throwable t) {
-                    LOGGER.error(String.format("PeriodicNotificationsSender: unable to send %s: ", notificationTask.getDescription()), t);
+                    LOGGER.error("PeriodicNotificationsSender: unable to send {}", notificationTask.getDescription(), t);
                 }
             }
 

@@ -16,13 +16,9 @@
 
 package com.yahoo.athenz.zms.notification;
 
-import com.google.common.base.Splitter;
-import com.yahoo.athenz.auth.AuthorityConsts;
 import com.yahoo.athenz.common.server.notification.*;
-import com.yahoo.athenz.common.server.util.ResourceUtils;
 import com.yahoo.athenz.zms.DBService;
 import com.yahoo.athenz.zms.Role;
-import com.yahoo.athenz.zms.ZMSConsts;
 import com.yahoo.rdl.Timestamp;
 
 import java.text.MessageFormat;
@@ -35,71 +31,64 @@ public class PutRoleMembershipNotificationTask implements NotificationTask {
     final String domain;
     final String org;
     final Role role;
-    private Map<String, String> details;
-    private NotificationCommon notificationCommon;
+    private final Map<String, String> details;
+    private final NotificationCommon notificationCommon;
     private final static String DESCRIPTION = "Membership Approval Notification";
     private final PutMembershipNotificationToEmailConverter putMembershipNotificationToEmailConverter;
     private final PutMembershipNotificationToMetricConverter putMembershipNotificationToMetricConverter;
+    private final PutMembershipNotificationToSlackMessageConverter putMembershipNotificationToSlackMessageConverter;
+    private final DomainRoleMembersFetcher domainRoleMembersFetcher;
 
-    public PutRoleMembershipNotificationTask(String domain, String org, Role role, Map<String, String> details, DBService dbService, String userDomainPrefix, NotificationToEmailConverterCommon notificationToEmailConverterCommon) {
+    public PutRoleMembershipNotificationTask(String domain, String org, Role role, Map<String, String> details, DBService dbService, String userDomainPrefix, NotificationConverterCommon notificationConverterCommon) {
         this.domain = domain;
         this.org = org;
         this.role = role;
         this.details = details;
-        DomainRoleMembersFetcher domainRoleMembersFetcher = new DomainRoleMembersFetcher(dbService, userDomainPrefix);
-        this.notificationCommon = new NotificationCommon(domainRoleMembersFetcher, userDomainPrefix);
-        this.putMembershipNotificationToEmailConverter = new PutMembershipNotificationToEmailConverter(notificationToEmailConverterCommon);
+        this.domainRoleMembersFetcher = new DomainRoleMembersFetcher(dbService, userDomainPrefix);
+        DomainMetaFetcher domainMetaFetcher = new DomainMetaFetcher(dbService);
+        this.notificationCommon = new NotificationCommon(domainRoleMembersFetcher, userDomainPrefix, domainMetaFetcher);
+        this.putMembershipNotificationToEmailConverter = new PutMembershipNotificationToEmailConverter(notificationConverterCommon);
         this.putMembershipNotificationToMetricConverter = new PutMembershipNotificationToMetricConverter();
+        this.putMembershipNotificationToSlackMessageConverter = new PutMembershipNotificationToSlackMessageConverter(notificationConverterCommon);
     }
 
     @Override
     public List<Notification> getNotifications() {
+        return getNotifications(null);
+    }
+
+    @Override
+    public List<Notification> getNotifications(NotificationObjectStore notificationObjectStore) {
         // we need to generate the appropriate recipients for the notification
         // there are 2 possible use cases we need to handle here:
         // a) audit enabled role - we need to add the domain and org roles
         //          from the sys.auth.audit domain
         // b) review/self-serve roles - we need to look at the configured
         //          role list for notification and if not present then default
-        //          to the admin role from the domain
-
-        Set<String> recipients = new HashSet<>();
-        if (role.getAuditEnabled() == Boolean.TRUE) {
-
-            recipients.add(ResourceUtils.roleResourceName(ZMSConsts.SYS_AUTH_AUDIT_BY_DOMAIN, domain));
-            recipients.add(ResourceUtils.roleResourceName(ZMSConsts.SYS_AUTH_AUDIT_BY_ORG, org));
-
-        } else {
-
-            // if we're given a notify role list then we're going
-            // to add those role members to the recipient list
-            // otherwise use the admin role for the domain
-
-            final String notifyRoles = role.getNotifyRoles();
-            if (notifyRoles == null || notifyRoles.isEmpty()) {
-                recipients.add(ResourceUtils.roleResourceName(domain, ZMSConsts.ADMIN_ROLE_NAME));
-            } else {
-                Iterable<String> roleNames = Splitter.on(',')
-                        .omitEmptyStrings()
-                        .trimResults()
-                        .split(notifyRoles);
-
-                for (String roleName : roleNames) {
-                    if (!roleName.contains(AuthorityConsts.ROLE_SEP)) {
-                        recipients.add(ResourceUtils.roleResourceName(domain, roleName));
-                    } else {
-                        recipients.add(roleName);
-                    }
-                }
-            }
-        }
-
+        //          to the admin role from the domain (if consolidated by principal)
+        //          or to the domain name (if consolidated by domain)
         // create and process our notification
 
-        return Collections.singletonList(notificationCommon.createNotification(
-                recipients,
+        List<Notification> notificationList = new ArrayList<>();
+        notificationList.add(notificationCommon.createNotification(
+                Notification.Type.ROLE_MEMBER_APPROVAL,
+                Notification.ConsolidatedBy.PRINCIPAL,
+                NotificationUtils.getRecipientRoles(role.getAuditEnabled(),
+                        domain, org, role.getNotifyRoles()),
                 details,
                 putMembershipNotificationToEmailConverter,
-                putMembershipNotificationToMetricConverter));
+                putMembershipNotificationToMetricConverter,
+                putMembershipNotificationToSlackMessageConverter));
+        notificationList.add(notificationCommon.createNotification(
+                Notification.Type.ROLE_MEMBER_APPROVAL,
+                Notification.ConsolidatedBy.DOMAIN,
+                NotificationUtils.getRecipientRolesByDomain(role.getAuditEnabled(),
+                        domain, org, role.getNotifyRoles(), domainRoleMembersFetcher),
+                details,
+                putMembershipNotificationToEmailConverter,
+                putMembershipNotificationToMetricConverter,
+                putMembershipNotificationToSlackMessageConverter));
+        return notificationList;
     }
 
     @Override
@@ -111,32 +100,32 @@ public class PutRoleMembershipNotificationTask implements NotificationTask {
         private static final String EMAIL_TEMPLATE_NOTIFICATION_APPROVAL = "messages/membership-approval.html";
         private static final String MEMBERSHIP_APPROVAL_SUBJECT = "athenz.notification.email.membership.approval.subject";
 
-        private final NotificationToEmailConverterCommon notificationToEmailConverterCommon;
-        private String emailMembershipApprovalBody;
+        private final NotificationConverterCommon notificationConverterCommon;
+        private final String emailMembershipApprovalBody;
 
-        public PutMembershipNotificationToEmailConverter(NotificationToEmailConverterCommon notificationToEmailConverterCommon) {
-            this.notificationToEmailConverterCommon = notificationToEmailConverterCommon;
-            emailMembershipApprovalBody = notificationToEmailConverterCommon.readContentFromFile(getClass().getClassLoader(), EMAIL_TEMPLATE_NOTIFICATION_APPROVAL);
+        public PutMembershipNotificationToEmailConverter(NotificationConverterCommon notificationConverterCommon) {
+            this.notificationConverterCommon = notificationConverterCommon;
+            emailMembershipApprovalBody = notificationConverterCommon.readContentFromFile(getClass().getClassLoader(), EMAIL_TEMPLATE_NOTIFICATION_APPROVAL);
         }
 
         String getMembershipApprovalBody(Map<String, String> metaDetails) {
             if (metaDetails == null) {
                 return null;
             }
-            String workflowUrl = notificationToEmailConverterCommon.getWorkflowUrl();
-            String athenzUIUrl = notificationToEmailConverterCommon.getAthenzUIUrl();
+            String workflowUrl = notificationConverterCommon.getAdminWorkflowUrl();
+            String athenzUIUrl = notificationConverterCommon.getAthenzUIUrl();
             String body = MessageFormat.format(emailMembershipApprovalBody, metaDetails.get(NOTIFICATION_DETAILS_DOMAIN),
                     metaDetails.get(NOTIFICATION_DETAILS_ROLE), metaDetails.get(NOTIFICATION_DETAILS_MEMBER),
                     metaDetails.get(NOTIFICATION_DETAILS_REASON), metaDetails.get(NOTIFICATION_DETAILS_REQUESTER),
                     workflowUrl, athenzUIUrl);
-            return notificationToEmailConverterCommon.addCssStyleToBody(body);
+            return notificationConverterCommon.addCssStyleToBody(body);
         }
 
         @Override
         public NotificationEmail getNotificationAsEmail(Notification notification) {
-            String subject = notificationToEmailConverterCommon.getSubject(MEMBERSHIP_APPROVAL_SUBJECT);
+            String subject = notificationConverterCommon.getSubject(MEMBERSHIP_APPROVAL_SUBJECT);
             String body = getMembershipApprovalBody(notification.getDetails());
-            Set<String> fullyQualifiedEmailAddresses = notificationToEmailConverterCommon.getFullyQualifiedEmailAddresses(notification.getRecipients());
+            Set<String> fullyQualifiedEmailAddresses = notificationConverterCommon.getFullyQualifiedEmailAddresses(notification.getRecipients());
             return new NotificationEmail(subject, body, fullyQualifiedEmailAddresses);
         }
     }
@@ -158,6 +147,40 @@ public class PutRoleMembershipNotificationTask implements NotificationTask {
             List<String[]> attributes = new ArrayList<>();
             attributes.add(record);
             return new NotificationMetric(attributes);
+        }
+    }
+
+    public static class PutMembershipNotificationToSlackMessageConverter implements NotificationToSlackMessageConverter {
+        private static final String SLACK_TEMPLATE_NOTIFICATION_MEMBERSHIP_APPROVAL = "messages/slack-membership-approval.ftl";
+        private final NotificationConverterCommon notificationConverterCommon;
+        private final String slackMembershipApprovalTemplate;
+
+        public PutMembershipNotificationToSlackMessageConverter(NotificationConverterCommon notificationConverterCommon) {
+            this.notificationConverterCommon = notificationConverterCommon;
+            slackMembershipApprovalTemplate = notificationConverterCommon.readContentFromFile(getClass().getClassLoader(), SLACK_TEMPLATE_NOTIFICATION_MEMBERSHIP_APPROVAL);
+        }
+
+        private String getMembershipApprovalReminderSlackMessage(Map<String, String> metaDetails) {
+            String domainName = metaDetails.get(NOTIFICATION_DETAILS_DOMAIN);
+            String roleName = metaDetails.get(NOTIFICATION_DETAILS_ROLE);
+
+            Map<String, Object> dataModel = new HashMap<>(metaDetails);
+            dataModel.put("domainLink", notificationConverterCommon.getDomainLink(domainName));
+            dataModel.put("roleLink", notificationConverterCommon.getRoleLink(domainName, roleName));
+            dataModel.put("workflowLink", notificationConverterCommon.getDomainWorkflowUrl(domainName));
+
+            return notificationConverterCommon.generateSlackMessageFromTemplate(
+                    dataModel,
+                    slackMembershipApprovalTemplate);
+        }
+
+        @Override
+        public NotificationSlackMessage getNotificationAsSlackMessage(Notification notification) {
+            String slackMessageContent = getMembershipApprovalReminderSlackMessage(notification.getDetails());
+            Set<String> slackRecipients = notificationConverterCommon.getSlackRecipients(notification.getRecipients(), notification.getNotificationDomainMeta());
+            return new NotificationSlackMessage(
+                    slackMessageContent,
+                    slackRecipients);
         }
     }
 }

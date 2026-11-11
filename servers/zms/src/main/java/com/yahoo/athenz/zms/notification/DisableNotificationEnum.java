@@ -26,22 +26,26 @@ import java.util.Map;
 import java.util.function.Function;
 
 public enum DisableNotificationEnum {
-    USER, ADMIN;
+    USER,          // disable notifications to the users
+    ADMIN,         // disable notifications to the admins
+    OVER_ONE_WEEK; // disable notifications to the users/admins if the expiry is more than a week out
 
     public static EnumSet<DisableNotificationEnum> getEnumSet(long mask) {
         return EnumUtils.processBitVector(DisableNotificationEnum.class, mask);
     }
 
-    public static <T> EnumSet<DisableNotificationEnum> getDisabledNotificationState(T collection, Function<T, Map<String, TagValueList>> tagsGetter, final String disableNotificationTag) {
+    public static <T> EnumSet<DisableNotificationEnum> getDisabledNotificationState(T collection,
+            Function<T, Map<String, TagValueList>> tagsGetter, final String disableNotificationTag) {
+
         if (collection == null) {
             return DisableNotificationEnum.getEnumSet(0);
         }
-        Map<String, TagValueList> tags = tagsGetter.apply(collection);
 
+        Map<String, TagValueList> tags = tagsGetter.apply(collection);
         if (tags != null &&
                 tags.get(disableNotificationTag) != null &&
                 tags.get(disableNotificationTag).getList() != null &&
-                tags.get(disableNotificationTag).getList().size() > 0) {
+                !tags.get(disableNotificationTag).getList().isEmpty()) {
             String value = tags.get(disableNotificationTag).getList().get(0);
             return DisableNotificationEnum.getEnumSet(Integer.parseInt(value));
         }

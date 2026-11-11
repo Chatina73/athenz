@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/AthenZ/athenz/clients/go/zts"
+	"github.com/stretchr/testify/assert"
 )
 
 var signedPolicyData *zts.SignedPolicyData
@@ -66,5 +66,5 @@ func assertEqual(t *testing.T, a interface{}, b interface{}, message string) {
 
 	message += fmt.Sprintf("%v != %v", a, b)
 
-	t.Fatalf(message)
+	t.Fatal(message)
 }

@@ -17,30 +17,91 @@
 package lambda
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
+	"os"
+	"strings"
+
 	"github.com/AthenZ/athenz/libs/go/sia/aws/attestation"
 	"github.com/AthenZ/athenz/libs/go/sia/aws/meta"
+	"github.com/AthenZ/athenz/libs/go/sia/aws/stssession"
 	"github.com/AthenZ/athenz/libs/go/sia/util"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/secretsmanager"
-	"github.com/aws/aws-sdk-go/service/sts"
-	"strings"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
+	"github.com/aws/aws-sdk-go-v2/service/acm"
+	acmtypes "github.com/aws/aws-sdk-go-v2/service/acm/types"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	ststypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
 )
+
+// AthenzIdentityRequest carries all the attributes required to fetch an Athenz
+// service identity from within an AWS Lambda function. In addition to the fields
+// supported by GetAthenzIdentity, it allows the caller to control how the
+// attestation data is generated: either with AWS temporary credentials obtained
+// from an STS assume-role call (the default), or with an AWS issued OIDC web
+// identity token when UseWebIdentityToken is set to true.
+type AthenzIdentityRequest struct {
+	AthenzDomain                string                // name of the domain for the identity
+	AthenzService               string                // name of the service for the identity
+	AthenzProvider              string                // name of the athenz provider
+	ZTSUrl                      string                // the ZTS server url to contact
+	SanDNSDomains               []string              // dns domains for the SAN dnsName entries in the csr
+	SpiffeTrustDomain           string                // spiffe trust domain for the SAN uri entry in the csr
+	CsrSubjectFields            util.CsrSubjectFields // subject fields for the csr
+	InstanceIdSanDNS            bool                  // include the instance id in the SAN dnsName entries
+	AwsAccount                  string                // aws account id; if empty it is extracted from the caller identity
+	Region                      string                // aws region name; if empty the AWS_REGION env variable is used
+	UseRegionalSTS              bool                  // use the regional sts endpoint instead of the global one
+	OmitDomain                  bool                  // the attestation iam role only includes the service name
+	RolePath                    string                // iam role path prefix (temporary credentials only)
+	UseWebIdentityToken         bool                  // use a web identity token instead of temporary credentials
+	WebIdentityAudience         string                // audience for the web identity token; if empty the zts url is used
+	WebIdentitySigningAlgorithm string                // signing algorithm for the web identity token (RS256 or ES384); default ES384
+	WebIdentityDurationSeconds  int32                 // lifetime of the web identity token in seconds (60-3600); default 300
+	WebIdentityTags             []ststypes.Tag        // optional key/value pairs added as custom claims to the web identity token
+}
+
+const (
+	defaultWebIdentitySigningAlgorithm = "ES384"
+	defaultWebIdentityDurationSeconds  = int32(300)
+)
+
+// stsAttestationData generates the attestation data based on AWS temporary credentials.
+// It is a package-level variable so tests can replace it with a stub.
+var stsAttestationData = attestation.New
+
+// awsAccountIdFetcher returns the aws account id for the current caller.
+// It is a package-level variable so tests can replace it with a stub.
+var awsAccountIdFetcher = meta.GetAccountId
+
+// ACMClientInterface defines the interface for ACM client operations
+type ACMClientInterface interface {
+	ListCertificates(ctx context.Context, params *acm.ListCertificatesInput, optFns ...func(*acm.Options)) (*acm.ListCertificatesOutput, error)
+	ListTagsForCertificate(ctx context.Context, params *acm.ListTagsForCertificateInput, optFns ...func(*acm.Options)) (*acm.ListTagsForCertificateOutput, error)
+	AddTagsToCertificate(ctx context.Context, params *acm.AddTagsToCertificateInput, optFns ...func(*acm.Options)) (*acm.AddTagsToCertificateOutput, error)
+}
+
+// ErrCertificateNotFound is returned when no certificate is found with the specified tag key/value pair
+var ErrCertificateNotFound = errors.New("no certificate found with the specified tag key/value pair")
 
 func getLambdaAttestationData(domain, service, account string) ([]byte, error) {
 	data := &attestation.AttestationData{
 		Role: fmt.Sprintf("%s.%s", domain, service),
 	}
-	clientSession, err := session.NewSession()
+	stsClient, err := stssession.New(false, "")
 	if err != nil {
 		return nil, err
 	}
-	stsSession := sts.New(clientSession)
 	roleArn := fmt.Sprintf("arn:aws:iam::%s:role/%s", account, data.Role)
-	tok, err := stsSession.AssumeRole(&sts.AssumeRoleInput{
+	tok, err := stsClient.AssumeRole(context.TODO(), &sts.AssumeRoleInput{
 		RoleArn:         &roleArn,
 		RoleSessionName: &data.Role,
 	})
@@ -54,13 +115,94 @@ func getLambdaAttestationData(domain, service, account string) ([]byte, error) {
 	return json.Marshal(data)
 }
 
+// Deprecated: Use GetAthenzServiceIdentity function to get identity certificates
 func GetAthenzIdentity(athenzDomain, athenzService, athenzProvider, ztsUrl string, sanDNSDomains []string, spiffeTrustDomain string, csrSubjectFields util.CsrSubjectFields) (*util.SiaCertData, error) {
 	awsAccount := meta.GetAccountId()
+	athenzDomain = strings.ToLower(athenzDomain)
+	athenzService = strings.ToLower(athenzService)
+	athenzProvider = strings.ToLower(athenzProvider)
+
 	return getInternalAthenzIdentity(athenzDomain, athenzService, athenzProvider, ztsUrl, awsAccount, sanDNSDomains, spiffeTrustDomain, csrSubjectFields, false)
 }
 
-// Deprecated: Use GetAthenzIdentity functions to get identity certificates
+// GetAthenzServiceIdentity requests an Athenz X.509 service identity certificate from
+// ZTS for the given lambda function. The attestation data presented to ZTS is generated
+// either from AWS temporary credentials or, when request.UseWebIdentityToken is enabled,
+// from an AWS issued OIDC web identity token (JWT).
+func GetAthenzServiceIdentity(request *AthenzIdentityRequest) (*util.SiaCertData, error) {
+
+	if request == nil {
+		return nil, fmt.Errorf("no athenz identity request specified")
+	}
+	athenzDomain := strings.ToLower(request.AthenzDomain)
+	athenzService := strings.ToLower(request.AthenzService)
+	athenzProvider := strings.ToLower(request.AthenzProvider)
+	if athenzDomain == "" || athenzService == "" || athenzProvider == "" || request.ZTSUrl == "" {
+		return nil, fmt.Errorf("athenz domain, service, provider and zts url must be specified")
+	}
+
+	// if the account is not given, we're going to extract it from our caller identity
+	awsAccount := request.AwsAccount
+	if awsAccount == "" {
+		awsAccount = awsAccountIdFetcher()
+		if awsAccount == "" {
+			return nil, fmt.Errorf("unable to determine aws account id")
+		}
+	}
+
+	// if the region is not given, we're going to use the one configured
+	// in our lambda runtime environment
+	region := request.Region
+	if region == "" {
+		region = os.Getenv("AWS_REGION")
+	}
+
+	privateKey, err := util.GenerateKeyPair(2048)
+	if err != nil {
+		return nil, err
+	}
+	attestationData, err := getAthenzAttestationData(request, athenzDomain, athenzService, awsAccount, region)
+	if err != nil {
+		return nil, err
+	}
+
+	instanceId := getLambdaInstance(awsAccount, athenzService)
+	return util.RegisterIdentity(athenzDomain, athenzService, athenzProvider, request.ZTSUrl, instanceId,
+		attestationData, request.SpiffeTrustDomain, request.SanDNSDomains, request.CsrSubjectFields,
+		request.InstanceIdSanDNS, privateKey)
+}
+
+func getAthenzAttestationData(request *AthenzIdentityRequest, athenzDomain, athenzService, awsAccount, region string) (string, error) {
+
+	if !request.UseWebIdentityToken {
+		// lambda functions have no ec2 instance identity document/signature, so the
+		// attestation data only carries the assumed role temporary credentials
+		return stsAttestationData(athenzDomain, athenzService, region, awsAccount, "", "",
+			request.UseRegionalSTS, request.OmitDomain, request.RolePath)
+	}
+
+	audience := request.WebIdentityAudience
+	if audience == "" {
+		audience = request.ZTSUrl
+	}
+	signingAlgorithm := request.WebIdentitySigningAlgorithm
+	if signingAlgorithm == "" {
+		signingAlgorithm = defaultWebIdentitySigningAlgorithm
+	}
+	durationSeconds := request.WebIdentityDurationSeconds
+	if durationSeconds == 0 {
+		durationSeconds = defaultWebIdentityDurationSeconds
+	}
+	return attestation.NewWebIdentity(athenzDomain, athenzService, region, audience, signingAlgorithm,
+		request.UseRegionalSTS, request.OmitDomain, durationSeconds, request.WebIdentityTags, "", "")
+}
+
+// Deprecated: Use GetAthenzServiceIdentity function to get identity certificates
 func GetAWSLambdaServiceCertificate(ztsUrl, athenzProvider, athenzDomain, service, awsAccount string, sanDNSDomains []string, instanceIdSanDNS bool) (tls.Certificate, error) {
+
+	athenzDomain = strings.ToLower(athenzDomain)
+	service = strings.ToLower(service)
+	athenzProvider = strings.ToLower(athenzProvider)
 
 	csrSubjectFields := util.CsrSubjectFields{
 		Country:          "US",
@@ -76,10 +218,6 @@ func GetAWSLambdaServiceCertificate(ztsUrl, athenzProvider, athenzDomain, servic
 
 func getInternalAthenzIdentity(athenzDomain, athenzService, athenzProvider, ztsUrl, awsAccount string, sanDNSDomains []string, spiffeTrustDomain string, csrSubjectFields util.CsrSubjectFields, instanceIdSanDNS bool) (*util.SiaCertData, error) {
 
-	athenzDomain = strings.ToLower(athenzDomain)
-	athenzService = strings.ToLower(athenzService)
-	athenzProvider = strings.ToLower(athenzProvider)
-
 	privateKey, err := util.GenerateKeyPair(2048)
 	if err != nil {
 		return nil, err
@@ -89,7 +227,7 @@ func getInternalAthenzIdentity(athenzDomain, athenzService, athenzProvider, ztsU
 		return nil, err
 	}
 
-	instanceId := fmt.Sprintf("lambda-%s-%s", awsAccount, athenzService)
+	instanceId := getLambdaInstance(awsAccount, athenzService)
 	return util.RegisterIdentity(athenzDomain, athenzService, athenzProvider, ztsUrl, instanceId, string(attestationData), spiffeTrustDomain, sanDNSDomains, csrSubjectFields, instanceIdSanDNS, privateKey)
 }
 
@@ -102,22 +240,298 @@ func getInternalAthenzIdentity(athenzDomain, athenzService, athenzProvider, ztsU
 //	"time": <utc-timestamp>
 //
 // The secret specified by the name must be pre-created
-func StoreAthenzIdentityInSecretManager(athenzDomain, athenzService, secretName string, siaCertData *util.SiaCertData) error {
+func StoreAthenzIdentityInSecretManager(athenzDomain, athenzService, secretName string, siaCertData *util.SiaCertData, isRoleCertificate bool) error {
+	return StoreAthenzIdentityInSecretManagerCustomFormat(athenzDomain, athenzService, secretName, siaCertData, nil, isRoleCertificate, "")
+}
 
+// StoreAthenzIdentityInSecretManagerCustomFormat store the retrieved athenz identity in the
+// specified secret in custom json format. The secret is stored in the following keys:
+//
+//	"<x509-cert-pem-key>":"<x509-cert-pem>,
+//	"<private-pem-key>":"<pkey-pem>,
+//	"<ca-cert-key>":"<ca-cert-pem>,
+//	"<time-key>": <utc-timestamp>
+//
+// It supports only 4 json fields 'cert_pem', 'key_pem', 'ca_pem' and 'time'.
+// Out of 4 fields 'cert_pem' and 'key_pem' are mandatory, and resulted json will contain  X509CertificateSignerPem
+// and timestamp only if the corresponding json field names are set.
+//
+// sample `jsonFieldMapper` map: [{"cert_pem": "certPem"}, {"key_pem": "keyPem"}], will result json like
+//
+//	{  "certPem":"<x509-cert-pem>, "keyPem":"<pkey-pem> }
+//
+// The secret specified by the name must be pre-created. If the targetRoleArn is specified, the function
+// will assume the role and use the temporary credentials to access the secret manager, otherwise it
+// will use the default credentials from environment.
+func StoreAthenzIdentityInSecretManagerCustomFormat(athenzDomain, athenzService, secretName string, siaCertData *util.SiaCertData, jsonFieldMapper map[string]string, isRoleCertificate bool, targetRoleArn string) error {
+
+	var keyCertJson []byte
+	var err error
 	// generate our payload
-	keyCertJson, err := util.GenerateSecretJsonData(athenzDomain, athenzService, siaCertData)
+	if nil == jsonFieldMapper {
+		keyCertJson, err = util.GenerateSecretJsonData(athenzDomain, athenzService, siaCertData, isRoleCertificate)
+	} else {
+		keyCertJson, err = util.GenerateCustomSecretJsonData(siaCertData, jsonFieldMapper, isRoleCertificate)
+	}
 	if err != nil {
 		return fmt.Errorf("unable to generate secret json data: %v", err)
 	}
-	clientSession, err := session.NewSession()
+	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		return err
 	}
-	svc := secretsmanager.New(clientSession)
+	if targetRoleArn != "" {
+		stsClient := sts.NewFromConfig(cfg)
+		provider := stscreds.NewAssumeRoleProvider(stsClient, targetRoleArn)
+		cfg.Credentials = aws.NewCredentialsCache(provider)
+	}
+	svc := secretsmanager.NewFromConfig(cfg)
 	input := &secretsmanager.PutSecretValueInput{
 		SecretId:     aws.String(secretName),
 		SecretString: aws.String(string(keyCertJson)),
 	}
-	_, err = svc.PutSecretValue(input)
+	_, err = svc.PutSecretValue(context.TODO(), input)
 	return err
+}
+
+// StoreAthenzIdentityInParameterStore store the retrieved athenz identity in the
+// specified parameter store as Secure String, without CA certificate. The secret is stored in the following keys:
+//
+//	"<domain>.<service>.cert.pem":"<x509-cert-pem>,
+//	"<domain>.<service>.key.pem":"<pkey-pem>,
+//	"time": <utc-timestamp>
+//
+// The parameter specified by the name must be pre-created
+func StoreAthenzIdentityInParameterStore(athenzDomain, athenzService, parameterName, kmsId string, siaCertData *util.SiaCertData, isRoleCertificate bool) error {
+	jsonFieldMapper := make(map[string]string)
+	jsonFieldMapper[util.SiaYieldMapperX509CertPemKey] = fmt.Sprintf("%s.%s.cert.pem", athenzDomain, athenzService)
+	jsonFieldMapper[util.SiaYieldMapperPvtPemKey] = fmt.Sprintf("%s.%s.key.pem", athenzDomain, athenzService)
+	//do not set CA cert
+	jsonFieldMapper[util.SiaYieldMapperIssueTimeKey] = "time"
+	return storeAthenzIdentityInParameterStoreCustomFormat(parameterName, kmsId, siaCertData, jsonFieldMapper, isRoleCertificate)
+}
+
+// StoreAthenzIdentityInParameterStoreCustomFormat store the retrieved athenz identity in the
+// specified parameter store as Secure String, without CA certificate. The secret is stored in the following keys
+//
+//	"<x509-cert-pem-key>":"<x509-cert-pem>,
+//	"<private-pem-key>":"<pkey-pem>,
+//	"<time-key>": <utc-timestamp>
+//
+// It supports only 3 json fields 'cert_pem', 'key_pem' and 'time', where 'cert_pem' and 'key_pem' are mandatory.
+// The resulted json will contain timestamp only if the corresponding json field name is set. It will ignore 'ca_pem'
+// even if it is set.
+//
+// sample `jsonFieldMapper` map: [{"cert_pem": "certPem"}, {"key_pem": "keyPem"}], will result json like
+//
+//	{  "certPem":"<x509-cert-pem>, "keyPem":"<pkey-pem> }
+//
+// The parameter specified by the name must be pre-created
+func StoreAthenzIdentityInParameterStoreCustomFormat(parameterName, kmsId string, siaCertData *util.SiaCertData, jsonFieldMapper map[string]string, isRoleCertificate bool) error {
+	// generate our payload
+	if nil != jsonFieldMapper {
+		_, ok := jsonFieldMapper[util.SiaYieldMapperCertSignerPemKey]
+		if ok {
+			// unset 'ca cert' field name
+			jsonFieldMapper[util.SiaYieldMapperCertSignerPemKey] = ""
+		}
+	}
+	return storeAthenzIdentityInParameterStoreCustomFormat(parameterName, kmsId, siaCertData, jsonFieldMapper, isRoleCertificate)
+}
+
+func storeAthenzIdentityInParameterStoreCustomFormat(parameterName, kmsId string, siaCertData *util.SiaCertData, jsonFieldMapper map[string]string, isRoleCertificate bool) error {
+	// generate our payload
+	keyCertJson, err := util.GenerateCustomSecretJsonData(siaCertData, jsonFieldMapper, isRoleCertificate)
+
+	if err != nil {
+		return fmt.Errorf("unable to generate secret json data: %v", err)
+	}
+	cfg, err := config.LoadDefaultConfig(context.TODO())
+	if err != nil {
+		return err
+	}
+	ssmClient := ssm.NewFromConfig(cfg)
+	input := &ssm.PutParameterInput{
+		Type:      ssmtypes.ParameterTypeSecureString,
+		Name:      aws.String(parameterName),
+		Value:     aws.String(string(keyCertJson)),
+		Overwrite: aws.Bool(true),
+		KeyId:     aws.String(kmsId),
+	}
+	_, err = ssmClient.PutParameter(context.TODO(), input)
+	return err
+}
+
+// GetAWSLambdaRoleCertificate retrieves a role certificate for the specified Athenz domain, service, provider, and role name.
+// It requires service certificate to obtain role certificate, so Athenz service certificate needs to be obtained first and pass it here to get role certificate from ZTS.
+// Finally, it returns a SiaCertData object containing the role certificate and private key.
+func GetAWSLambdaRoleCertificate(athenzDomain, athenzService, athenzProvider, roleName, ztsUrl string, expiryTime int64, sanDNSDomains []string, spiffeTrustDomain string, csrSubjectFields util.CsrSubjectFields, rolePrincipalEmail bool, svcTLSCert *util.SiaCertData) (*util.SiaCertData, error) {
+	awsAccount := meta.GetAccountId()
+	athenzDomain = strings.ToLower(athenzDomain)
+	athenzService = strings.ToLower(athenzService)
+	athenzProvider = strings.ToLower(athenzProvider)
+	instanceId := getLambdaInstance(awsAccount, athenzService)
+
+	if nil == svcTLSCert || "" == svcTLSCert.X509CertificatePem || "" == svcTLSCert.PrivateKeyPem || nil == svcTLSCert.PrivateKey {
+		return nil, fmt.Errorf("invalid service TLS certificate data in SiaCertData")
+	}
+	return util.GetRoleCertificate(athenzDomain, athenzService, instanceId, athenzProvider, roleName, ztsUrl, expiryTime, sanDNSDomains, spiffeTrustDomain, csrSubjectFields, svcTLSCert, rolePrincipalEmail)
+}
+
+// StoreAthenzIdentityInACM stores the specified certificate in AWS ACM. If the certificate
+// ARN is specified, the certificate will be updated in the given entry. If the ARN is not
+// specified, then the caller can specify a tag key id and value pair and the function will
+// try to locate the certificate arn that has the given tag configured. If no certificate is
+// found, then a new one will be created with the given tag. If successful, the function will
+// return the certificate arn that was either created or updated.
+func StoreAthenzIdentityInACM(certArn, certTagIdKey, certTagIdValue string, siaCertData *util.SiaCertData, addlTags map[string]string) (string, error) {
+	// Extract certificate components from SiaCertData
+	certPem := siaCertData.X509CertificatePem
+	keyPem := siaCertData.PrivateKeyPem
+
+	// Validate that we have the required certificate and key
+	if certPem == "" {
+		return "", fmt.Errorf("certificate PEM is empty")
+	}
+	if keyPem == "" {
+		return "", fmt.Errorf("private key PEM is empty")
+	}
+	if certArn == "" && (certTagIdKey == "" || certTagIdValue == "") {
+		return "", fmt.Errorf("either certificate ARN or Tag ID Name/Value must be specified")
+	}
+
+	ctx := context.TODO()
+
+	// Load AWS configuration
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return "", fmt.Errorf("unable to load AWS config: %v", err)
+	}
+
+	// Create ACM client
+	acmClient := acm.NewFromConfig(cfg)
+
+	// Prepare the import certificate input
+	input := &acm.ImportCertificateInput{
+		Certificate: []byte(certPem),
+		PrivateKey:  []byte(keyPem),
+	}
+
+	// if the certificate arn is empty then we must have been given the tag id key/value
+	// pair so we're going to search for a certificate with the given tag. If the certificate
+	// is not found, we're going to import the certificate as a new entry
+	if certArn == "" {
+		certArn, err = getCertificateArnByTag(ctx, acmClient, certTagIdKey, certTagIdValue)
+		if err != nil {
+			if errors.Is(err, ErrCertificateNotFound) {
+				log.Printf("unable to get certificate arn: %v\n", err)
+				log.Println("will be importing the certificate as a new entry into ACM")
+			} else {
+				return "", fmt.Errorf("unable to get certificate arn based on tag key/value pair: %v", err)
+			}
+		}
+	}
+
+	// set up our tags based on given input
+	var acmTags []acmtypes.Tag
+	if certTagIdKey != "" {
+		acmTags = append(acmTags, acmtypes.Tag{
+			Key:   aws.String(certTagIdKey),
+			Value: aws.String(certTagIdValue),
+		})
+	}
+	if len(addlTags) > 0 {
+		for k, v := range addlTags {
+			acmTags = append(acmTags, acmtypes.Tag{
+				Key:   aws.String(k),
+				Value: aws.String(v),
+			})
+		}
+	}
+
+	// If certificate ARN is provided, include it to reimport/update the existing certificate
+	// additionally, setting tags during import api is only supported for the initial import
+	// otherwise, when updating the certificate, we need to set the tags in a separate call
+
+	if certArn != "" {
+		input.CertificateArn = aws.String(certArn)
+	} else {
+		input.Tags = acmTags
+	}
+
+	// Import the certificate
+	output, err := acmClient.ImportCertificate(ctx, input)
+	returnCertArn := ""
+	if err == nil {
+		if certArn == "" {
+			returnCertArn = aws.ToString(output.CertificateArn)
+			log.Printf("new certificate was imported into ACM: %s\n", returnCertArn)
+		} else {
+			returnCertArn = certArn
+			log.Printf("certificate %s was updated in ACM\n", returnCertArn)
+
+			// now we need to update the certificate tags
+			_ = setCertificateTags(ctx, acmClient, certArn, acmTags)
+		}
+	}
+
+	return returnCertArn, err
+}
+
+func setCertificateTags(ctx context.Context, client ACMClientInterface, certificateArn string, acmTags []acmtypes.Tag) error {
+	// first check to see if we have any tags to add
+	if len(acmTags) == 0 {
+		return nil
+	}
+	// we need to update the certificate tags
+	tagInput := &acm.AddTagsToCertificateInput{
+		CertificateArn: aws.String(certificateArn),
+		Tags:           acmTags,
+	}
+	_, err := client.AddTagsToCertificate(ctx, tagInput)
+	if err != nil {
+		log.Printf("failed to update tags to certificate: %v", err)
+	}
+	return err
+}
+
+// getCertificateArnByTag finds an ACM certificate ARN that matches the given tag.
+// It returns the first matching ARN found or an error if no match is found.
+func getCertificateArnByTag(ctx context.Context, client ACMClientInterface, certTagIdKey, certTagIdValue string) (string, error) {
+
+	// paginate through all certificates
+	paginator := acm.NewListCertificatesPaginator(client, &acm.ListCertificatesInput{})
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return "", fmt.Errorf("failed to list certificates: %w", err)
+		}
+
+		for _, cert := range page.CertificateSummaryList {
+			// for each certificate, get its tags
+			tagsOutput, err := client.ListTagsForCertificate(ctx, &acm.ListTagsForCertificateInput{
+				CertificateArn: cert.CertificateArn,
+			})
+			if err != nil {
+				// Log the error but continue; we don't want one failed cert to stop the search
+				log.Printf("warning: could not list tags for certificate %s: %v\n", *cert.CertificateArn, err)
+				continue
+			}
+
+			// if the given tag value is present
+			for _, tag := range tagsOutput.Tags {
+				if tag.Value != nil && tag.Key != nil && certTagIdKey == *tag.Key && certTagIdValue == *tag.Value {
+					return *cert.CertificateArn, nil
+				}
+			}
+		}
+	}
+
+	log.Printf("no certificate found with the specified tag key/value pair")
+	return "", ErrCertificateNotFound
+}
+
+func getLambdaInstance(awsAccount, athenzService string) string {
+	return fmt.Sprintf("lambda-%s-%s", awsAccount, athenzService)
 }

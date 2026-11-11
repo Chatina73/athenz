@@ -21,6 +21,7 @@ import {
     mockAllDomainDataApiCalls,
     renderWithRedux,
 } from '../../../../tests_utils/ComponentsTestUtils';
+import { listUserDomains_response } from '../../../../mock/MockData';
 
 afterEach(() => {
     MockApi.cleanMockApi();
@@ -31,11 +32,8 @@ describe('ServicePage', () => {
         const query = {
             domain: 'dom',
         };
-        let domains = [];
-        domains.push({ name: 'athens' });
-        domains.push({ name: 'athens.ci' });
-        const userId = 'pgote';
-        const domain = 'home.pgote';
+        const userId = 'user1';
+        const domain = 'home.user1';
         const domainDetails = {
             description: 'test',
             org: 'athenz',
@@ -43,17 +41,17 @@ describe('ServicePage', () => {
             auditEnabled: false,
             account: '1231243134',
             ypmId: 0,
-            name: 'home.pgote',
+            name: 'home.user1',
             modified: '2020-01-24T18:14:51.939Z',
             id: 'a48cb050-e4fa-11e7-9d38-9d13efb959d1',
         };
         const services = [
             {
-                name: 'home.pgote.bastion',
+                name: 'home.user1.bastion',
                 modified: '2017-12-21T18:59:09.372Z',
             },
             {
-                name: 'home.pgote.openhouse',
+                name: 'home.user1.openhouse',
                 modified: '2017-12-19T20:24:41.195Z',
             },
         ];
@@ -77,7 +75,7 @@ describe('ServicePage', () => {
             ),
             listUserDomains: jest.fn().mockReturnValue(
                 new Promise((resolve, reject) => {
-                    resolve(domains);
+                    resolve(listUserDomains_response);
                 })
             ),
             getServices: jest.fn().mockReturnValue(
@@ -85,6 +83,9 @@ describe('ServicePage', () => {
                     resolve(services);
                 })
             ),
+            getReviewGroups: jest.fn().mockReturnValue([]),
+            getReviewRoles: jest.fn().mockReturnValue([]),
+            getPageFeatureFlag: jest.fn().mockResolvedValue({}),
         };
         MockApi.setMockApi(mockApi);
 

@@ -1,0 +1,195 @@
+//
+// Copyright The Athenz Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+package main
+
+import (
+	"crypto/rand"
+	"crypto/rsa"
+	"flag"
+	"fmt"
+	"log"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/AthenZ/athenz/clients/go/zts"
+	"github.com/AthenZ/athenz/libs/go/sia/util"
+	"github.com/AthenZ/athenz/provider/github/sia-actions"
+)
+
+// Following can be set by the build script using LDFLAGS
+
+var Version string
+
+func main() {
+
+	var ztsURL, domain, service, spiffeTrustDomain, subjC, subjO, subjOU, provider string
+	var caCertFile, keyFile, certFile, signerCertFile, dnsDomain, oidcTokenAudience, oidcKeyType string
+	var showVersion, getOIDCToken bool
+	var expiryTime, oidcRequestTimeout, oidcRequestRetries, oidcRequestRetryDelay int
+	flag.IntVar(&expiryTime, "expiry-time", 360, "expiry time in minutes (optional)")
+	flag.StringVar(&keyFile, "key-file", "", "output private key file")
+	flag.StringVar(&certFile, "cert-file", "", "output certificate file")
+	flag.StringVar(&signerCertFile, "signer-cert-file", "", "output signer certificate file (optional)")
+	flag.StringVar(&domain, "domain", "", "domain of service")
+	flag.StringVar(&service, "service", "", "name of service")
+	flag.StringVar(&ztsURL, "zts", "", "url of the ZTS Service")
+	flag.StringVar(&dnsDomain, "dns-domain", "", "dns domain suffix to be included in the csr for sanDNS entries")
+	flag.StringVar(&subjC, "subj-c", "US", "Subject C/Country field (optional)")
+	flag.StringVar(&subjO, "subj-o", "", "Subject O/Organization field (optional)")
+	flag.StringVar(&subjOU, "subj-ou", "Athenz", "Subject OU/OrganizationalUnit field (optional)")
+	flag.StringVar(&provider, "provider", "sys.auth.github-actions", "Athenz Provider (optional)")
+	flag.StringVar(&caCertFile, "cacert", "", "CA certificate file (optional)")
+	flag.StringVar(&spiffeTrustDomain, "spiffe-trust-domain", "", "SPIFFE trust domain (optional)")
+	flag.BoolVar(&getOIDCToken, "get-oidc-token", false, "Get OIDC token from Athenz ZTS along with X.509 identity certificate")
+	flag.StringVar(&oidcTokenAudience, "oidc-token-audience", "", "OIDC token audience (optional)")
+	flag.StringVar(&oidcKeyType, "oidc-key-type", "EC", "OIDC token signing key type: RSA/EC (optional)")
+	flag.IntVar(&oidcRequestTimeout, "oidc-request-timeout", 10, "timeout in seconds for the GitHub OIDC token request (optional)")
+	flag.IntVar(&oidcRequestRetries, "oidc-request-retries", 0, "number of retries for transient GitHub OIDC token request failures (optional)")
+	flag.IntVar(&oidcRequestRetryDelay, "oidc-request-retry-delay", 1, "base delay in seconds for the backoff between GitHub OIDC token request retries (optional)")
+	flag.BoolVar(&showVersion, "version", false, "Show version")
+	flag.Parse()
+
+	if showVersion {
+		log.Printf("SIA GitHub-Actions version: %s \n", Version)
+		os.Exit(0)
+	}
+
+	// make sure all requires arguments are provided
+	if keyFile == "" || certFile == "" || domain == "" || service == "" || ztsURL == "" || dnsDomain == "" {
+		log.Printf("missing required arguments\n")
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	// get the oidc token for the GitHub actions. GitHub's token endpoint is
+	// occasionally slow enough to exceed the default timeout, so the timeout and
+	// an optional bounded retry of transient failures are both configurable.
+	oidcTokenOptions := sia.OIDCTokenOptions{
+		RequestTimeout: time.Duration(oidcRequestTimeout) * time.Second,
+		Retries:        oidcRequestRetries,
+		RetryDelay:     time.Duration(oidcRequestRetryDelay) * time.Second,
+	}
+	oidcToken, claims, err := sia.GetOIDCTokenWithOptions(ztsURL, oidcTokenOptions)
+	if err != nil {
+		log.Fatalf("unable to obtain oidc token from GitHub: %v\n", err)
+	}
+
+	// extract the run id from the claims which we're going to use as part of our instance id
+	// the format of the run id is: <org>:<repo>:<run_id>
+	runId := claims["run_id"].(string)
+	if runId == "" {
+		log.Fatalf("unable to extract run_id from oidc token claims\n")
+	}
+	repository := claims["repository"].(string)
+	if repository == "" {
+		log.Fatalf("unable to extract repository from oidc token claims\n")
+	}
+	instanceId := strings.Replace(repository, "/", ":", -1) + ":" + runId
+
+	// we're going to display the action and resource to be used in athenz policies
+	log.Printf("Action: %s\n", "github."+claims["event_name"].(string))
+	log.Printf("Resource: %s\n", domain+":"+claims["sub"].(string))
+
+	// if the zts provider is configured to support authorization checks based
+	// on the job_workflow_ref claim, it combines the repository, ref and
+	// job_workflow_ref claims to generate the resource value, so we'll display
+	// that value as well when all the required claims are present in the token
+	ref, _ := claims["ref"].(string)
+	jobWorkflowRef, _ := claims["job_workflow_ref"].(string)
+	if ref != "" && jobWorkflowRef != "" {
+		log.Printf("Job Workflow Ref Resource: %s\n", domain+":"+repository+":"+ref+":"+jobWorkflowRef)
+	}
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		log.Fatalf("unable to generate rsa private key: %v\n", err)
+	}
+
+	// generate a csr for this service
+	csrData, err := sia.GetCSRDetails(privateKey, domain, service, provider, instanceId, dnsDomain, spiffeTrustDomain, subjC, subjO, subjOU)
+	if err != nil {
+		log.Fatalf("unable to generate CSR: %v\n", err)
+	}
+
+	// we're using copper argos which only uses tls and the attestation
+	// data contains the authentication details for the GitHub actions
+	client, err := util.ZtsClient(ztsURL, "", "", "", caCertFile)
+	if err != nil {
+		log.Fatalf("unable to create zts client: %v\n", err)
+	}
+	client.AddCredentials("User-Agent", "SIA-GitHub-Actions "+Version)
+
+	certExpiryTime := int32(expiryTime)
+	req := &zts.InstanceRegisterInformation{
+		Provider:        zts.ServiceName(provider),
+		Domain:          zts.DomainName(domain),
+		Service:         zts.SimpleName(service),
+		AttestationData: oidcToken,
+		Csr:             csrData,
+		ExpiryTime:      &certExpiryTime,
+	}
+
+	if getOIDCToken {
+		req.Token = &getOIDCToken
+		req.JwtSVIDAudience = oidcTokenAudience
+		req.JwtSVIDKeyType = zts.SimpleName(oidcKeyType)
+	}
+
+	// request a tls certificate for this service
+	identity, _, err := client.PostInstanceRegisterInformation(req)
+	if err != nil {
+		log.Fatalf("unable to register instance: %v\n", err)
+	}
+
+	err = os.WriteFile(keyFile, util.GetPEMBlock(privateKey), 0400)
+	if err != nil {
+		log.Fatalf("unable to write private key file: %s - error: %v\n", keyFile, err)
+	}
+
+	err = os.WriteFile(certFile, []byte(identity.X509Certificate), 0444)
+	if err != nil {
+		log.Fatalf("unable to write certificate file: %s - error: %v\n", certFile, err)
+	}
+
+	if signerCertFile != "" {
+		err = os.WriteFile(signerCertFile, []byte(identity.X509CertificateSigner), 0444)
+		if err != nil {
+			log.Fatalf("unable to write signer certificate file: %s - error: %v\n", signerCertFile, err)
+		}
+	}
+
+	if getOIDCToken {
+		if identity.ServiceToken == "" {
+			log.Fatalf("OIDC Token not found in identity response")
+		}
+		// Open GITHUB_ENV in append mode, create if it doesn't exist
+		githubEnv := os.Getenv("GITHUB_ENV")
+		if githubEnv == "" {
+			log.Println("GITHUB_ENV environment variable is not set. Skipping setting OIDC token in environment.")
+			return
+		}
+		f, err := os.OpenFile(githubEnv, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatalf("Error opening GITHUB_ENV %s: %v\n", githubEnv, err)
+		}
+		defer f.Close()
+		if _, err := f.WriteString(fmt.Sprintf("ZTS_OIDC_TOKEN=%s\n", identity.ServiceToken)); err != nil {
+			log.Fatalf("Error writing to GITHUB_ENV %s: %v\n", githubEnv, err)
+		}
+	}
+}

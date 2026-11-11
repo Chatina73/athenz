@@ -15,20 +15,29 @@
  */
 package com.yahoo.athenz.instance.provider.impl;
 
+import com.nimbusds.jose.*;
+import com.nimbusds.jose.proc.SecurityContext;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
+import com.nimbusds.jwt.proc.ConfigurableJWTProcessor;
+import com.yahoo.athenz.auth.AuthorityConsts;
 import com.yahoo.athenz.auth.KeyStore;
 import com.yahoo.athenz.auth.token.PrincipalToken;
 import com.yahoo.athenz.auth.token.Token;
+import com.yahoo.athenz.auth.token.jwts.JwtsHelper;
 import com.yahoo.athenz.auth.token.jwts.JwtsSigningKeyResolver;
+import com.yahoo.athenz.auth.util.Crypto;
+import com.yahoo.athenz.common.ServerCommonConsts;
+import com.yahoo.athenz.common.server.db.RolesProvider;
 import com.yahoo.athenz.common.server.dns.HostnameResolver;
+import com.yahoo.athenz.common.server.util.PrincipalUtils;
 import com.yahoo.athenz.common.server.util.ResourceUtils;
+import com.yahoo.athenz.zms.Role;
+import com.yahoo.athenz.zms.RoleMember;
 import com.yahoo.athenz.instance.provider.InstanceConfirmation;
 import com.yahoo.athenz.instance.provider.InstanceProvider;
-import com.yahoo.athenz.instance.provider.ResourceException;
+import com.yahoo.athenz.instance.provider.ProviderResourceException;
 import com.yahoo.athenz.zts.InstanceRegisterToken;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jws;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import org.eclipse.jetty.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,14 +56,15 @@ public class InstanceZTSProvider implements InstanceProvider {
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
     private static final String URI_HOSTNAME_PREFIX = "athenz://hostname/";
 
+    static final String ZTS_PROP_PROVIDER_JKWS_URI    = "athenz.zts.provider_jwks_uri";
     static final String ZTS_PROP_PROVIDER_DNS_SUFFIX  = "athenz.zts.provider_dns_suffix";
     static final String ZTS_PROP_PRINCIPAL_LIST       = "athenz.zts.provider_service_list";
+    static final String ZTS_PROP_PRINCIPAL_ROLE       = "athenz.zts.provider_service_role";
     static final String ZTS_PROP_EXPIRY_TIME          = "athenz.zts.provider_token_expiry_time";
+    static final String ZTS_PROP_USER_CERT_SKIP_SVC   = "athenz.zts.provider_user_cert_skip_service_check";
 
     static final String ZTS_PROVIDER_SERVICE  = "sys.auth.zts";
 
-    public static final String HDR_KEY_ID     = "kid";
-    public static final String HDR_TOKEN_TYPE = "typ";
     public static final String HDR_TOKEN_JWT  = "jwt";
 
     public static final String CLAIM_PROVIDER    = "provider";
@@ -67,12 +77,17 @@ public class InstanceZTSProvider implements InstanceProvider {
     Set<String> dnsSuffixes = null;
     String provider = null;
     String keyId = null;
-    PrivateKey key = null;
-    SignatureAlgorithm keyAlg = null;
+    JWSSigner signer = null;
+    JWSAlgorithm sigAlg = null;
     Set<String> principals = null;
+    String principalRoleDomain = null;
+    String principalRoleName = null;
+    RolesProvider rolesProvider = null;
     HostnameResolver hostnameResolver = null;
-    JwtsSigningKeyResolver signingKeyResolver = null;
+    ConfigurableJWTProcessor<SecurityContext> jwtProcessor = null;
     int expiryTime;
+    boolean skipServiceCheckForUserCert = false;
+    String userDomainPrefix = null;
 
     @Override
     public Scheme getProviderScheme() {
@@ -95,6 +110,18 @@ public class InstanceZTSProvider implements InstanceProvider {
             principals = new HashSet<>(Arrays.asList(principalList.split(",")));
         }
 
+        // obtain the role name for principal validation if configured.
+        // the expected format is <domain>:role.<role-name>
+
+        final String principalRole = System.getProperty(ZTS_PROP_PRINCIPAL_ROLE);
+        if (principalRole != null && !principalRole.isEmpty()) {
+            int idx = principalRole.indexOf(AuthorityConsts.ROLE_SEP);
+            if (idx != -1) {
+                principalRoleDomain = principalRole.substring(0, idx);
+                principalRoleName = principalRole.substring(idx + AuthorityConsts.ROLE_SEP.length());
+            }
+        }
+
         // determine the dns suffix. if this is not specified we'll just default to zts.athenz.cloud
 
         dnsSuffixes = new HashSet<>();
@@ -111,16 +138,31 @@ public class InstanceZTSProvider implements InstanceProvider {
         final String expiryTimeStr = System.getProperty(ZTS_PROP_EXPIRY_TIME, "30");
         expiryTime = Integer.parseInt(expiryTimeStr);
 
-        // initialize our jwt key resolver
+        // check if we need to skip service check for user certificates
 
-        signingKeyResolver = new JwtsSigningKeyResolver(null, null);
+        skipServiceCheckForUserCert = Boolean.parseBoolean(
+                System.getProperty(ZTS_PROP_USER_CERT_SKIP_SVC, "false"));
+        if (skipServiceCheckForUserCert) {
+            final String userDomain = System.getProperty(ServerCommonConsts.PROP_USER_DOMAIN,
+                    ServerCommonConsts.USER_DOMAIN);
+            userDomainPrefix = userDomain + ".";
+        }
+
+        // initialize our jwt processor
+
+        jwtProcessor = JwtsHelper.getJWTProcessor(new JwtsSigningKeyResolver(System.getProperty(ZTS_PROP_PROVIDER_JKWS_URI), null));
     }
 
     @Override
-    public void setPrivateKey(PrivateKey key, String keyId, SignatureAlgorithm keyAlg) {
-        this.key = key;
+    public void setPrivateKey(PrivateKey key, String keyId, String sigAlg) {
+
         this.keyId = keyId;
-        this.keyAlg = keyAlg;
+        this.sigAlg = JWSAlgorithm.parse(sigAlg);
+        try {
+            this.signer = JwtsHelper.getJWSSigner(key);
+        } catch (JOSEException ex) {
+            throw new IllegalArgumentException("Unable to create signer: " + ex.getMessage());
+        }
     }
 
     @Override
@@ -128,22 +170,104 @@ public class InstanceZTSProvider implements InstanceProvider {
         this.hostnameResolver = hostnameResolver;
     }
 
-    private ResourceException forbiddenError(String message) {
+    @Override
+    public void setRolesProvider(RolesProvider rolesProvider) {
+        this.rolesProvider = rolesProvider;
+    }
+
+    boolean isServiceAllowedForProvider(final String principal, final Map<String, String> instanceAttributes) {
+
+        // if no configuration is provided, then all services are allowed
+
+        if (principals == null && principalRoleDomain == null && principalRoleName == null) {
+            return true;
+        }
+
+        // if configured, check if the request is from a user certificate
+        // and if so, skip the service check
+
+        if (skipServiceCheckForUserCert && isUserCertificateRequest(instanceAttributes)) {
+            return true;
+        }
+
+        // first check if the service is in the static list of allowed services
+
+        if (principals != null && principals.contains(principal)) {
+            return true;
+        }
+
+        // the service is not in the static list of allowed services,
+        // so we need to check if it is in the provider role
+
+        if (rolesProvider == null || principalRoleDomain == null || principalRoleName == null) {
+            return false;
+        }
+
+        try {
+            Role role = rolesProvider.getRole(principalRoleDomain, principalRoleName,
+                    false, false, false);
+            if (role == null) {
+                LOGGER.error("Principal role {}/{} not found", principalRoleDomain, principalRoleName);
+                return false;
+            }
+            List<RoleMember> roleMembers = role.getRoleMembers();
+            if (roleMembers == null) {
+                return false;
+            }
+            long now = System.currentTimeMillis();
+            for (RoleMember roleMember : roleMembers) {
+                // skip if the role member is expired
+                if (roleMember.getExpiration() != null && roleMember.getExpiration().millis() < now) {
+                    continue;
+                }
+                // skip if the role member is disabled by the system
+                if (roleMember.getSystemDisabled() != null && roleMember.getSystemDisabled() != 0) {
+                    continue;
+                }
+                if (principal.equals(roleMember.getMemberName())) {
+                    return true;
+                }
+            }
+        } catch (Exception ex) {
+            LOGGER.error("Unable to fetch role {}/{}: {}", principalRoleDomain,
+                    principalRoleName, ex.getMessage());
+        }
+        return false;
+    }
+
+    boolean isUserCertificateRequest(final Map<String, String> instanceAttributes) {
+
+        final String subjectDn = InstanceUtils.getInstanceProperty(instanceAttributes,
+                InstanceProvider.ZTS_INSTANCE_CERT_SUBJECT_DN);
+        if (StringUtil.isEmpty(subjectDn)) {
+            return false;
+        }
+
+        final String cn = Crypto.extractX509DNCommonName(subjectDn);
+        if (StringUtil.isEmpty(cn)) {
+            return false;
+        }
+
+        return PrincipalUtils.isUserDomainPrincipal(cn, userDomainPrefix, null);
+    }
+
+    private ProviderResourceException forbiddenError(String message) {
         LOGGER.error(message);
-        return new ResourceException(ResourceException.FORBIDDEN, message);
+        return new ProviderResourceException(ProviderResourceException.FORBIDDEN, message);
     }
 
     @Override
-    public InstanceConfirmation confirmInstance(InstanceConfirmation confirmation) {
+    public InstanceConfirmation confirmInstance(InstanceConfirmation confirmation) throws ProviderResourceException {
         return validateInstanceRequest(confirmation, true);
     }
 
     @Override
-    public InstanceConfirmation refreshInstance(InstanceConfirmation confirmation) {
+    public InstanceConfirmation refreshInstance(InstanceConfirmation confirmation) throws ProviderResourceException {
         return validateInstanceRequest(confirmation, false);
     }
 
-    InstanceConfirmation validateInstanceRequest(InstanceConfirmation confirmation, boolean registerInstance) {
+    InstanceConfirmation validateInstanceRequest(InstanceConfirmation confirmation, boolean registerInstance)
+            throws ProviderResourceException {
 
         // we need to validate the token which is our attestation
         // data for the service requesting a certificate
@@ -152,15 +276,20 @@ public class InstanceZTSProvider implements InstanceProvider {
         final String instanceService = confirmation.getService();
 
         final Map<String, String> instanceAttributes = confirmation.getAttributes();
-        final String csrPublicKey = InstanceUtils.getInstanceProperty(instanceAttributes,
-                InstanceProvider.ZTS_INSTANCE_CSR_PUBLIC_KEY);
 
         // make sure this service has been configured to be supported
-        // by this zts provider
+        // by this zts provider - either in the static list or in the
+        // configured role. if neither is configured, then all services
+        // are allowed.
 
-        if (principals != null && !principals.contains(instanceDomain + "." + instanceService)) {
-            throw forbiddenError("Service not supported to be launched by ZTS Provider");
+        if (!isServiceAllowedForProvider(instanceDomain + "." + instanceService, instanceAttributes)) {
+            throw forbiddenError("Service not authorized to be launched by ZTS Provider");
         }
+
+        // now we can validate the instance request
+
+        final String csrPublicKey = InstanceUtils.getInstanceProperty(instanceAttributes,
+                InstanceProvider.ZTS_INSTANCE_CSR_PUBLIC_KEY);
 
         // we're supporting two attestation data models with our provider
         // 1) public / private key pair with service tokens - these
@@ -240,7 +369,7 @@ public class InstanceZTSProvider implements InstanceProvider {
 
         StringBuilder instanceId = new StringBuilder(256);
         if (!InstanceUtils.validateCertRequestSanDnsNames(instanceAttributes, instanceDomain,
-                instanceService, dnsSuffixes, null, null, false, instanceId)) {
+                instanceService, dnsSuffixes, null, null, false, instanceId, null)) {
             throw forbiddenError("Unable to validate certificate request DNS");
         }
 
@@ -249,7 +378,7 @@ public class InstanceZTSProvider implements InstanceProvider {
     }
 
     @Override
-    public InstanceRegisterToken getInstanceRegisterToken(InstanceConfirmation details) {
+    public InstanceRegisterToken getInstanceRegisterToken(InstanceConfirmation details) throws ProviderResourceException {
 
         // ZTS Server has already verified that the caller has update
         // rights over the given service so we'll just generate
@@ -263,29 +392,40 @@ public class InstanceZTSProvider implements InstanceProvider {
 
         // first we'll generate and sign our token
 
-        final String registerToken = Jwts.builder()
-                .setId(tokenId)
-                .setSubject(ResourceUtils.serviceResourceName(details.getDomain(), details.getService()))
-                .setIssuedAt(Date.from(Instant.now()))
-                .setIssuer(provider)
-                .setAudience(provider)
+        JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
+                .jwtID(tokenId)
+                .subject(ResourceUtils.serviceResourceName(details.getDomain(), details.getService()))
+                .issueTime(Date.from(Instant.now()))
+                .issuer(provider)
+                .audience(provider)
                 .claim(CLAIM_PROVIDER, details.getProvider())
                 .claim(CLAIM_DOMAIN, details.getDomain())
                 .claim(CLAIM_SERVICE, details.getService())
                 .claim(CLAIM_INSTANCE_ID, instanceId)
                 .claim(CLAIM_CLIENT_ID, principal)
-                .setHeaderParam(HDR_KEY_ID, keyId)
-                .setHeaderParam(HDR_TOKEN_TYPE, HDR_TOKEN_JWT)
-                .signWith(key, keyAlg)
-                .compact();
+                .build();
 
-        // finally return our token to the caller
+        try {
+            SignedJWT signedJWT = new SignedJWT(
+                    new JWSHeader.Builder(sigAlg)
+                            .keyID(keyId)
+                            .type(new JOSEObjectType(HDR_TOKEN_JWT))
+                            .build(),
+                    claimsSet);
+            signedJWT.sign(signer);
+            final String registerToken = signedJWT.serialize();
 
-        return new InstanceRegisterToken()
-                .setProvider(details.getProvider())
-                .setDomain(details.getDomain())
-                .setService(details.getService())
-                .setAttestationData(registerToken);
+            // finally return our token to the caller
+
+            return new InstanceRegisterToken()
+                    .setProvider(details.getProvider())
+                    .setDomain(details.getDomain())
+                    .setService(details.getService())
+                    .setAttestationData(registerToken);
+        } catch (JOSEException ex) {
+            LOGGER.error("Unable to sign register token: {}", ex.getMessage());
+            throw new ProviderResourceException(ProviderResourceException.INTERNAL_SERVER_ERROR, "Unable to sign register token");
+        }
     }
 
     /**
@@ -419,17 +559,23 @@ public class InstanceZTSProvider implements InstanceProvider {
     boolean validateRegisterToken(final String jwToken, final String domainName, final String serviceName,
                                   final String instanceId, boolean registerInstance, StringBuilder errMsg) {
 
-        Jws<Claims> claims = Jwts.parserBuilder()
-                .setSigningKeyResolver(signingKeyResolver)
-                .setAllowedClockSkewSeconds(60)
-                .build()
-                .parseClaimsJws(jwToken);
+        if (jwtProcessor == null) {
+            errMsg.append("JWT Processor not initialized");
+            return false;
+        }
+
+        JWTClaimsSet claimsSet;
+        try {
+            claimsSet = jwtProcessor.process(jwToken, null);
+        } catch (Exception ex) {
+            errMsg.append("validateRegisterToken failed: ").append(ex.getMessage());
+            return false;
+        }
 
         // verify that token audience is set for our service
 
-        Claims claimsBody = claims.getBody();
-        if (!ZTS_PROVIDER_SERVICE.equals(claimsBody.getAudience())) {
-            errMsg.append("token audience is not ZTS provider: ").append(claimsBody.getAudience());
+        if (!ZTS_PROVIDER_SERVICE.equals(JwtsHelper.getAudience(claimsSet))) {
+            errMsg.append("token audience is not ZTS provider: ").append(JwtsHelper.getAudience(claimsSet));
             return false;
         }
 
@@ -437,7 +583,7 @@ public class InstanceZTSProvider implements InstanceProvider {
         // only for register requests.
 
         if (registerInstance) {
-            Date issueDate = claimsBody.getIssuedAt();
+            Date issueDate = claimsSet.getIssueTime();
             if (issueDate == null || issueDate.getTime() < System.currentTimeMillis() -
                     TimeUnit.MINUTES.toMillis(expiryTime)) {
                 errMsg.append("token is already expired, issued at: ").append(issueDate);
@@ -447,20 +593,20 @@ public class InstanceZTSProvider implements InstanceProvider {
 
         // verify provider, domain, service, and instance id values
 
-        if (!domainName.equals(claimsBody.get(CLAIM_DOMAIN, String.class))) {
-            errMsg.append("invalid domain name in token: ").append(claimsBody.get(CLAIM_DOMAIN, String.class));
+        if (!domainName.equals(JwtsHelper.getStringClaim(claimsSet, CLAIM_DOMAIN))) {
+            errMsg.append("invalid domain name in token: ").append(JwtsHelper.getStringClaim(claimsSet, CLAIM_DOMAIN));
             return false;
         }
-        if (!serviceName.equals(claimsBody.get(CLAIM_SERVICE, String.class))) {
-            errMsg.append("invalid service name in token: ").append(claimsBody.get(CLAIM_SERVICE, String.class));
+        if (!serviceName.equals(JwtsHelper.getStringClaim(claimsSet, CLAIM_SERVICE))) {
+            errMsg.append("invalid service name in token: ").append(JwtsHelper.getStringClaim(claimsSet, CLAIM_SERVICE));
             return false;
         }
-        if (!instanceId.equals(claimsBody.get(CLAIM_INSTANCE_ID, String.class))) {
-            errMsg.append("invalid instance id in token: ").append(claimsBody.get(CLAIM_INSTANCE_ID, String.class));
+        if (!instanceId.equals(JwtsHelper.getStringClaim(claimsSet, CLAIM_INSTANCE_ID))) {
+            errMsg.append("invalid instance id in token: ").append(JwtsHelper.getStringClaim(claimsSet, CLAIM_INSTANCE_ID));
             return false;
         }
-        if (!ZTS_PROVIDER_SERVICE.equals(claimsBody.get(CLAIM_PROVIDER, String.class))) {
-            errMsg.append("invalid provider name in token: ").append(claimsBody.get(CLAIM_PROVIDER, String.class));
+        if (!ZTS_PROVIDER_SERVICE.equals(JwtsHelper.getStringClaim(claimsSet, CLAIM_PROVIDER))) {
+            errMsg.append("invalid provider name in token: ").append(JwtsHelper.getStringClaim(claimsSet, CLAIM_PROVIDER));
             return false;
         }
 

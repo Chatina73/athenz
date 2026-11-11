@@ -18,3 +18,12 @@ export const selectUserPendingMembers = (state) =>
     state.user.pendingMembers ? state.user.pendingMembers : [];
 export const selectUserResourceAccessList = (state) =>
     state.user.resourceAccessList ? state.user.resourceAccessList : [];
+
+export const selectAllUsers = (state) => {
+    return state.user.userList;
+};
+
+export const selectPendingMemberRole = (state, domainName, roleName) =>
+    state?.user?.pendingMemberRoles?.[`${domainName}:${roleName}`] ?? null;
+export const selectPendingMemberGroup = (state, domainName, groupName) =>
+    state?.user?.pendingMemberGroups?.[`${domainName}:${groupName}`] ?? null;

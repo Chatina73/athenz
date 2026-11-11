@@ -5,10 +5,145 @@
     "comment": "Copyright The Athenz Authors Licensed under the terms of the Apache version 2.0 license. See LICENSE file for terms. The Micro Segmentation Defense (MSD) API",
     "types": [
         {
+            "EnumTypeDef": {
+                "type": "Enum",
+                "name": "AthenzEntityAction",
+                "comment": "Copyright The Athenz Authors Licensed under the terms of the Apache version 2.0 license. See LICENSE file for terms.",
+                "annotations": {
+                    "x_included_from": "Domain.tdl"
+                },
+                "elements": [
+                    {
+                        "symbol": "create"
+                    },
+                    {
+                        "symbol": "delete"
+                    },
+                    {
+                        "symbol": "update"
+                    }
+                ]
+            }
+        },
+        {
+            "EnumTypeDef": {
+                "type": "Enum",
+                "name": "AthenzEntityType",
+                "annotations": {
+                    "x_included_from": "Domain.tdl"
+                },
+                "elements": [
+                    {
+                        "symbol": "domain"
+                    },
+                    {
+                        "symbol": "role"
+                    },
+                    {
+                        "symbol": "group"
+                    },
+                    {
+                        "symbol": "service"
+                    },
+                    {
+                        "symbol": "policy"
+                    },
+                    {
+                        "symbol": "entity"
+                    }
+                ]
+            }
+        },
+        {
+            "EnumTypeDef": {
+                "type": "Enum",
+                "name": "AthenzDependencyResponseStatus",
+                "annotations": {
+                    "x_included_from": "Domain.tdl"
+                },
+                "elements": [
+                    {
+                        "symbol": "allow"
+                    },
+                    {
+                        "symbol": "deny"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "AthenzDependencyRequest",
+                "annotations": {
+                    "x_included_from": "Domain.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "operation",
+                        "type": "AthenzEntityAction",
+                        "comment": "domain action like, create/delete/..."
+                    },
+                    {
+                        "name": "domainName",
+                        "type": "String",
+                        "comment": "domain name"
+                    },
+                    {
+                        "name": "objectType",
+                        "type": "AthenzEntityType",
+                        "comment": "entity type like, domain/role/..."
+                    },
+                    {
+                        "name": "objectName",
+                        "type": "String",
+                        "comment": "name of the athenz entity"
+                    },
+                    {
+                        "name": "principal",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "principal of the executing operation"
+                    },
+                    {
+                        "name": "provider",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "provider service identity"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "AthenzDependencyResponse",
+                "annotations": {
+                    "x_included_from": "Domain.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "status",
+                        "type": "AthenzDependencyResponseStatus",
+                        "comment": "whether the request is allowed or denied"
+                    },
+                    {
+                        "name": "message",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "reason for denial"
+                    }
+                ]
+            }
+        },
+        {
             "StringTypeDef": {
                 "type": "String",
                 "name": "SimpleName",
                 "comment": "Copyright The Athenz Authors Licensed under the terms of the Apache version 2.0 license. See LICENSE file for terms. Common name types used by several API definitions A simple identifier, an element of compound name.",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
                 "pattern": "[a-zA-Z0-9_][a-zA-Z0-9_-]*"
             }
         },
@@ -17,6 +152,9 @@
                 "type": "String",
                 "name": "CompoundName",
                 "comment": "A compound name. Most names in this API are compound names.",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
                 "pattern": "([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*"
             }
         },
@@ -25,6 +163,9 @@
                 "type": "String",
                 "name": "DomainName",
                 "comment": "A domain name is the general qualifier prefix, as its uniqueness is managed.",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
                 "pattern": "([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*"
             }
         },
@@ -33,6 +174,9 @@
                 "type": "String",
                 "name": "EntityName",
                 "comment": "An entity name is a short form of a resource name, including only the domain and entity.",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
                 "pattern": "([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*"
             }
         },
@@ -41,6 +185,9 @@
                 "type": "String",
                 "name": "EntityList",
                 "comment": "An Entity list is comma separated compound Names",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
                 "pattern": "(([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*,)*([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*"
             }
         },
@@ -49,6 +196,9 @@
                 "type": "String",
                 "name": "ServiceName",
                 "comment": "A service name will generally be a unique subdomain.",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
                 "pattern": "([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*"
             }
         },
@@ -57,6 +207,9 @@
                 "type": "String",
                 "name": "ActionName",
                 "comment": "An action (operation) name.",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
                 "pattern": "([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*"
             }
         },
@@ -65,6 +218,9 @@
                 "type": "String",
                 "name": "ResourceName",
                 "comment": "A resource name Note that the EntityName part is optional, that is, a domain name followed by a colon is valid resource name.",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
                 "pattern": "([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*(:([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*)?"
             }
         },
@@ -73,6 +229,9 @@
                 "type": "String",
                 "name": "YBase64",
                 "comment": "The Y-specific URL-safe Base64 variant.",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
                 "pattern": "[a-zA-Z0-9\\._-]+"
             }
         },
@@ -81,6 +240,9 @@
                 "type": "String",
                 "name": "YEncoded",
                 "comment": "YEncoded includes ybase64 chars, as well as = and %. This can represent a user cookie and URL-encoded values.",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
                 "pattern": "[a-zA-Z0-9\\._%=-]*"
             }
         },
@@ -89,6 +251,9 @@
                 "type": "String",
                 "name": "AuthorityName",
                 "comment": "Used as the prefix in a signed assertion. This uniquely identifies a signing authority.",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
                 "pattern": "([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*"
             }
         },
@@ -97,6 +262,9 @@
                 "type": "String",
                 "name": "PathElement",
                 "comment": "A uri-safe path element",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
                 "pattern": "[a-zA-Z0-9-\\._~=+@$,:]*"
             }
         },
@@ -105,6 +273,9 @@
                 "type": "String",
                 "name": "TransportPolicySubjectDomainName",
                 "comment": "DomainName in TransportPolicySubject should allow * to indicate ANY",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
                 "pattern": "\\*|([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*"
             }
         },
@@ -113,7 +284,50 @@
                 "type": "String",
                 "name": "TransportPolicySubjectServiceName",
                 "comment": "ServiceName in TransportPolicySubject should allow * to indicate ANY",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
                 "pattern": "\\*|([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*"
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "StaticWorkloadComponent",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
+                "pattern": "[A-Za-z0-9][A-Za-z0-9:_\\.-]*"
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "StaticWorkloadFQDN",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
+                "pattern": "([A-Za-z0-9][A-Za-z0-9:_\\.-]*\\.)*[A-Za-z0-9][A-Za-z0-9:_\\.-]*"
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "StaticWorkloadName",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
+                "pattern": "(\\*\\.([A-Za-z0-9][A-Za-z0-9:_\\.-]*\\.)*[A-Za-z0-9][A-Za-z0-9:_\\.-]*)|((([A-Za-z0-9][A-Za-z0-9:_\\.-]*\\.)*[A-Za-z0-9][A-Za-z0-9:_\\.-]*)(\\/[0-9]{1,3})?)"
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "TransportPolicySubjectExternal",
+                "annotations": {
+                    "x_included_from": "Names.tdl"
+                },
+                "pattern": "(([A-Za-z0-9][A-Za-z0-9:_\\.-]*\\.)*[A-Za-z0-9][A-Za-z0-9:_\\.-]*)(\\/[0-9]{1,3})?"
             }
         },
         {
@@ -121,6 +335,9 @@
                 "type": "Enum",
                 "name": "TransportPolicyEnforcementState",
                 "comment": "Types of transport policy enforcement states",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "elements": [
                     {
                         "symbol": "ENFORCE"
@@ -136,6 +353,9 @@
                 "type": "Enum",
                 "name": "TransportPolicyProtocol",
                 "comment": "Types of transport policy protocols",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "elements": [
                     {
                         "symbol": "TCP"
@@ -151,6 +371,9 @@
                 "type": "Enum",
                 "name": "TransportPolicyValidationStatus",
                 "comment": "Validation Status of transport policy vs network policy",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "elements": [
                     {
                         "symbol": "VALID"
@@ -169,6 +392,9 @@
                 "type": "Enum",
                 "name": "TransportPolicyTrafficDirection",
                 "comment": "Types of transport policy traffic direction",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "elements": [
                     {
                         "symbol": "INGRESS"
@@ -180,25 +406,82 @@
             }
         },
         {
+            "EnumTypeDef": {
+                "type": "Enum",
+                "name": "TransportPolicyScope",
+                "comment": "Scope of transport policy",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
+                "elements": [
+                    {
+                        "symbol": "ALL"
+                    },
+                    {
+                        "symbol": "ONPREM"
+                    },
+                    {
+                        "symbol": "AWS"
+                    },
+                    {
+                        "symbol": "GCP"
+                    }
+                ]
+            }
+        },
+        {
             "StructTypeDef": {
                 "type": "Struct",
                 "name": "TransportPolicySubject",
                 "comment": "Subject for a transport policy",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "fields": [
                     {
                         "name": "domainName",
                         "type": "TransportPolicySubjectDomainName",
-                        "optional": false,
                         "comment": "Name of the domain"
                     },
                     {
                         "name": "serviceName",
                         "type": "TransportPolicySubjectServiceName",
-                        "optional": false,
                         "comment": "Name of the service"
+                    },
+                    {
+                        "name": "externalPeer",
+                        "type": "TransportPolicySubjectExternal",
+                        "optional": true,
+                        "comment": "External peer ( not in Athenz )"
                     }
-                ],
-                "closed": false
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "TransportPolicySubjectSelectorRequirement",
+                "comment": "A subject selector requirement is a selector that contains value, a key, and an operator that relates the key and value.",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "key",
+                        "type": "String",
+                        "comment": "key that the selector applies to"
+                    },
+                    {
+                        "name": "operator",
+                        "type": "String",
+                        "comment": "Operator that is applied to the key and value"
+                    },
+                    {
+                        "name": "value",
+                        "type": "String",
+                        "comment": "Value that the selector applies to"
+                    }
+                ]
             }
         },
         {
@@ -206,11 +489,13 @@
                 "type": "Struct",
                 "name": "TransportPolicyCondition",
                 "comment": "Transport policy condition. Used to specify additional restrictions for the subject of a transport policy",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "fields": [
                     {
                         "name": "enforcementState",
                         "type": "TransportPolicyEnforcementState",
-                        "optional": false,
                         "comment": "State of transport policy enforcement ( ENFORCE / REPORT )"
                     },
                     {
@@ -219,9 +504,22 @@
                         "optional": true,
                         "comment": "Acts as restrictions. If present, this transport policy should be restricted to only mentioned instances.",
                         "items": "String"
+                    },
+                    {
+                        "name": "scope",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "Scope of transport policy",
+                        "items": "TransportPolicyScope"
+                    },
+                    {
+                        "name": "additionalConditions",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "List of any additional conditions",
+                        "items": "TransportPolicySubjectSelectorRequirement"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -229,21 +527,21 @@
                 "type": "Struct",
                 "name": "PolicyPort",
                 "comment": "generic policy port. Will be used by TransportPolicyPort and NetworkPolicyPort structs",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "fields": [
                     {
                         "name": "port",
                         "type": "Int32",
-                        "optional": false,
                         "comment": "Start port of the port range. port and endPort will have same values for a single port definition."
                     },
                     {
                         "name": "endPort",
                         "type": "Int32",
-                        "optional": false,
                         "comment": "End port of the port range. port and endPort will have same values for a single port definition."
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -251,15 +549,16 @@
                 "type": "PolicyPort",
                 "name": "TransportPolicyPort",
                 "comment": "Transport policy port",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "fields": [
                     {
                         "name": "protocol",
                         "type": "TransportPolicyProtocol",
-                        "optional": false,
                         "comment": "Protocol for this transport policy"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -267,22 +566,22 @@
                 "type": "Struct",
                 "name": "TransportPolicyMatch",
                 "comment": "Selector for the subject of a transport policy",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "fields": [
                     {
                         "name": "athenzService",
                         "type": "TransportPolicySubject",
-                        "optional": false,
                         "comment": "Subject where this transport policy applies"
                     },
                     {
                         "name": "conditions",
                         "type": "Array",
-                        "optional": false,
                         "comment": "List of additional requirements for restrictions. Requirements are ANDed.",
                         "items": "TransportPolicyCondition"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -290,23 +589,23 @@
                 "type": "Struct",
                 "name": "TransportPolicyPeer",
                 "comment": "Source or destination for a transport policy",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "fields": [
                     {
                         "name": "athenzServices",
                         "type": "Array",
-                        "optional": false,
                         "comment": "List of transport policy subjects",
                         "items": "TransportPolicySubject"
                     },
                     {
                         "name": "ports",
                         "type": "Array",
-                        "optional": false,
                         "comment": "List of network traffic port part of this transport policy",
                         "items": "TransportPolicyPort"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -314,22 +613,22 @@
                 "type": "Struct",
                 "name": "TransportPolicyEntitySelector",
                 "comment": "Entity to which a transport policy applies. Describes the subject and port(s) for a transport policy.",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "fields": [
                     {
                         "name": "match",
                         "type": "TransportPolicyMatch",
-                        "optional": false,
                         "comment": "Requirements for selecting the subject for this transport policy."
                     },
                     {
                         "name": "ports",
                         "type": "Array",
-                        "optional": false,
                         "comment": "List of network traffic port of the subject eligible for the transport policy",
                         "items": "TransportPolicyPort"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -337,24 +636,30 @@
                 "type": "Struct",
                 "name": "TransportPolicyIngressRule",
                 "comment": "Transport policy ingress rule",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "fields": [
                     {
                         "name": "id",
                         "type": "Int64",
-                        "optional": false,
                         "comment": "Assertion id associated with this transport policy"
+                    },
+                    {
+                        "name": "identifier",
+                        "type": "EntityName",
+                        "optional": true,
+                        "comment": "Policy Identifier"
                     },
                     {
                         "name": "lastModified",
                         "type": "Timestamp",
-                        "optional": false,
                         "comment": "Last modification timestamp of this transport policy"
                     },
                     {
                         "name": "entitySelector",
                         "type": "TransportPolicyEntitySelector",
-                        "optional": false,
-                        "comment": "Describes the entity to which this transport policy applies"
+                        "comment": "Entity to which this transport policy applies"
                     },
                     {
                         "name": "from",
@@ -362,8 +667,7 @@
                         "optional": true,
                         "comment": "Source of network traffic"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -371,23 +675,29 @@
                 "type": "Struct",
                 "name": "TransportPolicyEgressRule",
                 "comment": "Transport policy egress rule",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "fields": [
                     {
                         "name": "id",
                         "type": "Int64",
-                        "optional": false,
                         "comment": "Assertion id associated with this transport policy"
+                    },
+                    {
+                        "name": "identifier",
+                        "type": "EntityName",
+                        "optional": true,
+                        "comment": "Policy Identifier"
                     },
                     {
                         "name": "lastModified",
                         "type": "Timestamp",
-                        "optional": false,
                         "comment": "Last modification timestamp of this transport policy"
                     },
                     {
                         "name": "entitySelector",
                         "type": "TransportPolicyEntitySelector",
-                        "optional": false,
                         "comment": "Entity to which this transport policy applies"
                     },
                     {
@@ -396,8 +706,7 @@
                         "optional": true,
                         "comment": "Destination of network traffic"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -405,23 +714,23 @@
                 "type": "Struct",
                 "name": "TransportPolicyRules",
                 "comment": "Transport policy containing ingress and egress rules",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "fields": [
                     {
                         "name": "ingress",
                         "type": "Array",
-                        "optional": false,
                         "comment": "List of ingress rules",
                         "items": "TransportPolicyIngressRule"
                     },
                     {
                         "name": "egress",
                         "type": "Array",
-                        "optional": false,
                         "comment": "List of egress rules",
                         "items": "TransportPolicyEgressRule"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -429,17 +738,18 @@
                 "type": "Struct",
                 "name": "TransportPolicyValidationRequest",
                 "comment": "Transport policy request object to be validated",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "fields": [
                     {
                         "name": "entitySelector",
                         "type": "TransportPolicyEntitySelector",
-                        "optional": false,
                         "comment": "Describes the entity to which this transport policy applies"
                     },
                     {
                         "name": "peer",
                         "type": "TransportPolicyPeer",
-                        "optional": false,
                         "comment": "source or destination of the network traffic depending on direction"
                     },
                     {
@@ -450,11 +760,9 @@
                     },
                     {
                         "name": "trafficDirection",
-                        "type": "TransportPolicyTrafficDirection",
-                        "optional": false
+                        "type": "TransportPolicyTrafficDirection"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -462,11 +770,13 @@
                 "type": "Struct",
                 "name": "TransportPolicyValidationResponse",
                 "comment": "Response object of transport policy rule validation",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "fields": [
                     {
                         "name": "status",
-                        "type": "TransportPolicyValidationStatus",
-                        "optional": false
+                        "type": "TransportPolicyValidationStatus"
                     },
                     {
                         "name": "errors",
@@ -486,8 +796,7 @@
                         "optional": true,
                         "comment": "If present, assertion id associated with the transport policy"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -495,16 +804,70 @@
                 "type": "Struct",
                 "name": "TransportPolicyValidationResponseList",
                 "comment": "List of TransportPolicyValidationResponse",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
                 "fields": [
                     {
                         "name": "responseList",
                         "type": "Array",
-                        "optional": false,
                         "comment": "list of transport policy validation response",
                         "items": "TransportPolicyValidationResponse"
                     }
-                ],
-                "closed": false
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "TransportPolicyRequest",
+                "comment": "Input to create a transport policy",
+                "annotations": {
+                    "x_included_from": "TransportPolicyRule.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "direction",
+                        "type": "TransportPolicyTrafficDirection",
+                        "comment": "Direction of network traffic"
+                    },
+                    {
+                        "name": "identifier",
+                        "type": "EntityName",
+                        "comment": "Policy Identifier"
+                    },
+                    {
+                        "name": "subject",
+                        "type": "TransportPolicySubject",
+                        "comment": "Subject for the policy"
+                    },
+                    {
+                        "name": "conditions",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "List of transport policy conditions",
+                        "items": "TransportPolicyCondition"
+                    },
+                    {
+                        "name": "sourcePorts",
+                        "type": "Array",
+                        "comment": "List of source network traffic ports",
+                        "items": "TransportPolicyPort"
+                    },
+                    {
+                        "name": "destinationPorts",
+                        "type": "Array",
+                        "comment": "List of destination network traffic ports",
+                        "items": "TransportPolicyPort"
+                    },
+                    {
+                        "name": "peers",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "Source or destination of the policy depending on direction",
+                        "items": "TransportPolicySubject"
+                    }
+                ]
             }
         },
         {
@@ -512,24 +875,41 @@
                 "type": "Enum",
                 "name": "StaticWorkloadType",
                 "comment": "Enum representing defined types of static workloads.",
+                "annotations": {
+                    "x_included_from": "Workload.tdl"
+                },
                 "elements": [
                     {
-                        "symbol": "VIP"
+                        "symbol": "VIP",
+                        "comment": "represents a virtual ip construct"
                     },
                     {
-                        "symbol": "ENTERPRISE_APPLIANCE"
+                        "symbol": "ENTERPRISE_APPLIANCE",
+                        "comment": "represents generic network devices which can not be bootstrapped with an identity due to limitations"
                     },
                     {
-                        "symbol": "CLOUD_LB"
+                        "symbol": "CLOUD_LB",
+                        "comment": "represents a public cloud load balancer ( for ingress to public cloud )"
                     },
                     {
-                        "symbol": "CLOUD_NAT"
+                        "symbol": "CLOUD_NAT",
+                        "comment": "represents a public cloud NAT gateway ( for egress from public cloud )"
                     },
                     {
-                        "symbol": "EXTERNAL_APPLIANCE"
+                        "symbol": "EXTERNAL_APPLIANCE",
+                        "comment": "Appliance present outside of enterprise deployment locations. For SaaS / Third Party / Vendor use cases"
                     },
                     {
-                        "symbol": "VIP_LB"
+                        "symbol": "VIP_LB",
+                        "comment": "represents a virtual ip backed by a load balancer"
+                    },
+                    {
+                        "symbol": "CLOUD_MANAGED",
+                        "comment": "represents a cloud managed service or endpoint"
+                    },
+                    {
+                        "symbol": "SERVICE_SUBNET",
+                        "comment": "represents subnet for a given service, would be almost always a RFC1918 cidr"
                     }
                 ]
             }
@@ -539,54 +919,49 @@
                 "type": "Struct",
                 "name": "DynamicWorkload",
                 "comment": "workload type describing workload bootstrapped with an identity",
+                "annotations": {
+                    "x_included_from": "Workload.tdl"
+                },
                 "fields": [
                     {
                         "name": "domainName",
                         "type": "DomainName",
-                        "optional": false,
                         "comment": "name of the domain"
                     },
                     {
                         "name": "serviceName",
                         "type": "EntityName",
-                        "optional": false,
                         "comment": "name of the service"
                     },
                     {
                         "name": "uuid",
                         "type": "String",
-                        "optional": false,
                         "comment": "unique identifier for the workload, usually defined by provider"
                     },
                     {
                         "name": "ipAddresses",
                         "type": "Array",
-                        "optional": false,
                         "comment": "list of IP addresses associated with the workload, optional for getWorkloadsByIP API call",
                         "items": "String"
                     },
                     {
                         "name": "hostname",
                         "type": "String",
-                        "optional": false,
                         "comment": "hostname associated with the workload"
                     },
                     {
                         "name": "provider",
                         "type": "String",
-                        "optional": false,
                         "comment": "infrastructure provider e.g. Kubernetes, AWS, Azure, openstack etc."
                     },
                     {
                         "name": "updateTime",
                         "type": "Timestamp",
-                        "optional": false,
                         "comment": "most recent update timestamp in the backend"
                     },
                     {
                         "name": "certExpiryTime",
                         "type": "Timestamp",
-                        "optional": false,
                         "comment": "certificate expiry time (ex: getNotAfter)"
                     },
                     {
@@ -595,8 +970,7 @@
                         "optional": true,
                         "comment": "certificate issue time (ex: getNotBefore)"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -604,8 +978,10 @@
                 "type": "DynamicWorkload",
                 "name": "Workload",
                 "comment": "kept for backward compatibility sake. Will be eventually deprecated in favor of DynamicWorkload",
-                "fields": [],
-                "closed": false
+                "annotations": {
+                    "x_included_from": "Workload.tdl"
+                },
+                "fields": []
             }
         },
         {
@@ -613,23 +989,23 @@
                 "type": "Struct",
                 "name": "StaticWorkload",
                 "comment": "workload type describing workload indirectly associated with an identity ( without bootstrap )",
+                "annotations": {
+                    "x_included_from": "Workload.tdl"
+                },
                 "fields": [
                     {
                         "name": "domainName",
                         "type": "DomainName",
-                        "optional": false,
                         "comment": "name of the domain"
                     },
                     {
                         "name": "serviceName",
                         "type": "EntityName",
-                        "optional": false,
                         "comment": "name of the service"
                     },
                     {
                         "name": "type",
                         "type": "StaticWorkloadType",
-                        "optional": false,
                         "comment": "value representing one of the StaticWorkloadType enum"
                     },
                     {
@@ -641,7 +1017,7 @@
                     },
                     {
                         "name": "name",
-                        "type": "String",
+                        "type": "StaticWorkloadName",
                         "optional": true,
                         "comment": "name associated with the workload. In most cases will be a FQDN"
                     },
@@ -651,23 +1027,23 @@
                         "optional": true,
                         "comment": "most recent update timestamp in the backend"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
             "StructTypeDef": {
                 "type": "Struct",
                 "name": "WorkloadOptions",
+                "annotations": {
+                    "x_included_from": "Workload.tdl"
+                },
                 "fields": [
                     {
                         "name": "ipChanged",
                         "type": "Bool",
-                        "optional": false,
                         "comment": "boolean flag to signal a change in IP state"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -675,11 +1051,13 @@
                 "type": "Struct",
                 "name": "Workloads",
                 "comment": "list of workloads",
+                "annotations": {
+                    "x_included_from": "Workload.tdl"
+                },
                 "fields": [
                     {
                         "name": "workloadList",
                         "type": "Array",
-                        "optional": false,
                         "comment": "list of workloads",
                         "items": "Workload"
                     },
@@ -697,15 +1075,226 @@
                         "comment": "list of static workloads",
                         "items": "StaticWorkload"
                     }
-                ],
-                "closed": false
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "StaticWorkloadService",
+                "comment": "static workload service",
+                "annotations": {
+                    "x_included_from": "Workload.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "type",
+                        "type": "StaticWorkloadType",
+                        "comment": "value representing one of the StaticWorkloadType enum"
+                    },
+                    {
+                        "name": "serviceName",
+                        "type": "EntityName",
+                        "comment": "name of the service"
+                    },
+                    {
+                        "name": "instance",
+                        "type": "EntityName",
+                        "comment": "service instance"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "StaticWorkloadServices",
+                "comment": "list of services",
+                "annotations": {
+                    "x_included_from": "Workload.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "staticWorkloadServices",
+                        "type": "Array",
+                        "items": "StaticWorkloadService"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "DomainServices",
+                "comment": "request type to search all workloads for a domain and selected list of its services",
+                "annotations": {
+                    "x_included_from": "Workload.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "domainName",
+                        "type": "DomainName",
+                        "comment": "name of the domain"
+                    },
+                    {
+                        "name": "serviceNames",
+                        "type": "Array",
+                        "comment": "list of service names",
+                        "items": "EntityName"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "BulkWorkloadRequest",
+                "comment": "request type to search all workloads for a list of services grouped by domains",
+                "annotations": {
+                    "x_included_from": "Workload.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "domainServices",
+                        "type": "Array",
+                        "comment": "list of services, grouped by domain",
+                        "items": "DomainServices"
+                    },
+                    {
+                        "name": "fetchStaticTypeWorkloads",
+                        "type": "Bool",
+                        "optional": true,
+                        "default": true,
+                        "comment": "whether to fetch static type workloads"
+                    },
+                    {
+                        "name": "fetchDynamicTypeWorkloads",
+                        "type": "Bool",
+                        "optional": true,
+                        "default": true,
+                        "comment": "whether to fetch dynamic type workloads"
+                    },
+                    {
+                        "name": "applicableStaticTypes",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "list of applicable static workload types, if not set then that means all. Applicable only if fetchStaticTypeWorkloads is enabled",
+                        "items": "StaticWorkloadType"
+                    },
+                    {
+                        "name": "resolveStaticWorkloads",
+                        "type": "Bool",
+                        "optional": true,
+                        "default": false,
+                        "comment": "resolve static workloads to IPs, if applicable"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "BulkWorkloadResponse",
+                "comment": "response of a bulk workload search request",
+                "annotations": {
+                    "x_included_from": "Workload.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "unmodifiedServices",
+                        "type": "Array",
+                        "comment": "list of services grouped by domain, those are not changed since time stamp in matchingTag",
+                        "items": "DomainServices"
+                    },
+                    {
+                        "name": "workloads",
+                        "type": "Workloads",
+                        "comment": "matching workloads"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "CompositeInstance",
+                "comment": "generic instance",
+                "annotations": {
+                    "x_included_from": "Workload.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "domainName",
+                        "type": "DomainName",
+                        "comment": "name of the domain"
+                    },
+                    {
+                        "name": "serviceName",
+                        "type": "EntityName",
+                        "comment": "name of the service"
+                    },
+                    {
+                        "name": "instance",
+                        "type": "SimpleName",
+                        "comment": "instance name/id"
+                    },
+                    {
+                        "name": "instanceType",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "instance type"
+                    },
+                    {
+                        "name": "provider",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "name of the instance provider, for example aws/gcp"
+                    },
+                    {
+                        "name": "certExpiryTime",
+                        "type": "Timestamp",
+                        "optional": true,
+                        "comment": "certificate expiry time (ex: getNotAfter), if applicable"
+                    },
+                    {
+                        "name": "certIssueTime",
+                        "type": "Timestamp",
+                        "optional": true,
+                        "comment": "certificate issue time (ex: getNotBefore), if applicable"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "WorkloadCount",
+                "comment": "workload count",
+                "annotations": {
+                    "x_included_from": "Workload.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "storeCount",
+                        "type": "Int32",
+                        "comment": "number of workloads for the service in the data store"
+                    },
+                    {
+                        "name": "cacheCount",
+                        "type": "Int32",
+                        "comment": "number of workloads for the service in the cache"
+                    }
+                ]
             }
         },
         {
             "EnumTypeDef": {
                 "type": "Enum",
                 "name": "NetworkPolicyChangeEffect",
-                "comment": "IMPACT indicates that a change in network policy will interfere with workings of one or more transport policies NO_IMAPCT indicates that a change in network policy will not interfere with workings of any transport policy",
+                "comment": "IMPACT indicates that a change in network policy will interfere with workings of one or more transport policies NO_IMPACT indicates that a change in network policy will not interfere with workings of any transport policy",
+                "annotations": {
+                    "x_included_from": "NetworkPolicy.tdl"
+                },
                 "elements": [
                     {
                         "symbol": "IMPACT"
@@ -721,15 +1310,16 @@
                 "type": "Struct",
                 "name": "IPBlock",
                 "comment": "Struct representing ip blocks used by network policy in CIDR (Classless inter-domain routing) format",
+                "annotations": {
+                    "x_included_from": "NetworkPolicy.tdl"
+                },
                 "fields": [
                     {
                         "name": "cidr",
                         "type": "String",
-                        "optional": false,
                         "comment": "cidr notation. can be used for ipv4 or ipv6"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -737,15 +1327,16 @@
                 "type": "PolicyPort",
                 "name": "NetworkPolicyPort",
                 "comment": "network policy port.",
+                "annotations": {
+                    "x_included_from": "NetworkPolicy.tdl"
+                },
                 "fields": [
                     {
                         "name": "protocol",
                         "type": "TransportPolicyProtocol",
-                        "optional": false,
                         "comment": "protocol used by the network policy"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -753,23 +1344,23 @@
                 "type": "Struct",
                 "name": "NetworkPolicyPorts",
                 "comment": "allows creating a unique tuple of source and destination ports",
+                "annotations": {
+                    "x_included_from": "NetworkPolicy.tdl"
+                },
                 "fields": [
                     {
                         "name": "sourcePorts",
                         "type": "Array",
-                        "optional": false,
                         "comment": "list of source ports",
                         "items": "NetworkPolicyPort"
                     },
                     {
                         "name": "destinationPorts",
                         "type": "Array",
-                        "optional": false,
                         "comment": "list of destination ports",
                         "items": "NetworkPolicyPort"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -777,57 +1368,55 @@
                 "type": "Struct",
                 "name": "NetworkPolicyChangeImpactRequest",
                 "comment": "struct representing input details for evaluating network policies change impact on transport policies",
+                "annotations": {
+                    "x_included_from": "NetworkPolicy.tdl"
+                },
                 "fields": [
                     {
                         "name": "from",
                         "type": "Array",
-                        "optional": false,
                         "comment": "from ip address range list in cidr format",
                         "items": "IPBlock"
                     },
                     {
                         "name": "to",
                         "type": "Array",
-                        "optional": false,
                         "comment": "to ip address range list in cidr format",
                         "items": "IPBlock"
                     },
                     {
                         "name": "ports",
                         "type": "Array",
-                        "optional": false,
                         "comment": "list of ports. Facilitates multiple transports for the same source and destinations.",
                         "items": "NetworkPolicyPorts"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
             "StructTypeDef": {
                 "type": "Struct",
                 "name": "NetworkPolicyChangeImpactDetail",
+                "annotations": {
+                    "x_included_from": "NetworkPolicy.tdl"
+                },
                 "fields": [
                     {
                         "name": "domain",
                         "type": "DomainName",
-                        "optional": false,
                         "comment": "Name of the domain of the corresponding transport policy"
                     },
                     {
                         "name": "policy",
                         "type": "EntityName",
-                        "optional": false,
                         "comment": "Name of the Athenz policy corresponding to transport policy"
                     },
                     {
                         "name": "transportPolicyId",
                         "type": "Int64",
-                        "optional": false,
                         "comment": "Unique id of the transport policy"
                     }
-                ],
-                "closed": false
+                ]
             }
         },
         {
@@ -835,11 +1424,13 @@
                 "type": "Struct",
                 "name": "NetworkPolicyChangeImpactResponse",
                 "comment": "struct representing response of evaluating network policies change impact on transport policies",
+                "annotations": {
+                    "x_included_from": "NetworkPolicy.tdl"
+                },
                 "fields": [
                     {
                         "name": "effect",
                         "type": "NetworkPolicyChangeEffect",
-                        "optional": false,
                         "comment": "enum indicating effect of network policy change on one or more transport policies"
                     },
                     {
@@ -849,12 +1440,1499 @@
                         "comment": "if the above enum value is IMPACT then this optional object contains more details about the impacted transport policies",
                         "items": "NetworkPolicyChangeImpactDetail"
                     }
-                ],
-                "closed": false
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "KubernetesLabelSelectorRequirement",
+                "comment": "A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.",
+                "annotations": {
+                    "x_included_from": "KubernetesNetworkPolicy.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "key",
+                        "type": "String",
+                        "comment": "Label key that the selector applies to"
+                    },
+                    {
+                        "name": "operator",
+                        "type": "String",
+                        "comment": "Operator that is applied to the key. Valid operators are In, NotIn, Exists and DoesNotExist."
+                    },
+                    {
+                        "name": "values",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "Array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty.",
+                        "items": "String"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "KubernetesLabelSelector",
+                "comment": "A label selector is a label query over a set of resources. The result of matchLabels and matchExpressions are ANDed. An empty label selector matches all objects. A null label selector matches no objects.",
+                "annotations": {
+                    "x_included_from": "KubernetesNetworkPolicy.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "matchExpressions",
+                        "type": "Array",
+                        "comment": "Array of label selector requirements. The requirements are ANDed.",
+                        "items": "KubernetesLabelSelectorRequirement"
+                    },
+                    {
+                        "name": "matchLabels",
+                        "type": "Map",
+                        "comment": "Map of label key/value pairs",
+                        "items": "String",
+                        "keys": "String"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "PolicyPort",
+                "name": "KubernetesNetworkPolicyPort",
+                "comment": "Kubernetes network policy port range",
+                "annotations": {
+                    "x_included_from": "KubernetesNetworkPolicy.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "protocol",
+                        "type": "TransportPolicyProtocol",
+                        "comment": "Network policy protocol. Allowed values: TCP, UDP."
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "KubernetesIPBlock",
+                "comment": "Kubernetes network policy IP block source/target",
+                "annotations": {
+                    "x_included_from": "KubernetesNetworkPolicy.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "cidr",
+                        "type": "String",
+                        "comment": "CIDR block representing IP range for source/target"
+                    },
+                    {
+                        "name": "except",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "Exception for CIDR blocks, if needed",
+                        "items": "String"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "KubernetesNetworkPolicyPeer",
+                "comment": "Kubernetes network policy peer (source/target)",
+                "annotations": {
+                    "x_included_from": "KubernetesNetworkPolicy.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "podSelector",
+                        "type": "KubernetesLabelSelector",
+                        "optional": true,
+                        "comment": "Kubernetes pod selector for the network policy source/target"
+                    },
+                    {
+                        "name": "namespaceSelector",
+                        "type": "KubernetesLabelSelector",
+                        "optional": true,
+                        "comment": "Kubernetes namespace selector for the network policy source/target"
+                    },
+                    {
+                        "name": "ipBlock",
+                        "type": "KubernetesIPBlock",
+                        "optional": true,
+                        "comment": "IP block for the network policy source/target"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "KubernetesNetworkPolicyIngressRule",
+                "comment": "Kubernetes network policy ingress rule",
+                "annotations": {
+                    "x_included_from": "KubernetesNetworkPolicy.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "from",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "Network policy source, when empty all sources are allowed",
+                        "items": "KubernetesNetworkPolicyPeer"
+                    },
+                    {
+                        "name": "ports",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "Ingress port(s), when empty all ports are allowed",
+                        "items": "KubernetesNetworkPolicyPort"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "KubernetesNetworkPolicyEgressRule",
+                "comment": "Kubernetes network policy egress rule",
+                "annotations": {
+                    "x_included_from": "KubernetesNetworkPolicy.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "to",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "Network policy target, when empty all sources are allowed",
+                        "items": "KubernetesNetworkPolicyPeer"
+                    },
+                    {
+                        "name": "ports",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "Egress port(s), when empty all ports are allowed",
+                        "items": "KubernetesNetworkPolicyPort"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "KubernetesNetworkPolicySpec",
+                "comment": "Kubernetes network policy spec",
+                "annotations": {
+                    "x_included_from": "KubernetesNetworkPolicy.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "podSelector",
+                        "type": "KubernetesLabelSelector",
+                        "comment": "Kubernetes pod selector for the network policy target"
+                    },
+                    {
+                        "name": "policyTypes",
+                        "type": "Array",
+                        "comment": "Network policy types - Ingress, Egress",
+                        "items": "String"
+                    },
+                    {
+                        "name": "ingress",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "Ingress network policy rules, if empty then all ingress traffic is blocked",
+                        "items": "KubernetesNetworkPolicyIngressRule"
+                    },
+                    {
+                        "name": "egress",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "Egress network policy rules, if empty then all egress traffic is blocked",
+                        "items": "KubernetesNetworkPolicyEgressRule"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "KubernetesNetworkPolicyRequest",
+                "comment": "Request object containing Kubernetes network policy inputs",
+                "annotations": {
+                    "x_included_from": "KubernetesNetworkPolicy.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "athenzDomainLabel",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "Label key name used on pods to identify Athenz domain"
+                    },
+                    {
+                        "name": "athenzServiceLabel",
+                        "type": "String",
+                        "comment": "Label key name used on pods to identify Athenz service"
+                    },
+                    {
+                        "name": "networkPolicyType",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "Network policy type, default is vanilla Kubernetes"
+                    },
+                    {
+                        "name": "requestedApiVersion",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "Requested network policy apiVersion"
+                    },
+                    {
+                        "name": "networkPolicyNamespace",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "Kubernetes namespace for the network policy object"
+                    },
+                    {
+                        "name": "domainLabelAsNamespaceSelector",
+                        "type": "Bool",
+                        "optional": true,
+                        "default": false,
+                        "comment": "Use athenzDomainLabel as namespace selector"
+                    },
+                    {
+                        "name": "domainInServiceLabel",
+                        "type": "Bool",
+                        "optional": true,
+                        "default": false,
+                        "comment": "Use Athenz domain name in service label"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "KubernetesNetworkPolicyResponse",
+                "comment": "Response object containing Kubernetes network policy",
+                "annotations": {
+                    "x_included_from": "KubernetesNetworkPolicy.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "apiVersion",
+                        "type": "String",
+                        "comment": "Kubernetes network policy apiVersion"
+                    },
+                    {
+                        "name": "kind",
+                        "type": "String",
+                        "comment": "Kubernetes network policy kind"
+                    },
+                    {
+                        "name": "metadata",
+                        "type": "Map",
+                        "comment": "Kubernetes network policy metadata",
+                        "items": "String",
+                        "keys": "String"
+                    },
+                    {
+                        "name": "spec",
+                        "type": "KubernetesNetworkPolicySpec",
+                        "comment": "Kubernetes network policy spec"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "TransportPolicySnapshotRequest",
+                "comment": "Request to create a new transport policy snapshot",
+                "annotations": {
+                    "x_included_from": "Snapshot.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "name",
+                        "type": "EntityName",
+                        "comment": "Name of the snapshot"
+                    },
+                    {
+                        "name": "active",
+                        "type": "Bool",
+                        "default": false,
+                        "comment": "Whether this snapshot is marked as active"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "TransportPolicySnapshotUpdateRequest",
+                "comment": "Request to update an existing transport policy snapshot",
+                "annotations": {
+                    "x_included_from": "Snapshot.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "active",
+                        "type": "Bool",
+                        "comment": "Whether this snapshot is marked as active"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "TransportPolicySnapshotMetadata",
+                "comment": "Metadata for a transport policy snapshot",
+                "annotations": {
+                    "x_included_from": "Snapshot.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "domainName",
+                        "type": "DomainName",
+                        "comment": "Name of the domain"
+                    },
+                    {
+                        "name": "serviceName",
+                        "type": "EntityName",
+                        "comment": "Name of the service"
+                    },
+                    {
+                        "name": "name",
+                        "type": "EntityName",
+                        "comment": "Name of the snapshot"
+                    },
+                    {
+                        "name": "createdTime",
+                        "type": "Timestamp",
+                        "comment": "Snapshot creation timestamp"
+                    },
+                    {
+                        "name": "modified",
+                        "type": "Timestamp",
+                        "optional": true,
+                        "comment": "Last modification timestamp of this snapshot"
+                    },
+                    {
+                        "name": "active",
+                        "type": "Bool",
+                        "comment": "Whether this snapshot is marked as active"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "TransportPolicySnapshotUsagePrincipal",
+                "comment": "A single principal's most recently recorded use of a snapshot",
+                "annotations": {
+                    "x_included_from": "Snapshot.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "name",
+                        "type": "ServiceName",
+                        "comment": "Principal whose use of this snapshot was recorded, as a fully qualified domain.service identity"
+                    },
+                    {
+                        "name": "time",
+                        "type": "Timestamp",
+                        "comment": "Server time at which this principal's use was last recorded"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "TransportPolicySnapshotUsageWarning",
+                "comment": "Explains why recorded usage data is incomplete",
+                "annotations": {
+                    "x_included_from": "Snapshot.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "source",
+                        "type": "String",
+                        "comment": "Upstream that could not be read, e.g. the usage store"
+                    },
+                    {
+                        "name": "code",
+                        "type": "String",
+                        "comment": "Machine readable reason, e.g. UPSTREAM_UNAVAILABLE"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "TransportPolicySnapshotUsageRequest",
+                "comment": "Body of a request to record snapshot usage. The principal is taken from the caller's identity and the time is stamped by the server.",
+                "annotations": {
+                    "x_included_from": "Snapshot.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "snapshotName",
+                        "type": "EntityName",
+                        "comment": "Name of the snapshot being used, must match the name in the path"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "TransportPolicySnapshotUsageResponse",
+                "comment": "Outcome of recording snapshot usage. Recording is buffered and pushed to the usage store on a timer, so this reports whether the report was accepted rather than whether it has been persisted.",
+                "annotations": {
+                    "x_included_from": "Snapshot.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "recorded",
+                        "type": "Bool",
+                        "comment": "False when the report was accepted but discarded, e.g. reporting is disabled"
+                    },
+                    {
+                        "name": "warning",
+                        "type": "TransportPolicySnapshotUsageWarning",
+                        "optional": true,
+                        "comment": "Set when recorded is false"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "TransportPolicySnapshotUsage",
+                "comment": "Usage recorded for a snapshot - which principals last used it, and when",
+                "annotations": {
+                    "x_included_from": "Snapshot.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "principals",
+                        "type": "Array",
+                        "comment": "One entry per principal with recorded use of this snapshot",
+                        "items": "TransportPolicySnapshotUsagePrincipal"
+                    },
+                    {
+                        "name": "partial",
+                        "type": "Bool",
+                        "optional": true,
+                        "default": false,
+                        "comment": "True when usage data could not be fully retrieved"
+                    },
+                    {
+                        "name": "warning",
+                        "type": "TransportPolicySnapshotUsageWarning",
+                        "optional": true,
+                        "comment": "Set when partial is true"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "TransportPolicySnapshot",
+                "comment": "Full transport policy snapshot containing all policies",
+                "annotations": {
+                    "x_included_from": "Snapshot.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "domainName",
+                        "type": "DomainName",
+                        "comment": "Name of the domain"
+                    },
+                    {
+                        "name": "serviceName",
+                        "type": "EntityName",
+                        "comment": "Name of the service"
+                    },
+                    {
+                        "name": "name",
+                        "type": "EntityName",
+                        "comment": "Name of the snapshot"
+                    },
+                    {
+                        "name": "createdTime",
+                        "type": "Timestamp",
+                        "comment": "Snapshot creation timestamp"
+                    },
+                    {
+                        "name": "modified",
+                        "type": "Timestamp",
+                        "optional": true,
+                        "comment": "Last modification timestamp of this snapshot"
+                    },
+                    {
+                        "name": "active",
+                        "type": "Bool",
+                        "comment": "Whether this snapshot is marked as active"
+                    },
+                    {
+                        "name": "transportPolicyRules",
+                        "type": "TransportPolicyRules",
+                        "comment": "Transport policy rules (ingress and egress) captured in this snapshot"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "TransportPolicySnapshots",
+                "comment": "List of transport policy snapshot metadata",
+                "annotations": {
+                    "x_included_from": "Snapshot.tdl"
+                },
+                "fields": [
+                    {
+                        "name": "snapshots",
+                        "type": "Array",
+                        "comment": "List of snapshot metadata",
+                        "items": "TransportPolicySnapshotMetadata"
+                    }
+                ]
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "rdl.Identifier",
+                "comment": "All names need to be of this restricted string type",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "pattern": "[a-zA-Z_]+[a-zA-Z_0-9]*"
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "rdl.NamespacedIdentifier",
+                "comment": "A Namespace is a dotted compound name, using reverse domain name order (i.e. \"com.yahoo.auth\")",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "pattern": "([a-zA-Z_]+[a-zA-Z_0-9]*)(\\.[a-zA-Z_]+[a-zA-Z_0-9])*"
+            }
+        },
+        {
+            "AliasTypeDef": {
+                "type": "rdl.Identifier",
+                "name": "rdl.TypeName",
+                "comment": "The identifier for an already-defined type",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                }
+            }
+        },
+        {
+            "AliasTypeDef": {
+                "type": "rdl.NamespacedIdentifier",
+                "name": "rdl.TypeRef",
+                "comment": "A type reference can be a simple name, or also a namespaced name.",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                }
+            }
+        },
+        {
+            "EnumTypeDef": {
+                "type": "Enum",
+                "name": "rdl.BaseType",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "elements": [
+                    {
+                        "symbol": "Bool"
+                    },
+                    {
+                        "symbol": "Int8"
+                    },
+                    {
+                        "symbol": "Int16"
+                    },
+                    {
+                        "symbol": "Int32"
+                    },
+                    {
+                        "symbol": "Int64"
+                    },
+                    {
+                        "symbol": "Float32"
+                    },
+                    {
+                        "symbol": "Float64"
+                    },
+                    {
+                        "symbol": "Bytes"
+                    },
+                    {
+                        "symbol": "String"
+                    },
+                    {
+                        "symbol": "Timestamp"
+                    },
+                    {
+                        "symbol": "Symbol"
+                    },
+                    {
+                        "symbol": "UUID"
+                    },
+                    {
+                        "symbol": "Array"
+                    },
+                    {
+                        "symbol": "Map"
+                    },
+                    {
+                        "symbol": "Struct"
+                    },
+                    {
+                        "symbol": "Enum"
+                    },
+                    {
+                        "symbol": "Union"
+                    },
+                    {
+                        "symbol": "Any"
+                    }
+                ]
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "rdl.ExtendedAnnotation",
+                "comment": "ExtendedAnnotation - parsed and preserved, but has no defined meaning in RDL. Such annotations must begin with \"x_\", and may have an associated string literal value (the value will be \"\" if the annotation is just a flag).",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "pattern": "x_[a-zA-Z_0-9]*"
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.TypeDef",
+                "comment": "TypeDef is the basic type definition.",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "type",
+                        "type": "rdl.TypeRef",
+                        "comment": "The type this type is derived from. For base types, it is the same as the name"
+                    },
+                    {
+                        "name": "name",
+                        "type": "rdl.TypeName",
+                        "comment": "The name of the type"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The comment for the type"
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.AliasTypeDef",
+                "comment": "AliasTypeDef is used for type definitions that add no additional attributes, and thus just create an alias",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": null
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.BytesTypeDef",
+                "comment": "Bytes allow the restriction by fixed size, or min/max size.",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "size",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Fixed size"
+                    },
+                    {
+                        "name": "minSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Min size"
+                    },
+                    {
+                        "name": "maxSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Max size"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.StringTypeDef",
+                "comment": "Strings allow the restriction by regular expression pattern or by an explicit set of values. An optional maximum size may be asserted",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "pattern",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "A regular expression that must be matched. Mutually exclusive with values"
+                    },
+                    {
+                        "name": "values",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "A set of allowable values",
+                        "items": "String"
+                    },
+                    {
+                        "name": "minSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Min size"
+                    },
+                    {
+                        "name": "maxSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Max size"
+                    }
+                ]
+            }
+        },
+        {
+            "UnionTypeDef": {
+                "type": "Union",
+                "name": "rdl.Number",
+                "comment": "A numeric is any of the primitive numeric types",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "variants": [
+                    "Int8",
+                    "Int16",
+                    "Int32",
+                    "Int64",
+                    "Float32",
+                    "Float64"
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.NumberTypeDef",
+                "comment": "A number type definition allows the restriction of numeric values.",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "min",
+                        "type": "rdl.Number",
+                        "optional": true,
+                        "comment": "Min value"
+                    },
+                    {
+                        "name": "max",
+                        "type": "rdl.Number",
+                        "optional": true,
+                        "comment": "Max value"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.ArrayTypeDef",
+                "comment": "Array types can be restricted by item type and size",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "items",
+                        "type": "rdl.TypeRef",
+                        "default": "Any",
+                        "comment": "The type of the items, default to any type"
+                    },
+                    {
+                        "name": "size",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicate the fixed size."
+                    },
+                    {
+                        "name": "minSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicate the min size"
+                    },
+                    {
+                        "name": "maxSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicate the max size"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.MapTypeDef",
+                "comment": "Map types can be restricted by key type, item type and size",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "keys",
+                        "type": "rdl.TypeRef",
+                        "default": "String",
+                        "comment": "The type of the keys, default to String."
+                    },
+                    {
+                        "name": "items",
+                        "type": "rdl.TypeRef",
+                        "default": "Any",
+                        "comment": "The type of the items, default to Any type"
+                    },
+                    {
+                        "name": "size",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicates the fixed size."
+                    },
+                    {
+                        "name": "minSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicate the min size"
+                    },
+                    {
+                        "name": "maxSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicate the max size"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.StructFieldDef",
+                "comment": "Each field in a struct_field_spec is defined by this type",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "name",
+                        "type": "rdl.Identifier",
+                        "comment": "The name of the field"
+                    },
+                    {
+                        "name": "type",
+                        "type": "rdl.TypeRef",
+                        "comment": "The type of the field"
+                    },
+                    {
+                        "name": "optional",
+                        "type": "Bool",
+                        "default": false,
+                        "comment": "The field may be omitted even if specified"
+                    },
+                    {
+                        "name": "default",
+                        "type": "Any",
+                        "optional": true,
+                        "comment": "If field is absent, what default value should be assumed."
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The comment for the field"
+                    },
+                    {
+                        "name": "items",
+                        "type": "rdl.TypeRef",
+                        "optional": true,
+                        "comment": "For map or array fields, the type of the items"
+                    },
+                    {
+                        "name": "keys",
+                        "type": "rdl.TypeRef",
+                        "optional": true,
+                        "comment": "For map type fields, the type of the keys"
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.StructTypeDef",
+                "comment": "A struct can restrict specific named fields to specific types. By default, any field not specified is allowed, and can be of any type. Specifying closed means only those fields explicitly",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "fields",
+                        "type": "Array",
+                        "comment": "The fields in this struct. By default, open Structs can have any fields in addition to these",
+                        "items": "rdl.StructFieldDef"
+                    },
+                    {
+                        "name": "closed",
+                        "type": "Bool",
+                        "default": false,
+                        "comment": "indicates that only the specified fields are acceptable. Default is open (any fields)"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.EnumElementDef",
+                "comment": "EnumElementDef defines one of the elements of an Enum",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "symbol",
+                        "type": "rdl.Identifier",
+                        "comment": "The identifier representing the value"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the comment for the element"
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.EnumTypeDef",
+                "comment": "Define an enumerated type. Each value of the type is represented by a symbolic identifier.",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "elements",
+                        "type": "Array",
+                        "comment": "The enumeration of the possible elements",
+                        "items": "rdl.EnumElementDef"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.UnionTypeDef",
+                "comment": "Define a type as one of any other specified type.",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "variants",
+                        "type": "Array",
+                        "comment": "The type names of constituent types. Union types get expanded, this is a flat list",
+                        "items": "rdl.TypeRef"
+                    }
+                ]
+            }
+        },
+        {
+            "UnionTypeDef": {
+                "type": "Union",
+                "name": "rdl.Type",
+                "comment": "A Type can be specified by any of the above specialized Types, determined by the value of the the 'type' field",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "variants": [
+                    "rdl.BaseType",
+                    "rdl.StructTypeDef",
+                    "rdl.MapTypeDef",
+                    "rdl.ArrayTypeDef",
+                    "rdl.EnumTypeDef",
+                    "rdl.UnionTypeDef",
+                    "rdl.StringTypeDef",
+                    "rdl.BytesTypeDef",
+                    "rdl.NumberTypeDef",
+                    "rdl.AliasTypeDef"
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.ResourceInput",
+                "comment": "ResourceOutput defines input characteristics of a Resource",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "name",
+                        "type": "rdl.Identifier",
+                        "comment": "the formal name of the input"
+                    },
+                    {
+                        "name": "type",
+                        "type": "rdl.TypeRef",
+                        "comment": "The type of the input"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The optional comment"
+                    },
+                    {
+                        "name": "pathParam",
+                        "type": "Bool",
+                        "default": false,
+                        "comment": "true of this input is a path parameter"
+                    },
+                    {
+                        "name": "queryParam",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "if present, the name of the query param name"
+                    },
+                    {
+                        "name": "header",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "If present, the name of the header the input is associated with"
+                    },
+                    {
+                        "name": "pattern",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "If present, the pattern associated with the pathParam (i.e. wildcard path matches)"
+                    },
+                    {
+                        "name": "default",
+                        "type": "Any",
+                        "optional": true,
+                        "comment": "If present, the default value for optional params"
+                    },
+                    {
+                        "name": "optional",
+                        "type": "Bool",
+                        "default": false,
+                        "comment": "If present, indicates that the input is optional"
+                    },
+                    {
+                        "name": "flag",
+                        "type": "Bool",
+                        "default": false,
+                        "comment": "If present, indicates the queryparam is of flag style (no value)"
+                    },
+                    {
+                        "name": "context",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "If present, indicates the parameter comes form the implementation context"
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.ResourceOutput",
+                "comment": "ResourceOutput defines output characteristics of a Resource",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "name",
+                        "type": "rdl.Identifier",
+                        "comment": "the formal name of the output"
+                    },
+                    {
+                        "name": "type",
+                        "type": "rdl.TypeRef",
+                        "comment": "The type of the output"
+                    },
+                    {
+                        "name": "header",
+                        "type": "String",
+                        "comment": "the name of the header associated with this output"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The optional comment for the output"
+                    },
+                    {
+                        "name": "optional",
+                        "type": "Bool",
+                        "default": false,
+                        "comment": "If present, indicates that the output is optional (the server decides)"
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.ResourceAuth",
+                "comment": "ResourceAuth defines authentication and authorization attributes of a resource. Presence of action, resource, or domain implies authentication; the authentication flag alone is required only when no authorization is done.",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "authenticate",
+                        "type": "Bool",
+                        "default": false,
+                        "comment": "if present and true, then the requester must be authenticated"
+                    },
+                    {
+                        "name": "action",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the action to authorize access to. This forces authentication"
+                    },
+                    {
+                        "name": "resource",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the resource identity to authorize access to"
+                    },
+                    {
+                        "name": "domain",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "if present, the alternate domain to check access to. This is rare."
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.ExceptionDef",
+                "comment": "ExceptionDef describes the exception a symbolic response code maps to.",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "type",
+                        "type": "String",
+                        "comment": "The type of the exception"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the optional comment for the exception"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.Resource",
+                "comment": "A Resource of a REST service",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "type",
+                        "type": "rdl.TypeRef",
+                        "comment": "The type of the resource"
+                    },
+                    {
+                        "name": "method",
+                        "type": "String",
+                        "comment": "The method for the action (typically GET, POST, etc for HTTP access)"
+                    },
+                    {
+                        "name": "path",
+                        "type": "String",
+                        "comment": "The resource path template"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The optional comment"
+                    },
+                    {
+                        "name": "inputs",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "An Array named inputs",
+                        "items": "rdl.ResourceInput"
+                    },
+                    {
+                        "name": "outputs",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "An Array of named outputs",
+                        "items": "rdl.ResourceOutput"
+                    },
+                    {
+                        "name": "auth",
+                        "type": "rdl.ResourceAuth",
+                        "optional": true,
+                        "comment": "The optional authentication or authorization directive"
+                    },
+                    {
+                        "name": "expected",
+                        "type": "String",
+                        "default": "OK",
+                        "comment": "The expected symbolic response code"
+                    },
+                    {
+                        "name": "alternatives",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "The set of alternative but non-error response codes",
+                        "items": "String"
+                    },
+                    {
+                        "name": "exceptions",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "A map of symbolic response code to Exception definitions",
+                        "items": "rdl.ExceptionDef",
+                        "keys": "String"
+                    },
+                    {
+                        "name": "async",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "A hint to server implementations that this resource would be better implemented with async I/O"
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    },
+                    {
+                        "name": "consumes",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "Optional hint for resource acceptable input types",
+                        "items": "String"
+                    },
+                    {
+                        "name": "produces",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "Optional hint for resource output content types",
+                        "items": "String"
+                    },
+                    {
+                        "name": "name",
+                        "type": "rdl.Identifier",
+                        "optional": true,
+                        "comment": "The optional name of the resource"
+                    }
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.Schema",
+                "comment": "A Schema is a container for types and resources. It is self-contained (no external references). and is the output of the RDL parser.",
+                "annotations": {
+                    "x_included_from": "Schema.rdli"
+                },
+                "fields": [
+                    {
+                        "name": "namespace",
+                        "type": "rdl.NamespacedIdentifier",
+                        "optional": true,
+                        "comment": "The namespace for the schema"
+                    },
+                    {
+                        "name": "name",
+                        "type": "rdl.Identifier",
+                        "optional": true,
+                        "comment": "The name of the schema"
+                    },
+                    {
+                        "name": "version",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "The version of the schema"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The comment for the entire schema"
+                    },
+                    {
+                        "name": "types",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "The types this schema defines.",
+                        "items": "rdl.Type"
+                    },
+                    {
+                        "name": "resources",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "The resources for a service this schema defines",
+                        "items": "rdl.Resource"
+                    },
+                    {
+                        "name": "base",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the base path for resources in the schema."
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ]
             }
         }
     ],
     "resources": [
+        {
+            "type": "AthenzDependencyResponse",
+            "method": "POST",
+            "path": "/domains/dependency-check",
+            "comment": "Athenz entity Dependency API webhook",
+            "inputs": [
+                {
+                    "name": "request",
+                    "type": "AthenzDependencyRequest",
+                    "comment": "request"
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "OK",
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "INTERNAL_SERVER_ERROR": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "Domain.rdli"
+            }
+        },
         {
             "type": "TransportPolicyRules",
             "method": "GET",
@@ -865,10 +2943,7 @@
                     "name": "matchingTag",
                     "type": "String",
                     "comment": "Retrieved from the previous request, this timestamp specifies to the server to return any policies modified since this time",
-                    "pathParam": false,
-                    "header": "If-None-Match",
-                    "optional": true,
-                    "flag": false
+                    "header": "If-None-Match"
                 }
             ],
             "outputs": [
@@ -876,45 +2951,45 @@
                     "name": "tag",
                     "type": "String",
                     "header": "ETag",
-                    "comment": "The current latest modification timestamp is returned in this header",
-                    "optional": false
+                    "comment": "The current latest modification timestamp is returned in this header"
                 }
             ],
             "auth": {
                 "authenticate": true
             },
             "expected": "OK",
+            "alternatives": ["NOT_MODIFIED"],
             "exceptions": {
-                "TOO_MANY_REQUESTS": {
-                    "type": "ResourceError"
-                },
-                "UNAUTHORIZED": {
-                    "type": "ResourceError"
-                },
                 "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
                     "type": "ResourceError"
                 },
                 "NOT_FOUND": {
                     "type": "ResourceError"
                 },
-                "FORBIDDEN": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
                     "type": "ResourceError"
                 }
+            },
+            "annotations": {
+                "x_included_from": "TransportPolicyRule.rdli"
             }
         },
         {
-            "type": "TransportPolicyValidationRequest",
+            "type": "TransportPolicyValidationResponse",
             "method": "POST",
             "path": "/transportpolicy/validate",
-            "comment": "API to validate microsegmentation policies against network policies",
+            "comment": "API to validate micro-segmentation policies against network policies",
             "inputs": [
                 {
                     "name": "transportPolicy",
                     "type": "TransportPolicyValidationRequest",
-                    "comment": "Struct representing microsegmentation policy entered by the user",
-                    "pathParam": false,
-                    "optional": false,
-                    "flag": false
+                    "comment": "Struct representing micro-segmentation policy entered by the user"
                 }
             ],
             "auth": {
@@ -922,21 +2997,24 @@
             },
             "expected": "OK",
             "exceptions": {
-                "TOO_MANY_REQUESTS": {
-                    "type": "ResourceError"
-                },
-                "UNAUTHORIZED": {
-                    "type": "ResourceError"
-                },
                 "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
                     "type": "ResourceError"
                 },
                 "NOT_FOUND": {
                     "type": "ResourceError"
                 },
-                "FORBIDDEN": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
                     "type": "ResourceError"
                 }
+            },
+            "annotations": {
+                "x_included_from": "TransportPolicyRule.rdli"
             },
             "name": "validateTransportPolicy"
         },
@@ -950,9 +3028,7 @@
                     "name": "domainName",
                     "type": "DomainName",
                     "comment": "name of the domain",
-                    "pathParam": true,
-                    "optional": false,
-                    "flag": false
+                    "pathParam": true
                 }
             ],
             "auth": {
@@ -960,23 +3036,289 @@
             },
             "expected": "OK",
             "exceptions": {
-                "TOO_MANY_REQUESTS": {
-                    "type": "ResourceError"
-                },
-                "UNAUTHORIZED": {
-                    "type": "ResourceError"
-                },
                 "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
                     "type": "ResourceError"
                 },
                 "NOT_FOUND": {
                     "type": "ResourceError"
                 },
-                "FORBIDDEN": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
                     "type": "ResourceError"
                 }
             },
+            "annotations": {
+                "x_included_from": "TransportPolicyRule.rdli"
+            },
             "name": "getTransportPolicyValidationStatus"
+        },
+        {
+            "type": "TransportPolicyRules",
+            "method": "GET",
+            "path": "/domain/{domainName}/transportpolicies",
+            "comment": "API endpoint to get the transport policy rules defined in Athenz for a given domain",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "includeExternalMembers",
+                    "type": "Bool",
+                    "comment": "Include external members in externalPeer field for egress policies",
+                    "queryParam": "includeExternalMembers",
+                    "default": false,
+                    "optional": true
+                },
+                {
+                    "name": "matchingTag",
+                    "type": "String",
+                    "comment": "Retrieved from the previous request, this timestamp specifies to the server to return any policies modified since this time",
+                    "header": "If-None-Match"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "tag",
+                    "type": "String",
+                    "header": "ETag",
+                    "comment": "The current latest modification timestamp is returned in this header"
+                }
+            ],
+            "auth": {
+                "action": "msd.GetNetworkPolicy",
+                "resource": "{domainName}:domain"
+            },
+            "expected": "OK",
+            "alternatives": ["NOT_MODIFIED"],
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "TransportPolicyRule.rdli"
+            },
+            "name": "getTransportPolicyRulesByDomain"
+        },
+        {
+            "type": "TransportPolicyRules",
+            "method": "PUT",
+            "path": "/domain/{domainName}/service/{serviceName}/transportpolicy",
+            "comment": "This API endpoint facilitates the creation or update of a transport policy for a specified domain and service. It is designed exclusively for the purpose of creating or updating transport policies, and does not support mixed-case scenarios. Once a transport policy is established, the destination service, protocol, and both source and destination ports become non-editable. To modify any of these fields, it is necessary to create a new policy and delete the old one.",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "serviceName",
+                    "type": "EntityName",
+                    "comment": "Name of the service",
+                    "pathParam": true
+                },
+                {
+                    "name": "auditRef",
+                    "type": "String",
+                    "comment": "Audit param required(not empty) if domain auditEnabled is true.",
+                    "header": "Y-Audit-Ref"
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "header": "Athenz-Resource-Owner"
+                },
+                {
+                    "name": "payload",
+                    "type": "TransportPolicyRequest",
+                    "comment": "Struct representing input transport policy"
+                }
+            ],
+            "auth": {
+                "action": "msd.UpdateNetworkPolicy",
+                "resource": "{domainName}:service.{serviceName}"
+            },
+            "expected": "NO_CONTENT",
+            "alternatives": ["OK"],
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "TransportPolicyRule.rdli"
+            },
+            "name": "putTransportPolicy"
+        },
+        {
+            "type": "TransportPolicyRules",
+            "method": "GET",
+            "path": "/domain/{domainName}/service/{serviceName}/transportpolicies",
+            "comment": "API endpoint to get the transport policy rules defined in Athenz for a given domain and service",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "serviceName",
+                    "type": "EntityName",
+                    "comment": "Name of the service",
+                    "pathParam": true
+                },
+                {
+                    "name": "includeExternalMembers",
+                    "type": "Bool",
+                    "comment": "Include external members in externalPeer field for egress policies",
+                    "queryParam": "includeExternalMembers",
+                    "default": false,
+                    "optional": true
+                },
+                {
+                    "name": "matchingTag",
+                    "type": "String",
+                    "comment": "Retrieved from the previous request, this timestamp specifies to the server to return any policies modified since this time",
+                    "header": "If-None-Match"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "tag",
+                    "type": "String",
+                    "header": "ETag",
+                    "comment": "The current latest modification timestamp is returned in this header"
+                }
+            ],
+            "auth": {
+                "action": "msd.GetNetworkPolicy",
+                "resource": "{domainName}:service.{serviceName}"
+            },
+            "expected": "OK",
+            "alternatives": ["NOT_MODIFIED"],
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "TransportPolicyRule.rdli"
+            },
+            "name": "getTransportPolicyRulesByService"
+        },
+        {
+            "type": "TransportPolicyRules",
+            "method": "DELETE",
+            "path": "/domain/{domainName}/service/{serviceName}/transportpolicy/{id}",
+            "comment": "API endpoint to delete the transport policy Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned).",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "Name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "serviceName",
+                    "type": "EntityName",
+                    "comment": "Name of the service",
+                    "pathParam": true
+                },
+                {
+                    "name": "id",
+                    "type": "Int64",
+                    "comment": "Id of the assertion representing the transport policy",
+                    "pathParam": true
+                },
+                {
+                    "name": "auditRef",
+                    "type": "String",
+                    "comment": "Audit param required(not empty) if domain auditEnabled is true.",
+                    "header": "Y-Audit-Ref"
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "header": "Athenz-Resource-Owner"
+                }
+            ],
+            "auth": {
+                "action": "msd.DeleteNetworkPolicy",
+                "resource": "{domainName}:service.{serviceName}"
+            },
+            "expected": "NO_CONTENT",
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "CONFLICT": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "TransportPolicyRule.rdli"
+            },
+            "name": "deleteTransportPolicy"
         },
         {
             "type": "Workloads",
@@ -987,26 +3329,19 @@
                     "name": "domainName",
                     "type": "DomainName",
                     "comment": "name of the domain",
-                    "pathParam": true,
-                    "optional": false,
-                    "flag": false
+                    "pathParam": true
                 },
                 {
                     "name": "serviceName",
                     "type": "EntityName",
                     "comment": "name of the service",
-                    "pathParam": true,
-                    "optional": false,
-                    "flag": false
+                    "pathParam": true
                 },
                 {
                     "name": "matchingTag",
                     "type": "String",
                     "comment": "Retrieved from the previous request, this timestamp specifies to the server to return any workloads modified since this time",
-                    "pathParam": false,
-                    "header": "If-None-Match",
-                    "optional": true,
-                    "flag": false
+                    "header": "If-None-Match"
                 }
             ],
             "outputs": [
@@ -1014,30 +3349,33 @@
                     "name": "tag",
                     "type": "String",
                     "header": "ETag",
-                    "comment": "The current latest modification timestamp is returned in this header",
-                    "optional": false
+                    "comment": "The current latest modification timestamp is returned in this header"
                 }
             ],
             "auth": {
                 "authenticate": true
             },
             "expected": "OK",
+            "alternatives": ["NOT_MODIFIED"],
             "exceptions": {
-                "TOO_MANY_REQUESTS": {
-                    "type": "ResourceError"
-                },
-                "UNAUTHORIZED": {
-                    "type": "ResourceError"
-                },
                 "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
                     "type": "ResourceError"
                 },
                 "NOT_FOUND": {
                     "type": "ResourceError"
                 },
-                "FORBIDDEN": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
                     "type": "ResourceError"
                 }
+            },
+            "annotations": {
+                "x_included_from": "Workload.rdli"
             },
             "name": "getWorkloadsByService"
         },
@@ -1050,18 +3388,13 @@
                     "name": "ip",
                     "type": "String",
                     "comment": "ip address to query",
-                    "pathParam": true,
-                    "optional": false,
-                    "flag": false
+                    "pathParam": true
                 },
                 {
                     "name": "matchingTag",
                     "type": "String",
                     "comment": "Retrieved from the previous request, this timestamp specifies to the server to return any workloads modified since this time",
-                    "pathParam": false,
-                    "header": "If-None-Match",
-                    "optional": true,
-                    "flag": false
+                    "header": "If-None-Match"
                 }
             ],
             "outputs": [
@@ -1069,30 +3402,33 @@
                     "name": "tag",
                     "type": "String",
                     "header": "ETag",
-                    "comment": "The current latest modification timestamp is returned in this header",
-                    "optional": false
+                    "comment": "The current latest modification timestamp is returned in this header"
                 }
             ],
             "auth": {
                 "authenticate": true
             },
             "expected": "OK",
+            "alternatives": ["NOT_MODIFIED"],
             "exceptions": {
-                "TOO_MANY_REQUESTS": {
-                    "type": "ResourceError"
-                },
-                "UNAUTHORIZED": {
-                    "type": "ResourceError"
-                },
                 "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
                     "type": "ResourceError"
                 },
                 "NOT_FOUND": {
                     "type": "ResourceError"
                 },
-                "FORBIDDEN": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
                     "type": "ResourceError"
                 }
+            },
+            "annotations": {
+                "x_included_from": "Workload.rdli"
             },
             "name": "getWorkloadsByIP"
         },
@@ -1106,25 +3442,24 @@
                     "name": "domainName",
                     "type": "DomainName",
                     "comment": "name of the domain",
-                    "pathParam": true,
-                    "optional": false,
-                    "flag": false
+                    "pathParam": true
                 },
                 {
                     "name": "serviceName",
                     "type": "EntityName",
                     "comment": "name of the service",
-                    "pathParam": true,
-                    "optional": false,
-                    "flag": false
+                    "pathParam": true
                 },
                 {
                     "name": "options",
                     "type": "WorkloadOptions",
-                    "comment": "metadata about the dynamic workload",
-                    "pathParam": false,
-                    "optional": false,
-                    "flag": false
+                    "comment": "metadata about the dynamic workload"
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "header": "Athenz-Resource-Owner"
                 }
             ],
             "auth": {
@@ -1132,21 +3467,24 @@
             },
             "expected": "NO_CONTENT",
             "exceptions": {
-                "TOO_MANY_REQUESTS": {
-                    "type": "ResourceError"
-                },
-                "UNAUTHORIZED": {
-                    "type": "ResourceError"
-                },
                 "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
                     "type": "ResourceError"
                 },
                 "NOT_FOUND": {
                     "type": "ResourceError"
                 },
-                "FORBIDDEN": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
                     "type": "ResourceError"
                 }
+            },
+            "annotations": {
+                "x_included_from": "Workload.rdli"
             },
             "name": "putDynamicWorkload"
         },
@@ -1160,49 +3498,51 @@
                     "name": "domainName",
                     "type": "DomainName",
                     "comment": "name of the domain",
-                    "pathParam": true,
-                    "optional": false,
-                    "flag": false
+                    "pathParam": true
                 },
                 {
                     "name": "serviceName",
                     "type": "EntityName",
                     "comment": "name of the service",
-                    "pathParam": true,
-                    "optional": false,
-                    "flag": false
+                    "pathParam": true
                 },
                 {
                     "name": "instanceId",
                     "type": "PathElement",
                     "comment": "unique instance id within provider's namespace",
-                    "pathParam": true,
-                    "optional": false,
-                    "flag": false
+                    "pathParam": true
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "header": "Athenz-Resource-Owner"
                 }
             ],
             "auth": {
-                "authenticate": false,
                 "action": "update",
                 "resource": "{domainName}:service.{serviceName}"
             },
             "expected": "NO_CONTENT",
             "exceptions": {
-                "TOO_MANY_REQUESTS": {
-                    "type": "ResourceError"
-                },
-                "UNAUTHORIZED": {
-                    "type": "ResourceError"
-                },
                 "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
                     "type": "ResourceError"
                 },
                 "NOT_FOUND": {
                     "type": "ResourceError"
                 },
-                "FORBIDDEN": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
                     "type": "ResourceError"
                 }
+            },
+            "annotations": {
+                "x_included_from": "Workload.rdli"
             },
             "name": "deleteDynamicWorkload"
         },
@@ -1216,121 +3556,441 @@
                     "name": "domainName",
                     "type": "DomainName",
                     "comment": "name of the domain",
-                    "pathParam": true,
-                    "optional": false,
-                    "flag": false
+                    "pathParam": true
                 },
                 {
                     "name": "serviceName",
                     "type": "EntityName",
                     "comment": "name of the service",
-                    "pathParam": true,
-                    "optional": false,
-                    "flag": false
+                    "pathParam": true
                 },
                 {
                     "name": "staticWorkload",
                     "type": "StaticWorkload",
-                    "comment": "Struct representing static workload entered by the user",
-                    "pathParam": false,
-                    "optional": false,
-                    "flag": false
+                    "comment": "Struct representing static workload entered by the user"
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "header": "Athenz-Resource-Owner"
                 }
             ],
             "auth": {
-                "authenticate": false,
                 "action": "update",
                 "resource": "{domainName}:service.{serviceName}"
             },
             "expected": "NO_CONTENT",
             "exceptions": {
-                "TOO_MANY_REQUESTS": {
-                    "type": "ResourceError"
-                },
-                "UNAUTHORIZED": {
-                    "type": "ResourceError"
-                },
                 "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
                     "type": "ResourceError"
                 },
                 "NOT_FOUND": {
                     "type": "ResourceError"
                 },
-                "FORBIDDEN": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
                     "type": "ResourceError"
                 }
+            },
+            "annotations": {
+                "x_included_from": "Workload.rdli"
             },
             "name": "putStaticWorkload"
         },
         {
             "type": "StaticWorkload",
             "method": "DELETE",
-            "path": "/domain/{domainName}/service/{serviceName}/instanceId/{instanceId}/workload/static",
+            "path": "/domain/{domainName}/service/{serviceName}/name/{name}/workload/static",
             "comment": "Api to perform a static workload DELETE operation for a domain, service, and instance",
             "inputs": [
                 {
                     "name": "domainName",
                     "type": "DomainName",
                     "comment": "name of the domain",
-                    "pathParam": true,
-                    "optional": false,
-                    "flag": false
+                    "pathParam": true
                 },
                 {
                     "name": "serviceName",
                     "type": "EntityName",
                     "comment": "name of the service",
-                    "pathParam": true,
-                    "optional": false,
-                    "flag": false
+                    "pathParam": true
                 },
                 {
-                    "name": "instanceId",
-                    "type": "PathElement",
-                    "comment": "unique instance id within provider's namespace",
-                    "pathParam": true,
-                    "optional": false,
-                    "flag": false
+                    "name": "name",
+                    "type": "StaticWorkloadName",
+                    "comment": "name associated with the workload. In most cases will be a FQDN",
+                    "pathParam": true
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "header": "Athenz-Resource-Owner"
                 }
             ],
             "auth": {
-                "authenticate": false,
                 "action": "update",
                 "resource": "{domainName}:service.{serviceName}"
             },
             "expected": "NO_CONTENT",
             "exceptions": {
-                "TOO_MANY_REQUESTS": {
-                    "type": "ResourceError"
-                },
-                "UNAUTHORIZED": {
-                    "type": "ResourceError"
-                },
                 "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
                     "type": "ResourceError"
                 },
                 "NOT_FOUND": {
                     "type": "ResourceError"
                 },
-                "FORBIDDEN": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
                     "type": "ResourceError"
                 }
+            },
+            "annotations": {
+                "x_included_from": "Workload.rdli"
             },
             "name": "deleteStaticWorkload"
         },
         {
-            "type": "NetworkPolicyChangeImpactRequest",
-            "method": "POST",
-            "path": "/transportpolicy/evaluatenetworkpolicychange",
-            "comment": "API to evaluate network policies change impact on transport policies",
+            "type": "StaticWorkloadServices",
+            "method": "GET",
+            "path": "/services/{serviceType}",
+            "comment": "Api to retrieve static workload services by its type. type=StaticWorkloadType in String representation",
             "inputs": [
                 {
-                    "name": "detail",
-                    "type": "NetworkPolicyChangeImpactRequest",
-                    "comment": "Struct representing a network policy present in the system",
-                    "pathParam": false,
-                    "optional": false,
-                    "flag": false
+                    "name": "serviceType",
+                    "type": "EntityName",
+                    "comment": "type of the service",
+                    "pathParam": true
+                },
+                {
+                    "name": "serviceValue",
+                    "type": "EntityName",
+                    "comment": "specific service value",
+                    "queryParam": "value",
+                    "optional": true
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "OK",
+            "alternatives": ["NOT_MODIFIED"],
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "Workload.rdli"
+            },
+            "name": "getStaticWorkloadServicesByType"
+        },
+        {
+            "type": "Workloads",
+            "method": "GET",
+            "path": "/domain/{domainName}/workloads",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "matchingTag",
+                    "type": "String",
+                    "comment": "Retrieved from the previous request, this timestamp specifies to the server to return any workloads modified since this time",
+                    "header": "If-None-Match"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "tag",
+                    "type": "String",
+                    "header": "ETag",
+                    "comment": "The current latest modification timestamp is returned in this header"
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "OK",
+            "alternatives": ["NOT_MODIFIED"],
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "Workload.rdli"
+            },
+            "name": "getWorkloadsByDomain"
+        },
+        {
+            "type": "BulkWorkloadResponse",
+            "method": "POST",
+            "path": "/workloads",
+            "comment": "Read only endpoint to fetch workloads for a list of services grouped by domains",
+            "inputs": [
+                {
+                    "name": "request",
+                    "type": "BulkWorkloadRequest",
+                    "comment": "workload search request"
+                },
+                {
+                    "name": "matchingTag",
+                    "type": "String",
+                    "comment": "Retrieved from the previous request, this timestamp specifies to the server to return any workloads modified since this time",
+                    "header": "If-None-Match"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "tag",
+                    "type": "String",
+                    "header": "ETag",
+                    "comment": "The current latest modification timestamp is returned in this header"
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "OK",
+            "alternatives": ["NOT_MODIFIED"],
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "Workload.rdli"
+            },
+            "name": "getWorkloadsByDomainAndService"
+        },
+        {
+            "type": "Workloads",
+            "method": "PUT",
+            "path": "/domain/{domainName}/service/{serviceName}/workload/discover/instance",
+            "comment": "Api to discover an additional instance which can have static or dynamic or both IPs",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "serviceName",
+                    "type": "EntityName",
+                    "comment": "name of the service",
+                    "pathParam": true
+                },
+                {
+                    "name": "instance",
+                    "type": "CompositeInstance",
+                    "comment": "Generic instance"
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "header": "Athenz-Resource-Owner"
+                }
+            ],
+            "auth": {
+                "action": "msd.UpdateCompositeInstance",
+                "resource": "{domainName}:service.{serviceName}"
+            },
+            "expected": "NO_CONTENT",
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "Workload.rdli"
+            },
+            "name": "putCompositeInstance"
+        },
+        {
+            "type": "Workloads",
+            "method": "DELETE",
+            "path": "/domain/{domainName}/service/{serviceName}/workload/discover/instance/{instance}",
+            "comment": "Api to delete an additional instance which can have static or dynamic or both IPs",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "serviceName",
+                    "type": "EntityName",
+                    "comment": "name of the service",
+                    "pathParam": true
+                },
+                {
+                    "name": "instance",
+                    "type": "SimpleName",
+                    "comment": "instance name/id/key",
+                    "pathParam": true
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "header": "Athenz-Resource-Owner"
+                }
+            ],
+            "auth": {
+                "action": "msd.UpdateCompositeInstance",
+                "resource": "{domainName}:service.{serviceName}"
+            },
+            "expected": "NO_CONTENT",
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "Workload.rdli"
+            },
+            "name": "deleteCompositeInstance"
+        },
+        {
+            "type": "WorkloadCount",
+            "method": "DELETE",
+            "path": "/domain/{domainName}/service/{serviceName}/workload/count/cache",
+            "comment": "Api to reset msd cache count for a given domain and service This will have 2 diff authorizations 1. action=msd.ResetWorkloadCacheCount resource={domainName}:service.{serviceName} in the respective domain 2. action=msd.ResetWorkloadCacheCount resource=cache.* in designated system domain",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "serviceName",
+                    "type": "EntityName",
+                    "comment": "name of the service",
+                    "pathParam": true
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "NO_CONTENT",
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "Workload.rdli"
+            },
+            "name": "resetWorkloadCacheCount"
+        },
+        {
+            "type": "WorkloadCount",
+            "method": "GET",
+            "path": "/domain/{domainName}/service/{serviceName}/workload/count",
+            "comment": "Api to get msd workload and cache counts for a given domain and service This will have 2 diff authorizations 1. action=msd.GetWorkloadCount resource={domainName}:service.{serviceName} in the respective domain 2. action=msd.GetWorkloadCount resource=cache.* in designated system domain",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "serviceName",
+                    "type": "EntityName",
+                    "comment": "name of the service",
+                    "pathParam": true
                 }
             ],
             "auth": {
@@ -1338,23 +3998,544 @@
             },
             "expected": "OK",
             "exceptions": {
-                "TOO_MANY_REQUESTS": {
-                    "type": "ResourceError"
-                },
-                "UNAUTHORIZED": {
-                    "type": "ResourceError"
-                },
                 "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
                     "type": "ResourceError"
                 },
                 "NOT_FOUND": {
                     "type": "ResourceError"
                 },
-                "FORBIDDEN": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
                     "type": "ResourceError"
                 }
             },
+            "annotations": {
+                "x_included_from": "Workload.rdli"
+            },
+            "name": "getWorkloadCount"
+        },
+        {
+            "type": "NetworkPolicyChangeImpactResponse",
+            "method": "POST",
+            "path": "/transportpolicy/evaluatenetworkpolicychange",
+            "comment": "API to evaluate network policies change impact on transport policies",
+            "inputs": [
+                {
+                    "name": "detail",
+                    "type": "NetworkPolicyChangeImpactRequest",
+                    "comment": "Struct representing a network policy present in the system"
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "OK",
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "NetworkPolicy.rdli"
+            },
             "name": "evaluateNetworkPolicyChange"
+        },
+        {
+            "type": "KubernetesNetworkPolicyResponse",
+            "method": "POST",
+            "path": "/domain/{domainName}/service/{serviceName}/kubernetesnetworkpolicy",
+            "comment": "API endpoint to get the Kubernetes network policy converted from the corresponding MSD policy",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "Name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "serviceName",
+                    "type": "EntityName",
+                    "comment": "Name of the service",
+                    "pathParam": true
+                },
+                {
+                    "name": "request",
+                    "type": "KubernetesNetworkPolicyRequest",
+                    "comment": "Struct representing input options based on the cluster context"
+                },
+                {
+                    "name": "matchingTag",
+                    "type": "String",
+                    "comment": "Retrieved from the previous request, this timestamp specifies to the server to return any policies modified since this time",
+                    "header": "If-None-Match"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "tag",
+                    "type": "String",
+                    "header": "ETag",
+                    "comment": "The current latest modification timestamp is returned in this header"
+                }
+            ],
+            "auth": {
+                "action": "msd.GetNetworkPolicy",
+                "resource": "{domainName}:service.{serviceName}"
+            },
+            "expected": "OK",
+            "alternatives": ["NOT_MODIFIED"],
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "KubernetesNetworkPolicy.rdli"
+            }
+        },
+        {
+            "type": "TransportPolicySnapshotMetadata",
+            "method": "POST",
+            "path": "/domain/{domainName}/service/{serviceName}/snapshot",
+            "comment": "Api to create a new transport policy snapshot for a domain and service",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "serviceName",
+                    "type": "EntityName",
+                    "comment": "name of the service",
+                    "pathParam": true
+                },
+                {
+                    "name": "snapshot",
+                    "type": "TransportPolicySnapshotRequest",
+                    "comment": "snapshot request object"
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "header": "Athenz-Resource-Owner"
+                }
+            ],
+            "auth": {
+                "action": "msd.UpdateNetworkPolicy",
+                "resource": "{domainName}:service.{serviceName}"
+            },
+            "expected": "CREATED",
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "CONFLICT": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "Snapshot.rdli"
+            },
+            "name": "createTransportPolicySnapshot"
+        },
+        {
+            "type": "TransportPolicySnapshotMetadata",
+            "method": "PUT",
+            "path": "/domain/{domainName}/service/{serviceName}/snapshot/{snapshotName}",
+            "comment": "Api to update an existing transport policy snapshot (e.g., toggle active status)",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "serviceName",
+                    "type": "EntityName",
+                    "comment": "name of the service",
+                    "pathParam": true
+                },
+                {
+                    "name": "snapshotName",
+                    "type": "EntityName",
+                    "comment": "name of the snapshot to update",
+                    "pathParam": true
+                },
+                {
+                    "name": "updateRequest",
+                    "type": "TransportPolicySnapshotUpdateRequest",
+                    "comment": "snapshot update request object"
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "header": "Athenz-Resource-Owner"
+                }
+            ],
+            "auth": {
+                "action": "msd.UpdateNetworkPolicy",
+                "resource": "{domainName}:service.{serviceName}"
+            },
+            "expected": "OK",
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "CONFLICT": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "Snapshot.rdli"
+            },
+            "name": "updateTransportPolicySnapshot"
+        },
+        {
+            "type": "TransportPolicySnapshots",
+            "method": "GET",
+            "path": "/domain/{domainName}/service/{serviceName}/snapshots",
+            "comment": "Api to list all transport policy snapshots for a domain and service",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "serviceName",
+                    "type": "EntityName",
+                    "comment": "name of the service",
+                    "pathParam": true
+                }
+            ],
+            "auth": {
+                "action": "msd.GetNetworkPolicy",
+                "resource": "{domainName}:service.{serviceName}"
+            },
+            "expected": "OK",
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "Snapshot.rdli"
+            },
+            "name": "getTransportPolicySnapshots"
+        },
+        {
+            "type": "TransportPolicySnapshot",
+            "method": "GET",
+            "path": "/domain/{domainName}/service/{serviceName}/snapshot/{snapshotName}",
+            "comment": "Api to get a specific transport policy snapshot by name",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "serviceName",
+                    "type": "EntityName",
+                    "comment": "name of the service",
+                    "pathParam": true
+                },
+                {
+                    "name": "snapshotName",
+                    "type": "EntityName",
+                    "comment": "name of the snapshot",
+                    "pathParam": true
+                }
+            ],
+            "auth": {
+                "action": "msd.GetNetworkPolicy",
+                "resource": "{domainName}:service.{serviceName}"
+            },
+            "expected": "OK",
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "Snapshot.rdli"
+            },
+            "name": "getTransportPolicySnapshot"
+        },
+        {
+            "type": "TransportPolicySnapshot",
+            "method": "DELETE",
+            "path": "/domain/{domainName}/service/{serviceName}/snapshot/{snapshotName}",
+            "comment": "Api to delete a transport policy snapshot. Deleting an active snapshot is rejected unless force is true.",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "serviceName",
+                    "type": "EntityName",
+                    "comment": "name of the service",
+                    "pathParam": true
+                },
+                {
+                    "name": "snapshotName",
+                    "type": "EntityName",
+                    "comment": "name of the snapshot",
+                    "pathParam": true
+                },
+                {
+                    "name": "force",
+                    "type": "Bool",
+                    "comment": "delete the snapshot even if it is marked active",
+                    "queryParam": "force",
+                    "default": false,
+                    "optional": true
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "header": "Athenz-Resource-Owner"
+                }
+            ],
+            "auth": {
+                "action": "msd.DeleteNetworkPolicy",
+                "resource": "{domainName}:service.{serviceName}"
+            },
+            "expected": "NO_CONTENT",
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "CONFLICT": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "Snapshot.rdli"
+            },
+            "name": "deleteTransportPolicySnapshot"
+        },
+        {
+            "type": "TransportPolicySnapshotUsageResponse",
+            "method": "POST",
+            "path": "/domain/{domainName}/service/{serviceName}/snapshot/{snapshotName}/usage",
+            "comment": "Api for a caller to record that it is using a snapshot. Callers are expected to repeat this while the snapshot remains in use rather than on every fetch. The principal is taken from the caller's identity and the time is stamped by the server. The response reports whether the report was accepted, so a caller learns at onboarding time if reporting is switched off rather than having to infer it later from an empty usage list.",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "serviceName",
+                    "type": "EntityName",
+                    "comment": "name of the service",
+                    "pathParam": true
+                },
+                {
+                    "name": "snapshotName",
+                    "type": "EntityName",
+                    "comment": "name of the snapshot",
+                    "pathParam": true
+                },
+                {
+                    "name": "usage",
+                    "type": "TransportPolicySnapshotUsageRequest",
+                    "comment": "snapshot usage request object"
+                }
+            ],
+            "auth": {
+                "action": "msd.RecordSnapshotHeartbeat",
+                "resource": "{domainName}:service.{serviceName}"
+            },
+            "expected": "OK",
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "Snapshot.rdli"
+            },
+            "name": "recordTransportPolicySnapshotUsage"
+        },
+        {
+            "type": "TransportPolicySnapshotUsage",
+            "method": "GET",
+            "path": "/domain/{domainName}/service/{serviceName}/snapshot/{snapshotName}/usage",
+            "comment": "Api to get the usage recorded for a snapshot - which principals last used it, and when - so that the owner can decide whether the snapshot is still needed.",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true
+                },
+                {
+                    "name": "serviceName",
+                    "type": "EntityName",
+                    "comment": "name of the service",
+                    "pathParam": true
+                },
+                {
+                    "name": "snapshotName",
+                    "type": "EntityName",
+                    "comment": "name of the snapshot",
+                    "pathParam": true
+                }
+            ],
+            "auth": {
+                "action": "msd.GetNetworkPolicy",
+                "resource": "{domainName}:service.{serviceName}"
+            },
+            "expected": "OK",
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                }
+            },
+            "annotations": {
+                "x_included_from": "Snapshot.rdli"
+            },
+            "name": "getTransportPolicySnapshotUsage"
+        },
+        {
+            "type": "rdl.Schema",
+            "method": "GET",
+            "path": "/schema",
+            "comment": "Get RDL Schema",
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "OK",
+            "annotations": {
+                "x_included_from": "Schema.rdli"
+            }
         }
     ]
 }

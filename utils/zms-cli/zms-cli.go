@@ -2,15 +2,12 @@ package main
 
 import (
 	"bytes"
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/ardielle/ardielle-go/rdl"
-	"gopkg.in/yaml.v2"
 	"log"
 	"net"
 	"net/http"
@@ -20,10 +17,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ardielle/ardielle-go/rdl"
+	"gopkg.in/yaml.v2"
+
 	"golang.org/x/crypto/ssh/terminal"
 	"golang.org/x/net/proxy"
 
 	"github.com/AthenZ/athenz/clients/go/zms"
+	"github.com/AthenZ/athenz/libs/go/athenzutils"
+	"github.com/AthenZ/athenz/libs/go/tls/config"
 	"github.com/AthenZ/athenz/libs/go/zmscli"
 )
 
@@ -40,6 +42,10 @@ func defaultZmsURL() string {
 	if s != "" {
 		return s
 	}
+	defaultConfig := getDefaultConfig()
+	if defaultConfig != nil && defaultConfig.Zms != "" {
+		return defaultConfig.Zms
+	}
 	return "https://localhost:4443/zms/v1"
 }
 
@@ -54,6 +60,48 @@ func defaultSocksProxy() string {
 func defaultDebug() bool {
 	sDebug := os.Getenv("ZMS_DEBUG")
 	return sDebug == "true"
+}
+
+var (
+	cachedConfig *athenzutils.Config
+	configRead   bool
+)
+
+func getDefaultConfig() *athenzutils.Config {
+	if !configRead {
+		cachedConfig, _ = athenzutils.ReadDefaultConfig()
+		configRead = true
+	}
+	return cachedConfig
+}
+
+func resolveX509CertFiles(keyFile, certFile string, defaultConfig *athenzutils.Config) (string, string) {
+	if defaultConfig == nil {
+		return keyFile, certFile
+	}
+	if keyFile == "" {
+		keyFile = defaultConfig.PrivateKey
+	}
+	if certFile == "" {
+		certFile = defaultConfig.PublicCert
+	}
+	return keyFile, certFile
+}
+
+func hasX509CertFile(keyFile, certFile string) bool {
+	return keyFile != "" || certFile != ""
+}
+
+func hasX509CertCredentials(keyFile, certFile string) bool {
+	return keyFile != "" && certFile != ""
+}
+
+func hasIncompleteX509CertCredentials(keyFile, certFile string) bool {
+	return hasX509CertFile(keyFile, certFile) && !hasX509CertCredentials(keyFile, certFile)
+}
+
+func shouldLoadDefaultX509CertFiles(ntokenFile string, debug bool, args []string) bool {
+	return ntokenFile == "" && !debug && (len(args) == 0 || args[0] != "get-user-token")
 }
 
 func debugAuthNToken(identity string) string {
@@ -104,7 +152,7 @@ func getAuthNToken(identity, authorizedServices, zmsUrl string, tr *http.Transpo
 		return ntoken, nil
 	}
 
-	fmt.Fprintf(os.Stderr, "Enter password for "+user+": ")
+	fmt.Fprintf(os.Stderr, "Enter password for %s: ", user)
 	pass, err := terminal.ReadPassword(int(syscall.Stdin))
 	if err != nil {
 		return "", err
@@ -120,12 +168,13 @@ func getAuthNToken(identity, authorizedServices, zmsUrl string, tr *http.Transpo
 	var authHeader = "Authorization"
 	var authCreds = "Basic " + str
 	zmsClient := zms.ZMSClient{
-		URL:         zmsUrl,
-		Transport:   tr,
-		CredsHeader: &authHeader,
-		CredsToken:  &authCreds,
-		Timeout:     0,
+		URL:          zmsUrl,
+		Transport:    tr,
+		CredsHeaders: make(map[string]string),
+		Timeout:      0,
 	}
+
+	zmsClient.AddCredentials(authHeader, authCreds)
 	tok, err := zmsClient.GetUserToken(zms.SimpleName(user), authorizedServices, nil)
 	if err != nil {
 		return "", fmt.Errorf("cannot get user token for user: %s error: %v", user, err)
@@ -146,6 +195,7 @@ func usage() string {
 	buf.WriteString("   -b                  Bulk import/update mode. Do not read/display updated role/policy/service objects (default=false)\n")
 	buf.WriteString("   -c cacert_file      CA Certificate file path\n")
 	buf.WriteString("   -cert x509_cert     Athenz X.509 Certificate file for authentication\n")
+	buf.WriteString("                       (default svc-cert-file from ~/.athenz/config, when available)\n")
 	buf.WriteString("   -d domain           The domain used for every command that takes a domain argument\n")
 	buf.WriteString("   -e skip_errors      Skip errors during import domain operation\n")
 	buf.WriteString("   -f ntoken_file      Principal Authority NToken file used for authentication\n")
@@ -153,8 +203,10 @@ func usage() string {
 	buf.WriteString("                       (default=" + defaultIdentity() + ")\n")
 	buf.WriteString("   -k                  Disable peer verification of SSL certificates.\n")
 	buf.WriteString("   -key x509_key       Athenz X.509 Key file for authentication\n")
+	buf.WriteString("                       (default svc-key-file from ~/.athenz/config, when available)\n")
 	buf.WriteString("   -o output_format    Output format - json or yaml (default=yaml)\n")
 	buf.WriteString("   -overwrite          Overwrites without checking for existence\n")
+	buf.WriteString("   -r resource_owner   Resource Owner for the object being updated\n")
 	buf.WriteString("   -s host:port        The SOCKS5 proxy to route requests through\n")
 	buf.WriteString("   -v                  Verbose mode. Full resource names are included in output (default=false)\n")
 	buf.WriteString("   -x                  For user token output, exclude the header name (default=false)\n")
@@ -206,6 +258,7 @@ func main() {
 	pX509CertFile := flag.String("cert", "", "x.509 certificate key file for authentication")
 	pShowVersion := flag.Bool("version", false, "Show version")
 	pSkipErrors := flag.Bool("e", true, "Skip all errors during import domain operation")
+	pResourceOwner := flag.String("r", "", "Resource Owner for the object being updated")
 
 	flag.Usage = func() {
 		fmt.Println(usage())
@@ -275,10 +328,23 @@ func main() {
 		OutputFormat:     *pOutputFormat,
 		Overwrite:        *pOverwrite,
 		SkipErrors:       *pSkipErrors,
+		ResourceOwner:    *pResourceOwner,
 	}
 
-	if *pX509KeyFile != "" && *pX509CertFile != "" {
-		err := zmscli.SetX509CertClient(&cli, *pX509KeyFile, *pX509CertFile, *pCACert, *pSocks, false, *pSkipVerify)
+	defaultConfig := getDefaultConfig()
+	explicitX509CertFile := hasX509CertFile(*pX509KeyFile, *pX509CertFile)
+	x509KeyFile := *pX509KeyFile
+	x509CertFile := *pX509CertFile
+	if explicitX509CertFile || shouldLoadDefaultX509CertFiles(*pNtokenFile, *pDebug, args) {
+		x509KeyFile, x509CertFile = resolveX509CertFiles(x509KeyFile, x509CertFile, defaultConfig)
+	}
+
+	if explicitX509CertFile && hasIncompleteX509CertCredentials(x509KeyFile, x509CertFile) {
+		log.Fatalf("Both x.509 private key and certificate files must be provided\n")
+	}
+
+	if hasX509CertCredentials(x509KeyFile, x509CertFile) {
+		err := zmscli.SetX509CertClient(&cli, x509KeyFile, x509CertFile, *pCACert, *pSocks, false, *pSkipVerify)
 		if err != nil {
 			log.Fatalf("Unable to set ZMS x.509 Client: %v\n", err)
 		}
@@ -379,7 +445,7 @@ func getHttpTransport(socksProxy, caCertFile *string, skipVerify bool) *http.Tra
 		}
 	}
 	if caCertFile != nil || skipVerify {
-		config := &tls.Config{}
+		tlsConfig := config.ClientTLSConfig()
 		if caCertFile != nil {
 			capem, err := os.ReadFile(*caCertFile)
 			if err != nil {
@@ -389,12 +455,14 @@ func getHttpTransport(socksProxy, caCertFile *string, skipVerify bool) *http.Tra
 			if !certPool.AppendCertsFromPEM(capem) {
 				log.Fatalf("Unable to append CA Certificate to pool")
 			}
-			config.RootCAs = certPool
+			tlsConfig.RootCAs = certPool
 		}
 		if skipVerify {
-			config.InsecureSkipVerify = skipVerify
+			tlsConfig.InsecureSkipVerify = skipVerify
 		}
-		tr.TLSClientConfig = config
+		tr.TLSClientConfig = tlsConfig
+	} else {
+		tr.TLSClientConfig = config.ClientTLSConfig()
 	}
 	return &tr
 }

@@ -23,7 +23,6 @@ import com.yahoo.rdl.JSON;
 import com.yahoo.rdl.Struct;
 import org.hamcrest.MatcherAssert;
 import org.hamcrest.Matchers;
-import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -38,7 +37,6 @@ import java.util.*;
 
 import static com.yahoo.athenz.common.ServerCommonConsts.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.testng.Assert.*;
 
 public class ZMSFileChangeLogStoreCommonTest {
@@ -441,9 +439,9 @@ public class ZMSFileChangeLogStoreCommonTest {
     public void testRandomSleepForRetry() {
 
         ZMSFileChangeLogStoreCommon fstore = new ZMSFileChangeLogStoreCommon(FSTORE_PATH);
-        assertEquals(1000, fstore.randomSleepForRetry(1));
-        assertEquals(2000, fstore.randomSleepForRetry(2));
-        assertEquals(3000, fstore.randomSleepForRetry(3));
+        assertEquals(fstore.randomSleepForRetry(1), 1000);
+        assertEquals(fstore.randomSleepForRetry(2), 2000);
+        assertEquals(fstore.randomSleepForRetry(3), 3000);
         long timeout = fstore.randomSleepForRetry(4);
         assertTrue(timeout >= 4000 && timeout <= 10000);
         timeout = fstore.randomSleepForRetry(5);

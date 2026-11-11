@@ -28,8 +28,9 @@ module.exports = {
     globalSetup: './src/global-jest-setup.js',
     moduleDirectories: ['node_modules'],
     reporters: ['default', 'jest-junit'],
+    setupFiles: ['<rootDir>/src/setup-jest-env.js'],
     setupFilesAfterEnv: [
-        '@testing-library/jest-dom/extend-expect',
+        '@testing-library/jest-dom',
         '<rootDir>/src/setup-jest-test-framework.js',
     ],
     testEnvironmentOptions: {
@@ -43,6 +44,7 @@ module.exports = {
     transform: {
         '^.+\\.js$': ['babel-jest', { presets: ['next/babel'] }],
     },
+    transformIgnorePatterns: ['/node_modules/(?!(uuid)/)'],
     moduleNameMapper: {
         '\\.(css|less)$': 'identity-obj-proxy',
     },

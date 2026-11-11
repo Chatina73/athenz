@@ -2,13 +2,13 @@
     "namespace": "com.yahoo.athenz.zms",
     "name": "ZMS",
     "version": 1,
-    "comment": "Copyright The Athenz Authors. Licensed under the terms of the Apache version 2.0 license. See LICENSE file for terms. The Authorization Management Service (ZMS) Classes",
+    "comment": "Copyright The Athenz Authors Licensed under the terms of the Apache version 2.0 license. See LICENSE file for terms. The Authorization Management Service (ZMS) Classes",
     "types": [
         {
             "StringTypeDef": {
                 "type": "String",
                 "name": "SimpleName",
-                "comment": "Copyright The Athenz Authors. Licensed under the terms of the Apache version 2.0 license. See LICENSE file for terms. Common name types used by several API definitions A simple identifier, an element of compound name.",
+                "comment": "Copyright The Athenz Authors Licensed under the terms of the Apache version 2.0 license. See LICENSE file for terms. Common name types used by several API definitions A simple identifier, an element of compound name.",
                 "pattern": "[a-zA-Z0-9_][a-zA-Z0-9_-]*"
             }
         },
@@ -34,6 +34,14 @@
                 "name": "EntityName",
                 "comment": "An entity name is a short form of a resource name, including only the domain and entity.",
                 "pattern": "([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*"
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "EntityNameList",
+                "comment": "A comma separated list of entity names",
+                "pattern": "(([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*,)*([a-zA-Z0-9_][a-zA-Z0-9_-]*\\.)*[a-zA-Z0-9_][a-zA-Z0-9_-]*"
             }
         },
         {
@@ -150,9 +158,16 @@
         {
             "StringTypeDef": {
                 "type": "String",
+                "name": "TagKey",
+                "pattern": "([a-zA-Z0-9_][a-zA-Z0-9_-]*[:\\.])*[a-zA-Z0-9_][a-zA-Z0-9_-]*"
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
                 "name": "TagValue",
                 "comment": "TagValue to contain generic string patterns",
-                "pattern": "[a-zA-Z0-9_:,\\/][a-zA-Z0-9_:,\\/-]*"
+                "pattern": "[a-zA-Z0-9_:,\\/][a-zA-Z0-9_:%,\\/-]*"
             }
         },
         {
@@ -160,7 +175,7 @@
                 "type": "String",
                 "name": "TagCompoundValue",
                 "comment": "A compound value of TagValue",
-                "pattern": "([a-zA-Z0-9_:,\\/][a-zA-Z0-9_:,\\/-]*\\.)*[a-zA-Z0-9_:,\\/][a-zA-Z0-9_:,\\/-]*"
+                "pattern": "([a-zA-Z0-9_:,\\/][a-zA-Z0-9_:%,\\/-]*\\.)*[a-zA-Z0-9_:,\\/][a-zA-Z0-9_:%,\\/-]*"
             }
         },
         {
@@ -210,6 +225,28 @@
         {
             "StructTypeDef": {
                 "type": "Struct",
+                "name": "ResourceDomainOwnership",
+                "comment": "The representation of the domain ownership object",
+                "fields": [
+                    {
+                        "name": "metaOwner",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "owner of the object's meta attribute"
+                    },
+                    {
+                        "name": "objectOwner",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "owner of the object itself - checked for object deletion"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
                 "name": "DomainMeta",
                 "comment": "Set of metadata attributes that all domains may have and can be changed.",
                 "fields": [
@@ -243,13 +280,13 @@
                         "name": "account",
                         "type": "String",
                         "optional": true,
-                        "comment": "associated aws account id (system attribute - uniqueness check)"
+                        "comment": "associated aws account id (system attribute - uniqueness check - if enabled)"
                     },
                     {
                         "name": "ypmId",
                         "type": "Int32",
                         "optional": true,
-                        "comment": "associated product id (system attribute - uniqueness check)"
+                        "comment": "associated product id (system attribute - uniqueness check - if enabled)"
                     },
                     {
                         "name": "applicationId",
@@ -289,7 +326,7 @@
                     },
                     {
                         "name": "signAlgorithm",
-                        "type": "SimpleName",
+                        "type": "String",
                         "optional": true,
                         "comment": "rsa or ec signing algorithm to be used for tokens"
                     },
@@ -315,7 +352,31 @@
                         "name": "azureSubscription",
                         "type": "String",
                         "optional": true,
-                        "comment": "associated azure subscription id (system attribute - uniqueness check)"
+                        "comment": "associated azure subscription id (system attribute - uniqueness check - if enabled)"
+                    },
+                    {
+                        "name": "azureTenant",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "associated azure tenant id (system attribute)"
+                    },
+                    {
+                        "name": "azureClient",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "associated azure client id (system attribute)"
+                    },
+                    {
+                        "name": "gcpProject",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "associated gcp project id (system attribute - uniqueness check - if enabled)"
+                    },
+                    {
+                        "name": "gcpProjectNumber",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "associated gcp project number (system attribute)"
                     },
                     {
                         "name": "tags",
@@ -323,7 +384,7 @@
                         "optional": true,
                         "comment": "key-value pair tags, tag might contain multiple values",
                         "items": "TagValueList",
-                        "keys": "CompoundName"
+                        "keys": "TagKey"
                     },
                     {
                         "name": "businessService",
@@ -336,6 +397,63 @@
                         "type": "Int32",
                         "optional": true,
                         "comment": "purge role/group members with expiry date configured days in the past"
+                    },
+                    {
+                        "name": "productId",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "associated product id (system attribute - uniqueness check - if enabled)"
+                    },
+                    {
+                        "name": "featureFlags",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "features enabled per domain (system attribute)"
+                    },
+                    {
+                        "name": "contacts",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "list of domain contacts (PE-Owner, Product-Owner, etc), each type can have a single value",
+                        "items": "String",
+                        "keys": "SimpleName"
+                    },
+                    {
+                        "name": "environment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "domain environment e.g. production, staging, etc"
+                    },
+                    {
+                        "name": "resourceOwnership",
+                        "type": "ResourceDomainOwnership",
+                        "optional": true,
+                        "comment": "ownership information for the domain (read-only attribute)"
+                    },
+                    {
+                        "name": "x509CertSignerKeyId",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "requested x509 cert signer key id (system attribute)"
+                    },
+                    {
+                        "name": "sshCertSignerKeyId",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "requested ssh cert signer key id (system attribute)"
+                    },
+                    {
+                        "name": "slackChannel",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "slack channel for any notifications in this domain"
+                    },
+                    {
+                        "name": "clientIdSelfUpdate",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "Indicates whether client ID self-update is enabled for services in this domain",
+                        "default": false
                     }
                 ],
                 "closed": false
@@ -404,6 +522,56 @@
                         "type": "String",
                         "optional": true,
                         "comment": "if the response is a paginated list, this attribute specifies the value to be used in the next domain list request as the value for the skip query parameter."
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "DomainAttributes",
+                "comment": "A domain attributes for the changelog support",
+                "fields": [
+                    {
+                        "name": "fetchTime",
+                        "type": "Int64",
+                        "optional": false,
+                        "comment": "timestamp when the domain object was fetched from ZMS"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "DomainOptions",
+                "comment": "A domain options for enforcing uniqueness checks",
+                "fields": [
+                    {
+                        "name": "enforceUniqueProductIds",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "enforce domains are associated with unique product ids"
+                    },
+                    {
+                        "name": "enforceUniqueAWSAccounts",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "enforce domains are associated with unique aws accounts"
+                    },
+                    {
+                        "name": "enforceUniqueAzureSubscriptions",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "enforce domains are associated with unique azure subscriptions"
+                    },
+                    {
+                        "name": "enforceUniqueGCPProjects",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "enforce domains are associated with unique gcp projects"
                     }
                 ],
                 "closed": false
@@ -550,6 +718,40 @@
                         "type": "Int32",
                         "optional": true,
                         "comment": "server use only - principal type: unknown(0), user(1), service(2), or group(3)"
+                    },
+                    {
+                        "name": "pendingState",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "for pending membership requests, the request state - e.g. add, delete"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "ResourceRoleOwnership",
+                "comment": "The representation of the role ownership object",
+                "fields": [
+                    {
+                        "name": "metaOwner",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "owner of the object's meta attribute"
+                    },
+                    {
+                        "name": "membersOwner",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "owner of the object's members attribute"
+                    },
+                    {
+                        "name": "objectOwner",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "owner of the object itself - checked for object deletion"
                     }
                 ],
                 "closed": false
@@ -588,7 +790,7 @@
                     },
                     {
                         "name": "signAlgorithm",
-                        "type": "SimpleName",
+                        "type": "String",
                         "optional": true,
                         "comment": "rsa or ec signing algorithm to be used for tokens"
                     },
@@ -653,13 +855,69 @@
                         "optional": true,
                         "comment": "key-value pair tags, tag might contain multiple values",
                         "items": "TagValueList",
-                        "keys": "CompoundName"
+                        "keys": "TagKey"
                     },
                     {
                         "name": "description",
                         "type": "String",
                         "optional": true,
                         "comment": "a description of the role"
+                    },
+                    {
+                        "name": "auditEnabled",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "Flag indicates whether or not role updates should be approved by GRC. If true, the auditRef parameter must be supplied(not empty) for any API defining it.",
+                        "default": false
+                    },
+                    {
+                        "name": "deleteProtection",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "If true, ask for delete confirmation in audit and review enabled roles.",
+                        "default": false
+                    },
+                    {
+                        "name": "lastReviewedDate",
+                        "type": "Timestamp",
+                        "optional": true,
+                        "comment": "last review timestamp of the role"
+                    },
+                    {
+                        "name": "selfRenew",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "Flag indicates whether to allow expired members to renew their membership"
+                    },
+                    {
+                        "name": "selfRenewMins",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Number of minutes members can renew their membership if self review option is enabled"
+                    },
+                    {
+                        "name": "maxMembers",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Maximum number of members allowed in the group"
+                    },
+                    {
+                        "name": "resourceOwnership",
+                        "type": "ResourceRoleOwnership",
+                        "optional": true,
+                        "comment": "ownership information for the role (read-only attribute)"
+                    },
+                    {
+                        "name": "principalDomainFilter",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "membership filtered based on configured principal domains"
+                    },
+                    {
+                        "name": "notifyDetails",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "additional details included in the notifications"
                     }
                 ],
                 "closed": false
@@ -669,7 +927,7 @@
             "StructTypeDef": {
                 "type": "RoleMeta",
                 "name": "Role",
-                "comment": "The representation for a Role with set of members.",
+                "comment": "The representation for a Role with set of members. The members (Array<MemberName>) field is deprecated and not used in role objects since it incorrectly lists all the members in the role without taking into account if the member is expired or possibly disabled. Thus, using this attribute will result in incorrect authorization checks by the client and, thus, it's no longer being populated. All applications must use the roleMembers field and take into account all the attributes of the member.",
                 "fields": [
                     {
                         "name": "name",
@@ -687,14 +945,14 @@
                         "name": "members",
                         "type": "Array",
                         "optional": true,
-                        "comment": "an explicit list of members. Might be empty or null, if trust is set",
+                        "comment": "deprecated and not used",
                         "items": "MemberName"
                     },
                     {
                         "name": "roleMembers",
                         "type": "Array",
                         "optional": true,
-                        "comment": "members with expiration",
+                        "comment": "members with expiration and other member attributes. might be empty or null, if trust is set",
                         "items": "RoleMember"
                     },
                     {
@@ -709,19 +967,6 @@
                         "optional": true,
                         "comment": "an audit log for role membership changes",
                         "items": "RoleAuditLog"
-                    },
-                    {
-                        "name": "auditEnabled",
-                        "type": "Bool",
-                        "optional": true,
-                        "comment": "Flag indicates whether or not role updates should require GRC approval. If true, the auditRef parameter must be supplied(not empty) for any API defining it",
-                        "default": false
-                    },
-                    {
-                        "name": "lastReviewedDate",
-                        "type": "Timestamp",
-                        "optional": true,
-                        "comment": "last review timestamp of the role"
                     }
                 ],
                 "closed": false
@@ -812,6 +1057,12 @@
                         "type": "Int32",
                         "optional": true,
                         "comment": "user disabled by system based on configured role setting"
+                    },
+                    {
+                        "name": "pendingState",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "for pending membership requests, the request state - e.g. add, delete"
                     }
                 ],
                 "closed": false
@@ -899,6 +1150,30 @@
                         "type": "Int32",
                         "optional": true,
                         "comment": "user disabled by system based on configured role setting"
+                    },
+                    {
+                        "name": "pendingState",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "for pending membership requests, the request state - e.g. add, delete"
+                    },
+                    {
+                        "name": "trustRoleName",
+                        "type": "ResourceName",
+                        "optional": true,
+                        "comment": "name of the role that handles the membership delegation for the role specified in roleName"
+                    },
+                    {
+                        "name": "notifyRoles",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "list of roles whose members should be notified for member review/approval/expiry"
+                    },
+                    {
+                        "name": "notifyDetails",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "additional details included in the notifications"
                     }
                 ],
                 "closed": false
@@ -1111,6 +1386,28 @@
         {
             "StructTypeDef": {
                 "type": "Struct",
+                "name": "ResourcePolicyOwnership",
+                "comment": "The representation of the policy ownership object",
+                "fields": [
+                    {
+                        "name": "assertionsOwner",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "owner of the object's assertions attribute"
+                    },
+                    {
+                        "name": "objectOwner",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "owner of the object itself - checked for object deletion"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
                 "name": "Policy",
                 "comment": "The representation for a Policy with set of assertions.",
                 "fields": [
@@ -1156,6 +1453,20 @@
                         "type": "String",
                         "optional": true,
                         "comment": "a description of the policy"
+                    },
+                    {
+                        "name": "tags",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "key-value pair tags, tag might contain multiple values",
+                        "items": "TagValueList",
+                        "keys": "TagKey"
+                    },
+                    {
+                        "name": "resourceOwnership",
+                        "type": "ResourcePolicyOwnership",
+                        "optional": true,
+                        "comment": "ownership information for the policy (read-only attribute)"
                     }
                 ],
                 "closed": false
@@ -1225,6 +1536,34 @@
         {
             "StructTypeDef": {
                 "type": "Struct",
+                "name": "ResourceServiceIdentityOwnership",
+                "comment": "The representation of the service identity ownership object",
+                "fields": [
+                    {
+                        "name": "publicKeysOwner",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "owner of the object's public keys attribute"
+                    },
+                    {
+                        "name": "hostsOwner",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "owner of the object's host list attribute"
+                    },
+                    {
+                        "name": "objectOwner",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "owner of the object itself - checked for object deletion"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
                 "name": "ServiceIdentity",
                 "comment": "The representation of the service identity object.",
                 "fields": [
@@ -1283,6 +1622,20 @@
                         "type": "String",
                         "optional": true,
                         "comment": "local (unix) group name this service can run as"
+                    },
+                    {
+                        "name": "tags",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "key-value pair tags, tag might contain multiple values",
+                        "items": "TagValueList",
+                        "keys": "TagKey"
+                    },
+                    {
+                        "name": "resourceOwnership",
+                        "type": "ResourceServiceIdentityOwnership",
+                        "optional": true,
+                        "comment": "ownership information for the service (read-only attribute)"
                     }
                 ],
                 "closed": false
@@ -1300,6 +1653,12 @@
                         "optional": false,
                         "comment": "list of services",
                         "items": "ServiceIdentity"
+                    },
+                    {
+                        "name": "serviceMatchCount",
+                        "type": "Int64",
+                        "optional": false,
+                        "comment": "if set, the value indicates the total number of services in the system that match the query criteria but not returned due to limit constraints; thus, the result in the list is a partial set."
                     }
                 ],
                 "closed": false
@@ -1463,7 +1822,7 @@
                     },
                     {
                         "name": "value",
-                        "type": "CompoundName",
+                        "type": "String",
                         "optional": false,
                         "comment": "value of the parameter"
                     }
@@ -1670,6 +2029,137 @@
                         "optional": false,
                         "comment": "list of incoming auth dependencies for domain",
                         "items": "AuthHistory"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "DomainAuditLogEntry",
+                "comment": "A single audit log record for a change made in the domain",
+                "fields": [
+                    {
+                        "name": "api",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "name of the api that made the change e.g. putRole"
+                    },
+                    {
+                        "name": "entity",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "name of the entity that was changed e.g. role, group, policy name"
+                    },
+                    {
+                        "name": "principal",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "principal that made the change"
+                    },
+                    {
+                        "name": "clientIp",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "IP address of the client that made the change"
+                    },
+                    {
+                        "name": "timestamp",
+                        "type": "Timestamp",
+                        "optional": false,
+                        "comment": "timestamp when the change was made"
+                    },
+                    {
+                        "name": "justification",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "audit reference/justification provided with the change"
+                    },
+                    {
+                        "name": "details",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "details of the change, typically a json formatted string"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "DomainAuditLog",
+                "comment": "The list of audit log records for the domain",
+                "fields": [
+                    {
+                        "name": "entries",
+                        "type": "Array",
+                        "optional": false,
+                        "comment": "list of audit log records sorted by timestamp, most recent first",
+                        "items": "DomainAuditLogEntry"
+                    },
+                    {
+                        "name": "partial",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "true if the result set was limited and additional records matching the query are available"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "ExpiryMember",
+                "fields": [
+                    {
+                        "name": "domainName",
+                        "type": "DomainName",
+                        "optional": false,
+                        "comment": "name of the domain"
+                    },
+                    {
+                        "name": "collectionName",
+                        "type": "EntityName",
+                        "optional": false,
+                        "comment": "name of the collection"
+                    },
+                    {
+                        "name": "principalName",
+                        "type": "ResourceName",
+                        "optional": false,
+                        "comment": "name of the principal"
+                    },
+                    {
+                        "name": "expiration",
+                        "type": "Timestamp",
+                        "optional": false,
+                        "comment": "the expiration timestamp"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "ExpiredMembers",
+                "fields": [
+                    {
+                        "name": "expiredRoleMembers",
+                        "type": "Array",
+                        "optional": false,
+                        "comment": "list of deleted expired role members",
+                        "items": "ExpiryMember"
+                    },
+                    {
+                        "name": "expiredGroupMembers",
+                        "type": "Array",
+                        "optional": false,
+                        "comment": "list of deleted expired groups members",
+                        "items": "ExpiryMember"
                     }
                 ],
                 "closed": false
@@ -1914,6 +2404,24 @@
                         "type": "Int32",
                         "optional": true,
                         "comment": "server use only - principal type: unknown(0), user(1) or service(2)"
+                    },
+                    {
+                        "name": "pendingState",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "for pending membership requests, the request state - e.g. add, delete"
+                    },
+                    {
+                        "name": "notifyRoles",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "list of roles whose members should be notified for member review/approval/expiry"
+                    },
+                    {
+                        "name": "notifyDetails",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "additional details included in the notifications"
                     }
                 ],
                 "closed": false
@@ -1981,6 +2489,40 @@
                         "type": "Int32",
                         "optional": true,
                         "comment": "user disabled by system based on configured group setting"
+                    },
+                    {
+                        "name": "pendingState",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "for pending membership requests, the request state - e.g. add, delete"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "ResourceGroupOwnership",
+                "comment": "The representation of the group ownership object",
+                "fields": [
+                    {
+                        "name": "metaOwner",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "owner of the object's meta attribute"
+                    },
+                    {
+                        "name": "membersOwner",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "owner of the object's members attribute"
+                    },
+                    {
+                        "name": "objectOwner",
+                        "type": "SimpleName",
+                        "optional": true,
+                        "comment": "owner of the object itself - checked for object deletion"
                     }
                 ],
                 "closed": false
@@ -2042,7 +2584,63 @@
                         "optional": true,
                         "comment": "key-value pair tags, tag might contain multiple values",
                         "items": "TagValueList",
-                        "keys": "CompoundName"
+                        "keys": "TagKey"
+                    },
+                    {
+                        "name": "auditEnabled",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "Flag indicates whether or not group updates should require GRC approval. If true, the auditRef parameter must be supplied(not empty) for any API defining it",
+                        "default": false
+                    },
+                    {
+                        "name": "deleteProtection",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "If true, ask for delete confirmation in audit and review enabled groups.",
+                        "default": false
+                    },
+                    {
+                        "name": "lastReviewedDate",
+                        "type": "Timestamp",
+                        "optional": true,
+                        "comment": "last review timestamp of the group"
+                    },
+                    {
+                        "name": "selfRenew",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "Flag indicates whether to allow expired members to renew their membership"
+                    },
+                    {
+                        "name": "selfRenewMins",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Number of minutes members can renew their membership if self review option is enabled"
+                    },
+                    {
+                        "name": "maxMembers",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Maximum number of members allowed in the group"
+                    },
+                    {
+                        "name": "resourceOwnership",
+                        "type": "ResourceGroupOwnership",
+                        "optional": true,
+                        "comment": "ownership information for the group (read-only attribute)"
+                    },
+                    {
+                        "name": "principalDomainFilter",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "membership filtered based on configured principal domains"
+                    },
+                    {
+                        "name": "notifyDetails",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "additional details included in the notifications"
                     }
                 ],
                 "closed": false
@@ -2079,19 +2677,6 @@
                         "optional": true,
                         "comment": "an audit log for group membership changes",
                         "items": "GroupAuditLog"
-                    },
-                    {
-                        "name": "auditEnabled",
-                        "type": "Bool",
-                        "optional": true,
-                        "comment": "Flag indicates whether or not group updates should require GRC approval. If true, the auditRef parameter must be supplied(not empty) for any API defining it",
-                        "default": false
-                    },
-                    {
-                        "name": "lastReviewedDate",
-                        "type": "Timestamp",
-                        "optional": true,
-                        "comment": "last review timestamp of the group"
                     }
                 ],
                 "closed": false
@@ -2987,6 +3572,93 @@
         {
             "StructTypeDef": {
                 "type": "Struct",
+                "name": "ReviewObject",
+                "comment": "Details for the roles and/or groups that need to be reviewed",
+                "fields": [
+                    {
+                        "name": "domainName",
+                        "type": "DomainName",
+                        "optional": false,
+                        "comment": "name of the domain"
+                    },
+                    {
+                        "name": "name",
+                        "type": "EntityName",
+                        "optional": false,
+                        "comment": "name of the role and/or group"
+                    },
+                    {
+                        "name": "memberExpiryDays",
+                        "type": "Int32",
+                        "optional": false,
+                        "comment": "all user members in the object have specified max expiry days"
+                    },
+                    {
+                        "name": "memberReviewDays",
+                        "type": "Int32",
+                        "optional": false,
+                        "comment": "all user members in the object have specified max review days"
+                    },
+                    {
+                        "name": "serviceExpiryDays",
+                        "type": "Int32",
+                        "optional": false,
+                        "comment": "all services in the object have specified max expiry days"
+                    },
+                    {
+                        "name": "serviceReviewDays",
+                        "type": "Int32",
+                        "optional": false,
+                        "comment": "all services in the object have specified max review days"
+                    },
+                    {
+                        "name": "groupExpiryDays",
+                        "type": "Int32",
+                        "optional": false,
+                        "comment": "all groups in the object have specified max expiry days"
+                    },
+                    {
+                        "name": "groupReviewDays",
+                        "type": "Int32",
+                        "optional": false,
+                        "comment": "all groups in the object have specified max review days"
+                    },
+                    {
+                        "name": "lastReviewedDate",
+                        "type": "Timestamp",
+                        "optional": true,
+                        "comment": "last review timestamp of the object"
+                    },
+                    {
+                        "name": "created",
+                        "type": "Timestamp",
+                        "optional": false,
+                        "comment": "creation time of the object"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "ReviewObjects",
+                "comment": "The representation for a list of objects with full details",
+                "fields": [
+                    {
+                        "name": "list",
+                        "type": "Array",
+                        "optional": false,
+                        "comment": "list of review objects",
+                        "items": "ReviewObject"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
                 "name": "Info",
                 "comment": "Copyright The Athenz Authors Licensed under the terms of the Apache version 2.0 license. See LICENSE file for terms. The representation for an info object",
                 "fields": [
@@ -3013,6 +3685,986 @@
                         "type": "String",
                         "optional": true,
                         "comment": "implementation vendor - Athenz"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "PrincipalMember",
+                "fields": [
+                    {
+                        "name": "principalName",
+                        "type": "MemberName",
+                        "optional": false,
+                        "comment": "name of the principal"
+                    },
+                    {
+                        "name": "suspendedState",
+                        "type": "Int32",
+                        "optional": false,
+                        "comment": "current system suspended state of the principal"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "PrincipalState",
+                "comment": "A principal state entry",
+                "fields": [
+                    {
+                        "name": "suspended",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "athenz suspended state for the principal"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "rdl.Identifier",
+                "comment": "All names need to be of this restricted string type",
+                "pattern": "[a-zA-Z_]+[a-zA-Z_0-9]*"
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "rdl.NamespacedIdentifier",
+                "comment": "A Namespace is a dotted compound name, using reverse domain name order (i.e. \"com.yahoo.auth\")",
+                "pattern": "([a-zA-Z_]+[a-zA-Z_0-9]*)(\\.[a-zA-Z_]+[a-zA-Z_0-9])*"
+            }
+        },
+        {
+            "EnumTypeDef": {
+                "type": "Enum",
+                "name": "rdl.BaseType",
+                "elements": [
+                    {
+                        "symbol": "Bool"
+                    },
+                    {
+                        "symbol": "Int8"
+                    },
+                    {
+                        "symbol": "Int16"
+                    },
+                    {
+                        "symbol": "Int32"
+                    },
+                    {
+                        "symbol": "Int64"
+                    },
+                    {
+                        "symbol": "Float32"
+                    },
+                    {
+                        "symbol": "Float64"
+                    },
+                    {
+                        "symbol": "Bytes"
+                    },
+                    {
+                        "symbol": "String"
+                    },
+                    {
+                        "symbol": "Timestamp"
+                    },
+                    {
+                        "symbol": "Symbol"
+                    },
+                    {
+                        "symbol": "UUID"
+                    },
+                    {
+                        "symbol": "Array"
+                    },
+                    {
+                        "symbol": "Map"
+                    },
+                    {
+                        "symbol": "Struct"
+                    },
+                    {
+                        "symbol": "Enum"
+                    },
+                    {
+                        "symbol": "Union"
+                    },
+                    {
+                        "symbol": "Any"
+                    }
+                ]
+            }
+        },
+        {
+            "StringTypeDef": {
+                "type": "String",
+                "name": "rdl.ExtendedAnnotation",
+                "comment": "ExtendedAnnotation - parsed and preserved, but has no defined meaning in RDL. Such annotations must begin with \"x_\", and may have an associated string literal value (the value will be \"\" if the annotation is just a flag).",
+                "pattern": "x_[a-zA-Z_0-9]*"
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.TypeDef",
+                "comment": "TypeDef is the basic type definition.",
+                "fields": [
+                    {
+                        "name": "type",
+                        "type": "rdl.TypeRef",
+                        "optional": false,
+                        "comment": "The type this type is derived from. For base types, it is the same as the name"
+                    },
+                    {
+                        "name": "name",
+                        "type": "rdl.TypeName",
+                        "optional": false,
+                        "comment": "The name of the type"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The comment for the type"
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.AliasTypeDef",
+                "comment": "AliasTypeDef is used for type definitions that add no additional attributes, and thus just create an alias",
+                "fields": [],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.BytesTypeDef",
+                "comment": "Bytes allow the restriction by fixed size, or min/max size.",
+                "fields": [
+                    {
+                        "name": "size",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Fixed size"
+                    },
+                    {
+                        "name": "minSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Min size"
+                    },
+                    {
+                        "name": "maxSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Max size"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.StringTypeDef",
+                "comment": "Strings allow the restriction by regular expression pattern or by an explicit set of values. An optional maximum size may be asserted",
+                "fields": [
+                    {
+                        "name": "pattern",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "A regular expression that must be matched. Mutually exclusive with values"
+                    },
+                    {
+                        "name": "values",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "A set of allowable values",
+                        "items": "String"
+                    },
+                    {
+                        "name": "minSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Min size"
+                    },
+                    {
+                        "name": "maxSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "Max size"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "UnionTypeDef": {
+                "type": "Union",
+                "name": "rdl.Number",
+                "comment": "A numeric is any of the primitive numeric types",
+                "variants": [
+                    "Int8",
+                    "Int16",
+                    "Int32",
+                    "Int64",
+                    "Float32",
+                    "Float64"
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.NumberTypeDef",
+                "comment": "A number type definition allows the restriction of numeric values.",
+                "fields": [
+                    {
+                        "name": "min",
+                        "type": "rdl.Number",
+                        "optional": true,
+                        "comment": "Min value"
+                    },
+                    {
+                        "name": "max",
+                        "type": "rdl.Number",
+                        "optional": true,
+                        "comment": "Max value"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.ArrayTypeDef",
+                "comment": "Array types can be restricted by item type and size",
+                "fields": [
+                    {
+                        "name": "items",
+                        "type": "rdl.TypeRef",
+                        "optional": false,
+                        "comment": "The type of the items, default to any type"
+                    },
+                    {
+                        "name": "size",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicate the fixed size."
+                    },
+                    {
+                        "name": "minSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicate the min size"
+                    },
+                    {
+                        "name": "maxSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicate the max size"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.MapTypeDef",
+                "comment": "Map types can be restricted by key type, item type and size",
+                "fields": [
+                    {
+                        "name": "keys",
+                        "type": "rdl.TypeRef",
+                        "optional": false,
+                        "comment": "The type of the keys, default to String."
+                    },
+                    {
+                        "name": "items",
+                        "type": "rdl.TypeRef",
+                        "optional": false,
+                        "comment": "The type of the items, default to Any type"
+                    },
+                    {
+                        "name": "size",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicates the fixed size."
+                    },
+                    {
+                        "name": "minSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicate the min size"
+                    },
+                    {
+                        "name": "maxSize",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "If present, indicate the max size"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.StructFieldDef",
+                "comment": "Each field in a struct_field_spec is defined by this type",
+                "fields": [
+                    {
+                        "name": "name",
+                        "type": "rdl.Identifier",
+                        "optional": false,
+                        "comment": "The name of the field"
+                    },
+                    {
+                        "name": "type",
+                        "type": "rdl.TypeRef",
+                        "optional": false,
+                        "comment": "The type of the field"
+                    },
+                    {
+                        "name": "optional",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "The field may be omitted even if specified",
+                        "default": false
+                    },
+                    {
+                        "name": "default",
+                        "type": "Any",
+                        "optional": true,
+                        "comment": "If field is absent, what default value should be assumed."
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The comment for the field"
+                    },
+                    {
+                        "name": "items",
+                        "type": "rdl.TypeRef",
+                        "optional": true,
+                        "comment": "For map or array fields, the type of the items"
+                    },
+                    {
+                        "name": "keys",
+                        "type": "rdl.TypeRef",
+                        "optional": true,
+                        "comment": "For map type fields, the type of the keys"
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.StructTypeDef",
+                "comment": "A struct can restrict specific named fields to specific types. By default, any field not specified is allowed, and can be of any type. Specifying closed means only those fields explicitly",
+                "fields": [
+                    {
+                        "name": "fields",
+                        "type": "Array",
+                        "optional": false,
+                        "comment": "The fields in this struct. By default, open Structs can have any fields in addition to these",
+                        "items": "rdl.StructFieldDef"
+                    },
+                    {
+                        "name": "closed",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "indicates that only the specified fields are acceptable. Default is open (any fields)",
+                        "default": false
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.EnumElementDef",
+                "comment": "EnumElementDef defines one of the elements of an Enum",
+                "fields": [
+                    {
+                        "name": "symbol",
+                        "type": "rdl.Identifier",
+                        "optional": false,
+                        "comment": "The identifier representing the value"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the comment for the element"
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.EnumTypeDef",
+                "comment": "Define an enumerated type. Each value of the type is represented by a symbolic identifier.",
+                "fields": [
+                    {
+                        "name": "elements",
+                        "type": "Array",
+                        "optional": false,
+                        "comment": "The enumeration of the possible elements",
+                        "items": "rdl.EnumElementDef"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "rdl.TypeDef",
+                "name": "rdl.UnionTypeDef",
+                "comment": "Define a type as one of any other specified type.",
+                "fields": [
+                    {
+                        "name": "variants",
+                        "type": "Array",
+                        "optional": false,
+                        "comment": "The type names of constituent types. Union types get expanded, this is a flat list",
+                        "items": "rdl.TypeRef"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "UnionTypeDef": {
+                "type": "Union",
+                "name": "rdl.Type",
+                "comment": "A Type can be specified by any of the above specialized Types, determined by the value of the the 'type' field",
+                "variants": [
+                    "rdl.BaseType",
+                    "rdl.StructTypeDef",
+                    "rdl.MapTypeDef",
+                    "rdl.ArrayTypeDef",
+                    "rdl.EnumTypeDef",
+                    "rdl.UnionTypeDef",
+                    "rdl.StringTypeDef",
+                    "rdl.BytesTypeDef",
+                    "rdl.NumberTypeDef",
+                    "rdl.AliasTypeDef"
+                ]
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.ResourceInput",
+                "comment": "ResourceOutput defines input characteristics of a Resource",
+                "fields": [
+                    {
+                        "name": "name",
+                        "type": "rdl.Identifier",
+                        "optional": false,
+                        "comment": "the formal name of the input"
+                    },
+                    {
+                        "name": "type",
+                        "type": "rdl.TypeRef",
+                        "optional": false,
+                        "comment": "The type of the input"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The optional comment"
+                    },
+                    {
+                        "name": "pathParam",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "true of this input is a path parameter",
+                        "default": false
+                    },
+                    {
+                        "name": "queryParam",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "if present, the name of the query param name"
+                    },
+                    {
+                        "name": "header",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "If present, the name of the header the input is associated with"
+                    },
+                    {
+                        "name": "pattern",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "If present, the pattern associated with the pathParam (i.e. wildcard path matches)"
+                    },
+                    {
+                        "name": "default",
+                        "type": "Any",
+                        "optional": true,
+                        "comment": "If present, the default value for optional params"
+                    },
+                    {
+                        "name": "optional",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "If present, indicates that the input is optional",
+                        "default": false
+                    },
+                    {
+                        "name": "flag",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "If present, indicates the queryparam is of flag style (no value)",
+                        "default": false
+                    },
+                    {
+                        "name": "context",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "If present, indicates the parameter comes form the implementation context"
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.ResourceOutput",
+                "comment": "ResourceOutput defines output characteristics of a Resource",
+                "fields": [
+                    {
+                        "name": "name",
+                        "type": "rdl.Identifier",
+                        "optional": false,
+                        "comment": "the formal name of the output"
+                    },
+                    {
+                        "name": "type",
+                        "type": "rdl.TypeRef",
+                        "optional": false,
+                        "comment": "The type of the output"
+                    },
+                    {
+                        "name": "header",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "the name of the header associated with this output"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The optional comment for the output"
+                    },
+                    {
+                        "name": "optional",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "If present, indicates that the output is optional (the server decides)",
+                        "default": false
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.ResourceAuth",
+                "comment": "ResourceAuth defines authentication and authorization attributes of a resource. Presence of action, resource, or domain implies authentication; the authentication flag alone is required only when no authorization is done.",
+                "fields": [
+                    {
+                        "name": "authenticate",
+                        "type": "Bool",
+                        "optional": false,
+                        "comment": "if present and true, then the requester must be authenticated",
+                        "default": false
+                    },
+                    {
+                        "name": "action",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the action to authorize access to. This forces authentication"
+                    },
+                    {
+                        "name": "resource",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the resource identity to authorize access to"
+                    },
+                    {
+                        "name": "domain",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "if present, the alternate domain to check access to. This is rare."
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.ExceptionDef",
+                "comment": "ExceptionDef describes the exception a symbolic response code maps to.",
+                "fields": [
+                    {
+                        "name": "type",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "The type of the exception"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the optional comment for the exception"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.Resource",
+                "comment": "A Resource of a REST service",
+                "fields": [
+                    {
+                        "name": "type",
+                        "type": "rdl.TypeRef",
+                        "optional": false,
+                        "comment": "The type of the resource"
+                    },
+                    {
+                        "name": "method",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "The method for the action (typically GET, POST, etc for HTTP access)"
+                    },
+                    {
+                        "name": "path",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "The resource path template"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The optional comment"
+                    },
+                    {
+                        "name": "inputs",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "An Array named inputs",
+                        "items": "rdl.ResourceInput"
+                    },
+                    {
+                        "name": "outputs",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "An Array of named outputs",
+                        "items": "rdl.ResourceOutput"
+                    },
+                    {
+                        "name": "auth",
+                        "type": "rdl.ResourceAuth",
+                        "optional": true,
+                        "comment": "The optional authentication or authorization directive"
+                    },
+                    {
+                        "name": "expected",
+                        "type": "String",
+                        "optional": false,
+                        "comment": "The expected symbolic response code",
+                        "default": "OK"
+                    },
+                    {
+                        "name": "alternatives",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "The set of alternative but non-error response codes",
+                        "items": "String"
+                    },
+                    {
+                        "name": "exceptions",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "A map of symbolic response code to Exception definitions",
+                        "items": "rdl.ExceptionDef",
+                        "keys": "String"
+                    },
+                    {
+                        "name": "async",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "A hint to server implementations that this resource would be better implemented with async I/O"
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    },
+                    {
+                        "name": "consumes",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "Optional hint for resource acceptable input types",
+                        "items": "String"
+                    },
+                    {
+                        "name": "produces",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "Optional hint for resource output content types",
+                        "items": "String"
+                    },
+                    {
+                        "name": "name",
+                        "type": "rdl.Identifier",
+                        "optional": true,
+                        "comment": "The optional name of the resource"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "rdl.Schema",
+                "comment": "A Schema is a container for types and resources. It is self-contained (no external references). and is the output of the RDL parser.",
+                "fields": [
+                    {
+                        "name": "namespace",
+                        "type": "rdl.NamespacedIdentifier",
+                        "optional": true,
+                        "comment": "The namespace for the schema"
+                    },
+                    {
+                        "name": "name",
+                        "type": "rdl.Identifier",
+                        "optional": true,
+                        "comment": "The name of the schema"
+                    },
+                    {
+                        "name": "version",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "The version of the schema"
+                    },
+                    {
+                        "name": "comment",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "The comment for the entire schema"
+                    },
+                    {
+                        "name": "types",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "The types this schema defines.",
+                        "items": "rdl.Type"
+                    },
+                    {
+                        "name": "resources",
+                        "type": "Array",
+                        "optional": true,
+                        "comment": "The resources for a service this schema defines",
+                        "items": "rdl.Resource"
+                    },
+                    {
+                        "name": "base",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "the base path for resources in the schema."
+                    },
+                    {
+                        "name": "annotations",
+                        "type": "Map",
+                        "optional": true,
+                        "comment": "additional annotations starting with \"x_\"",
+                        "items": "String",
+                        "keys": "rdl.ExtendedAnnotation"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "SelfServeObject",
+                "comment": "Details for a self-service role or group that a principal may request access to.",
+                "fields": [
+                    {
+                        "name": "domainName",
+                        "type": "DomainName",
+                        "optional": false,
+                        "comment": "name of the domain"
+                    },
+                    {
+                        "name": "name",
+                        "type": "EntityName",
+                        "optional": false,
+                        "comment": "name of the role or group"
+                    },
+                    {
+                        "name": "description",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "description of the role or group (roles only - groups do not carry a description)"
+                    },
+                    {
+                        "name": "selfRenew",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "flag indicates whether expired members can renew their own membership"
+                    },
+                    {
+                        "name": "selfRenewMins",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "number of minutes members can renew their membership if self renew is enabled"
+                    },
+                    {
+                        "name": "reviewEnabled",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "flag indicates whether membership changes require review and approval"
+                    },
+                    {
+                        "name": "auditEnabled",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "flag indicates whether membership changes require GRC approval"
+                    },
+                    {
+                        "name": "deleteProtection",
+                        "type": "Bool",
+                        "optional": true,
+                        "comment": "flag indicates whether member removal requires confirmation"
+                    },
+                    {
+                        "name": "memberStatus",
+                        "type": "String",
+                        "optional": true,
+                        "comment": "membership state of the calling principal for this object: member, pending or none"
+                    },
+                    {
+                        "name": "expiration",
+                        "type": "Timestamp",
+                        "optional": true,
+                        "comment": "expiration timestamp of the calling principal's membership, if any"
+                    },
+                    {
+                        "name": "inheritedFrom",
+                        "type": "ResourceName",
+                        "optional": true,
+                        "comment": "if the caller's membership is inherited through a group, the full name of that group (roles only)"
+                    },
+                    {
+                        "name": "memberExpiryDays",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "maximum membership duration in days configured on this role or group (0 means no limit); callers derive the effective cap"
+                    },
+                    {
+                        "name": "domainMemberExpiryDays",
+                        "type": "Int32",
+                        "optional": true,
+                        "comment": "maximum membership duration in days configured on the owning domain (0 means no limit); callers derive the effective cap"
+                    }
+                ],
+                "closed": false
+            }
+        },
+        {
+            "StructTypeDef": {
+                "type": "Struct",
+                "name": "SelfServeObjects",
+                "comment": "The representation for a list of self-service objects.",
+                "fields": [
+                    {
+                        "name": "list",
+                        "type": "Array",
+                        "optional": false,
+                        "comment": "list of self-service objects",
+                        "items": "SelfServeObject"
                     }
                 ],
                 "closed": false
@@ -3061,7 +4713,7 @@
             "type": "DomainList",
             "method": "GET",
             "path": "/domain",
-            "comment": "Enumerate domains. Can be filtered by prefix and depth, and paginated. Most of the query options that are looking for specific domain attributes (e.g. aws account, azure subscriptions, business service, tags, etc) are mutually exclusive. The server will only process the first query argument and ignore the others.",
+            "comment": "Enumerate domains. Can be filtered by prefix and depth, and paginated. Most of the query options that are looking for specific domain attributes (e.g. aws account, azure subscriptions, gcp project, business service, tags, etc) are mutually exclusive. The server will only process the first query argument and ignore the others.",
             "inputs": [
                 {
                     "name": "limit",
@@ -3109,9 +4761,9 @@
                     "flag": false
                 },
                 {
-                    "name": "productId",
+                    "name": "productNumber",
                     "type": "Int32",
-                    "comment": "restrict the domain names that have specified product id",
+                    "comment": "restrict the domain names that have specified product number",
                     "pathParam": false,
                     "queryParam": "ypmid",
                     "optional": true,
@@ -3145,8 +4797,17 @@
                     "flag": false
                 },
                 {
+                    "name": "project",
+                    "type": "String",
+                    "comment": "restrict to domain names that have specified gcp project name",
+                    "pathParam": false,
+                    "queryParam": "gcp",
+                    "optional": true,
+                    "flag": false
+                },
+                {
                     "name": "tagKey",
-                    "type": "CompoundName",
+                    "type": "TagKey",
                     "comment": "flag to query all domains that have a given tagName",
                     "pathParam": false,
                     "queryParam": "tagKey",
@@ -3155,7 +4816,7 @@
                 },
                 {
                     "name": "tagValue",
-                    "type": "CompoundName",
+                    "type": "TagCompoundValue",
                     "comment": "flag to query all domains that have a given tag name and value",
                     "pathParam": false,
                     "queryParam": "tagValue",
@@ -3168,6 +4829,15 @@
                     "comment": "restrict to domain names that have specified business service name",
                     "pathParam": false,
                     "queryParam": "businessService",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "productId",
+                    "type": "String",
+                    "comment": "restrict the domain names that have specified product id",
+                    "pathParam": false,
+                    "queryParam": "productId",
                     "optional": true,
                     "flag": false
                 },
@@ -3206,6 +4876,15 @@
                     "comment": "Audit param required(not empty) if domain auditEnabled is true.",
                     "pathParam": false,
                     "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
                     "optional": true,
                     "flag": false
                 },
@@ -3259,6 +4938,15 @@
                     "comment": "Audit param required(not empty) if domain auditEnabled is true.",
                     "pathParam": false,
                     "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
                     "optional": true,
                     "flag": false
                 },
@@ -3319,6 +5007,15 @@
                     "flag": false
                 },
                 {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
+                },
+                {
                     "name": "detail",
                     "type": "UserDomain",
                     "comment": "UserDomain object to be created",
@@ -3373,6 +5070,15 @@
                     "header": "Y-Audit-Ref",
                     "optional": true,
                     "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
                 }
             ],
             "auth": {
@@ -3403,7 +5109,7 @@
             "type": "SubDomain",
             "method": "DELETE",
             "path": "/subdomain/{parent}/{name}",
-            "comment": "Delete the specified subdomain. Caller must have domain delete permissions in parent. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned).",
+            "comment": "Delete the specified subdomain. Caller must have domain delete permissions in parent or in the domain itself. Therefore, the RDL requires authentication only and the server will perform the authorization check based on the caller's identity. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned).",
             "inputs": [
                 {
                     "name": "parent",
@@ -3429,12 +5135,19 @@
                     "header": "Y-Audit-Ref",
                     "optional": true,
                     "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
                 }
             ],
             "auth": {
-                "authenticate": false,
-                "action": "delete",
-                "resource": "{parent}:domain"
+                "authenticate": true
             },
             "expected": "NO_CONTENT",
             "exceptions": {
@@ -3475,6 +5188,15 @@
                     "comment": "Audit param required(not empty) if domain auditEnabled is true.",
                     "pathParam": false,
                     "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
                     "optional": true,
                     "flag": false
                 }
@@ -3523,6 +5245,15 @@
                     "comment": "Audit param required(not empty) if domain auditEnabled is true.",
                     "pathParam": false,
                     "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
                     "optional": true,
                     "flag": false
                 },
@@ -3929,6 +5660,206 @@
             }
         },
         {
+            "type": "DomainAuditLog",
+            "method": "GET",
+            "path": "/domain/{domainName}/history/audit",
+            "comment": "Get the audit log history for the domain. The optional query arguments can be used to filter the result set. The start and end dates must be specified in RFC3339 format e.g. 2026-09-01T00:00:00Z The principal must be authorized for the \"zms.auditlogaccess\" action on either the \"{domainName}:meta.audit.log\" resource in the requested domain or the \"sys.auth:meta.audit.log.{domainName}\" resource in the sys.auth domain",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "api",
+                    "type": "SimpleName",
+                    "comment": "restrict results to the given api name",
+                    "pathParam": false,
+                    "queryParam": "api",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "entity",
+                    "type": "ResourceName",
+                    "comment": "restrict results to the given entity name",
+                    "pathParam": false,
+                    "queryParam": "entity",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "principal",
+                    "type": "ResourceName",
+                    "comment": "restrict results to changes made by the given principal",
+                    "pathParam": false,
+                    "queryParam": "principal",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "startDate",
+                    "type": "String",
+                    "comment": "restrict results to changes made on or after this date",
+                    "pathParam": false,
+                    "queryParam": "start",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "endDate",
+                    "type": "String",
+                    "comment": "restrict results to changes made on or before this date",
+                    "pathParam": false,
+                    "queryParam": "end",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "limit",
+                    "type": "Int32",
+                    "comment": "restrict the number of results in this call",
+                    "pathParam": false,
+                    "queryParam": "limit",
+                    "optional": true,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "OK",
+            "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                }
+            }
+        },
+        {
+            "type": "ExpiredMembers",
+            "method": "DELETE",
+            "path": "/expired-members",
+            "comment": "Delete expired principals This command will purge expired members of the following resources based on the purgeResources value 0 - none of them will be purged 1 - only roles will be purged 2 - only groups will be purged default/3 - both of them will be purged",
+            "inputs": [
+                {
+                    "name": "purgeResources",
+                    "type": "Int32",
+                    "comment": "defining which resources will be purged. by default all resources will be purged",
+                    "pathParam": false,
+                    "queryParam": "purgeResources",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "auditRef",
+                    "type": "String",
+                    "comment": "Audit reference",
+                    "pathParam": false,
+                    "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "returnObj",
+                    "type": "Bool",
+                    "comment": "Return object param updated object back.",
+                    "pathParam": false,
+                    "header": "Athenz-Return-Object",
+                    "optional": true,
+                    "flag": false,
+                    "default": false
+                }
+            ],
+            "auth": {
+                "authenticate": false,
+                "action": "delete",
+                "resource": "sys.auth:expired_members"
+            },
+            "expected": "NO_CONTENT",
+            "exceptions": {
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                }
+            }
+        },
+        {
+            "type": "ResourceDomainOwnership",
+            "method": "PUT",
+            "path": "/domain/{domainName}/ownership",
+            "comment": "Set the resource ownership for the given domain",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "auditRef",
+                    "type": "String",
+                    "comment": "Audit param required(not empty) if domain auditEnabled is true.",
+                    "pathParam": false,
+                    "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwnership",
+                    "type": "ResourceDomainOwnership",
+                    "comment": "resource ownership to be set for the given domain",
+                    "pathParam": false,
+                    "optional": false,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": false,
+                "action": "update",
+                "resource": "{domainName}:meta.domain.ownership"
+            },
+            "expected": "NO_CONTENT",
+            "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                }
+            }
+        },
+        {
             "type": "DomainDataCheck",
             "method": "GET",
             "path": "/domain/{domainName}/check",
@@ -4248,7 +6179,7 @@
                 },
                 {
                     "name": "tagKey",
-                    "type": "CompoundName",
+                    "type": "TagKey",
                     "comment": "flag to query all roles that have a given tagName",
                     "pathParam": false,
                     "queryParam": "tagKey",
@@ -4257,7 +6188,7 @@
                 },
                 {
                     "name": "tagValue",
-                    "type": "CompoundName",
+                    "type": "TagCompoundValue",
                     "comment": "flag to query all roles that have a given tag name and value",
                     "pathParam": false,
                     "queryParam": "tagValue",
@@ -4401,6 +6332,15 @@
                     "default": false
                 },
                 {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
+                },
+                {
                     "name": "role",
                     "type": "Role",
                     "comment": "Role object to be added/updated in the domain",
@@ -4466,6 +6406,15 @@
                     "header": "Y-Audit-Ref",
                     "optional": true,
                     "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
                 }
             ],
             "auth": {
@@ -4494,6 +6443,73 @@
                     "type": "ResourceError"
                 }
             }
+        },
+        {
+            "type": "RoleList",
+            "method": "DELETE",
+            "path": "/domain/{domainName}/roles/{roleNames}",
+            "comment": "Delete the specified roles. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned).",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "roleNames",
+                    "type": "EntityNameList",
+                    "comment": "comma separated list of role names to be deleted",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "auditRef",
+                    "type": "String",
+                    "comment": "Audit param required(not empty) if domain auditEnabled is true.",
+                    "pathParam": false,
+                    "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "NO_CONTENT",
+            "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "CONFLICT": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                }
+            },
+            "name": "DeleteRoles"
         },
         {
             "type": "Membership",
@@ -4636,7 +6652,7 @@
             "type": "DomainRoleMember",
             "method": "GET",
             "path": "/role",
-            "comment": "Fetch all the roles across domains by either calling or specified principal",
+            "comment": "Fetch all the roles across domains by either calling or specified principal The optional expand argument will include all direct and indirect roles, however, it will force authorization that you must be either the principal or for service accounts have update access to the service identity: 1. authenticated principal is the same as the check principal 2. system authorized (\"access\", \"sys.auth:meta.role.lookup\") 3. service admin (\"update\", \"{principal}\") 4. domain authorized (\"access\", \"{domainName}:meta.role.lookup\") if domainName is provided",
             "inputs": [
                 {
                     "name": "principal",
@@ -4655,6 +6671,16 @@
                     "queryParam": "domain",
                     "optional": true,
                     "flag": false
+                },
+                {
+                    "name": "expand",
+                    "type": "Bool",
+                    "comment": "expand to include group and delegated trust role membership",
+                    "pathParam": false,
+                    "queryParam": "expand",
+                    "optional": false,
+                    "flag": false,
+                    "default": false
                 }
             ],
             "auth": {
@@ -4684,7 +6710,7 @@
             "type": "Membership",
             "method": "PUT",
             "path": "/domain/{domainName}/role/{roleName}/member/{memberName}",
-            "comment": "Add the specified user to the role's member list. If the role is neither auditEnabled nor selfserve, then it will use authorize (\"update\", \"{domainName}:role.{roleName}\") or (\"update_members\", \"{domainName}:role.{roleName}\"). This only allows access to members and not role attributes. otherwise membership will be sent for approval to either designated delegates ( in case of auditEnabled roles ) or to domain admins ( in case of selfserve roles )",
+            "comment": "Add the specified user to the role's member list. If the role is selfRenewEnabled, then an existing member may extend their expiration time by the configured number of minutes (selfRenewMins) by calling this API regardless or not the user is expired or active. If the role is neither auditEnabled nor selfserve, then it will use authorize (\"update\", \"{domainName}:role.{roleName}\") or (\"update_members\", \"{domainName}:role.{roleName}\"). This only allows access to members and not role attributes. otherwise membership will be sent for approval to either designated delegates ( in case of auditEnabled roles ) or to domain admins ( in case of selfserve roles )",
             "inputs": [
                 {
                     "name": "domainName",
@@ -4730,6 +6756,15 @@
                     "default": false
                 },
                 {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
+                },
+                {
                     "name": "membership",
                     "type": "Membership",
                     "comment": "Membership object (must contain role/member names as specified in the URI)",
@@ -4767,7 +6802,7 @@
             "type": "Membership",
             "method": "DELETE",
             "path": "/domain/{domainName}/role/{roleName}/member/{memberName}",
-            "comment": "Delete the specified role membership. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned). The required authorization includes two options: (\"update\", \"{domainName}:role.{roleName}\") or (\"update_members\", \"{domainName}:role.{roleName}\")",
+            "comment": "Delete the specified role membership. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned). The required authorization includes three options: 1. (\"update\", \"{domainName}:role.{roleName}\") 2. (\"update_members\", \"{domainName}:role.{roleName}\") 3. principal matches memberName",
             "inputs": [
                 {
                     "name": "domainName",
@@ -4799,6 +6834,15 @@
                     "comment": "Audit param required(not empty) if domain auditEnabled is true.",
                     "pathParam": false,
                     "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
                     "optional": true,
                     "flag": false
                 }
@@ -5057,6 +7101,15 @@
                     "flag": false
                 },
                 {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
+                },
+                {
                     "name": "detail",
                     "type": "RoleMeta",
                     "comment": "RoleMeta object with updated attribute values",
@@ -5168,7 +7221,7 @@
             "type": "Role",
             "method": "PUT",
             "path": "/domain/{domainName}/role/{roleName}/review",
-            "comment": "Review role membership and take action to either extend and/or delete existing members.",
+            "comment": "Review role membership and take action to either extend and/or delete existing members. The required authorization includes two options: 1. (\"update\", \"{domainName}:role.{roleName}\") 2. (\"update_members\", \"{domainName}:role.{roleName}\")",
             "inputs": [
                 {
                     "name": "domainName",
@@ -5206,6 +7259,15 @@
                     "default": false
                 },
                 {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
+                },
+                {
                     "name": "role",
                     "type": "Role",
                     "comment": "Role object with updated and/or deleted members",
@@ -5215,9 +7277,7 @@
                 }
             ],
             "auth": {
-                "authenticate": false,
-                "action": "update",
-                "resource": "{domainName}:role.{roleName}"
+                "authenticate": true
             },
             "expected": "NO_CONTENT",
             "exceptions": {
@@ -5241,6 +7301,70 @@
                 }
             },
             "name": "PutRoleReview"
+        },
+        {
+            "type": "ResourceRoleOwnership",
+            "method": "PUT",
+            "path": "/domain/{domainName}/role/{roleName}/ownership",
+            "comment": "Set the resource ownership for the given role",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "roleName",
+                    "type": "EntityName",
+                    "comment": "name of the role",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "auditRef",
+                    "type": "String",
+                    "comment": "Audit param required(not empty) if domain auditEnabled is true.",
+                    "pathParam": false,
+                    "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwnership",
+                    "type": "ResourceRoleOwnership",
+                    "comment": "resource ownership to be set for the given role",
+                    "pathParam": false,
+                    "optional": false,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": false,
+                "action": "update",
+                "resource": "{domainName}:meta.role.ownership.{roleName}"
+            },
+            "expected": "NO_CONTENT",
+            "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                }
+            }
         },
         {
             "type": "Groups",
@@ -5268,7 +7392,7 @@
                 },
                 {
                     "name": "tagKey",
-                    "type": "CompoundName",
+                    "type": "TagKey",
                     "comment": "flag to query all groups that have a given tagName",
                     "pathParam": false,
                     "queryParam": "tagKey",
@@ -5277,7 +7401,7 @@
                 },
                 {
                     "name": "tagValue",
-                    "type": "CompoundName",
+                    "type": "TagCompoundValue",
                     "comment": "flag to query all groups that have a given tag name and value",
                     "pathParam": false,
                     "queryParam": "tagValue",
@@ -5411,6 +7535,15 @@
                     "default": false
                 },
                 {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
+                },
+                {
                     "name": "group",
                     "type": "Group",
                     "comment": "Group object to be added/updated in the domain",
@@ -5474,6 +7607,15 @@
                     "comment": "Audit param required(not empty) if domain auditEnabled is true.",
                     "pathParam": false,
                     "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
                     "optional": true,
                     "flag": false
                 }
@@ -5619,7 +7761,7 @@
             "type": "GroupMembership",
             "method": "PUT",
             "path": "/domain/{domainName}/group/{groupName}/member/{memberName}",
-            "comment": "Add the specified user to the group's member list. If the group is neither auditEnabled nor selfserve, then it will use authorize (\"update\", \"{domainName}:group.{groupName}\") otherwise membership will be sent for approval to either designated delegates ( in case of auditEnabled groups ) or to domain admins ( in case of selfserve groups )",
+            "comment": "Add the specified user to the group's member list. If the group is selfRenewEnabled, then an existing member may extend their expiration time by the configured number of minutes (selfRenewMins) by calling this API regardless or not the user is expired or active. If the group is neither auditEnabled nor selfserve, then it will use authorize (\"update\", \"{domainName}:group.{groupName}\") otherwise membership will be sent for approval to either designated delegates ( in case of auditEnabled groups ) or to domain admins ( in case of selfserve groups )",
             "inputs": [
                 {
                     "name": "domainName",
@@ -5665,6 +7807,15 @@
                     "default": false
                 },
                 {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
+                },
+                {
                     "name": "membership",
                     "type": "GroupMembership",
                     "comment": "Membership object (must contain group/member names as specified in the URI)",
@@ -5702,7 +7853,7 @@
             "type": "GroupMembership",
             "method": "DELETE",
             "path": "/domain/{domainName}/group/{groupName}/member/{memberName}",
-            "comment": "Delete the specified group membership. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned).",
+            "comment": "Delete the specified group membership. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned). The required authorization includes three options: 1. (\"update\", \"{domainName}:group.{groupName}\") 2. (\"update_members\", \"{domainName}:group.{groupName}\") 3. principal matches memberName",
             "inputs": [
                 {
                     "name": "domainName",
@@ -5736,12 +7887,19 @@
                     "header": "Y-Audit-Ref",
                     "optional": true,
                     "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
                 }
             ],
             "auth": {
-                "authenticate": false,
-                "action": "update",
-                "resource": "{domainName}:group.{groupName}"
+                "authenticate": true
             },
             "expected": "NO_CONTENT",
             "exceptions": {
@@ -5938,6 +8096,15 @@
                     "flag": false
                 },
                 {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
+                },
+                {
                     "name": "detail",
                     "type": "GroupMeta",
                     "comment": "GroupMeta object with updated attribute values",
@@ -6051,7 +8218,7 @@
             "type": "Group",
             "method": "PUT",
             "path": "/domain/{domainName}/group/{groupName}/review",
-            "comment": "Review group membership and take action to either extend and/or delete existing members.",
+            "comment": "Review group membership and take action to either extend and/or delete existing members. The required authorization includes three options: 1. (\"update\", \"{domainName}:group.{groupName}\") 2. (\"update_members\", \"{domainName}:group.{groupName}\")",
             "inputs": [
                 {
                     "name": "domainName",
@@ -6089,6 +8256,15 @@
                     "default": false
                 },
                 {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
+                },
+                {
                     "name": "group",
                     "type": "Group",
                     "comment": "Group object with updated and/or deleted members",
@@ -6098,9 +8274,7 @@
                 }
             ],
             "auth": {
-                "authenticate": false,
-                "action": "update",
-                "resource": "{domainName}:group.{groupName}"
+                "authenticate": true
             },
             "expected": "NO_CONTENT",
             "exceptions": {
@@ -6172,6 +8346,107 @@
                 }
             },
             "name": "getPendingDomainGroupMembersList"
+        },
+        {
+            "type": "ResourceGroupOwnership",
+            "method": "PUT",
+            "path": "/domain/{domainName}/group/{groupName}/ownership",
+            "comment": "Set the resource ownership for the given group",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "groupName",
+                    "type": "EntityName",
+                    "comment": "name of the group",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "auditRef",
+                    "type": "String",
+                    "comment": "Audit param required(not empty) if domain auditEnabled is true.",
+                    "pathParam": false,
+                    "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwnership",
+                    "type": "ResourceGroupOwnership",
+                    "comment": "resource ownership to be set for the given group",
+                    "pathParam": false,
+                    "optional": false,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": false,
+                "action": "update",
+                "resource": "{domainName}:meta.group.ownership.{groupName}"
+            },
+            "expected": "NO_CONTENT",
+            "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                }
+            }
+        },
+        {
+            "type": "DomainGroupMembers",
+            "method": "GET",
+            "path": "/domain/{domainName}/group/member",
+            "comment": "Get list of principals defined in groups in the given domain",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "OK",
+            "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                }
+            }
         },
         {
             "type": "PolicyList",
@@ -6261,6 +8536,24 @@
                     "optional": false,
                     "flag": false,
                     "default": false
+                },
+                {
+                    "name": "tagKey",
+                    "type": "TagKey",
+                    "comment": "flag to query all policies that have a given tagName",
+                    "pathParam": false,
+                    "queryParam": "tagKey",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "tagValue",
+                    "type": "TagCompoundValue",
+                    "comment": "flag to query all policies that have a given tag name and value",
+                    "pathParam": false,
+                    "queryParam": "tagValue",
+                    "optional": true,
+                    "flag": false
                 }
             ],
             "auth": {
@@ -6369,6 +8662,15 @@
                     "default": false
                 },
                 {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
+                },
+                {
                     "name": "policy",
                     "type": "Policy",
                     "comment": "Policy object to be added or updated in the domain",
@@ -6434,6 +8736,15 @@
                     "header": "Y-Audit-Ref",
                     "optional": true,
                     "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
                 }
             ],
             "auth": {
@@ -6462,6 +8773,73 @@
                     "type": "ResourceError"
                 }
             }
+        },
+        {
+            "type": "PolicyList",
+            "method": "DELETE",
+            "path": "/domain/{domainName}/policies/{policyNames}",
+            "comment": "Delete the specified policies. Upon successful completion of this delete request, the server will return NO_CONTENT status code without any data (no object will be returned).",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "policyNames",
+                    "type": "EntityNameList",
+                    "comment": "comma separated list of policy names to be deleted",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "auditRef",
+                    "type": "String",
+                    "comment": "Audit param required(not empty) if domain auditEnabled is true.",
+                    "pathParam": false,
+                    "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "NO_CONTENT",
+            "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "CONFLICT": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                }
+            },
+            "name": "DeletePolicies"
         },
         {
             "type": "Assertion",
@@ -6548,6 +8926,15 @@
                     "flag": false
                 },
                 {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
+                },
+                {
                     "name": "assertion",
                     "type": "Assertion",
                     "comment": "Assertion object to be added to the given policy",
@@ -6619,6 +9006,15 @@
                     "comment": "Audit param required(not empty) if domain auditEnabled is true.",
                     "pathParam": false,
                     "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
                     "optional": true,
                     "flag": false
                 },
@@ -6697,6 +9093,15 @@
                     "header": "Y-Audit-Ref",
                     "optional": true,
                     "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
                 }
             ],
             "auth": {
@@ -6772,6 +9177,15 @@
                     "header": "Y-Audit-Ref",
                     "optional": true,
                     "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
                 }
             ],
             "auth": {
@@ -6838,6 +9252,15 @@
                     "comment": "Audit param required(not empty) if domain auditEnabled is true.",
                     "pathParam": false,
                     "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
                     "optional": true,
                     "flag": false
                 },
@@ -6917,6 +9340,15 @@
                     "flag": false
                 },
                 {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
+                },
+                {
                     "name": "assertionCondition",
                     "type": "AssertionCondition",
                     "comment": "Assertion conditions object to be added to the given assertion",
@@ -6988,6 +9420,15 @@
                     "comment": "Audit param required(not empty) if domain auditEnabled is true.",
                     "pathParam": false,
                     "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
                     "optional": true,
                     "flag": false
                 }
@@ -7063,6 +9504,15 @@
                     "comment": "Audit param required(not empty) if domain auditEnabled is true.",
                     "pathParam": false,
                     "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
                     "optional": true,
                     "flag": false
                 }
@@ -7242,6 +9692,15 @@
                     "optional": true,
                     "flag": false,
                     "default": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
                 }
             ],
             "auth": {
@@ -7308,6 +9767,15 @@
                     "comment": "Audit param required(not empty) if domain auditEnabled is true.",
                     "pathParam": false,
                     "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
                     "optional": true,
                     "flag": false
                 }
@@ -7378,6 +9846,15 @@
                     "header": "Y-Audit-Ref",
                     "optional": true,
                     "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
                 }
             ],
             "auth": {
@@ -7407,6 +9884,70 @@
                 }
             },
             "name": "deletePolicyVersion"
+        },
+        {
+            "type": "ResourcePolicyOwnership",
+            "method": "PUT",
+            "path": "/domain/{domainName}/policy/{policyName}/ownership",
+            "comment": "Set the resource ownership for the given policy",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "policyName",
+                    "type": "EntityName",
+                    "comment": "name of the policy",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "auditRef",
+                    "type": "String",
+                    "comment": "Audit param required(not empty) if domain auditEnabled is true.",
+                    "pathParam": false,
+                    "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwnership",
+                    "type": "ResourcePolicyOwnership",
+                    "comment": "resource ownership to be set for the given policy",
+                    "pathParam": false,
+                    "optional": false,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": false,
+                "action": "update",
+                "resource": "{domainName}:meta.policy.ownership.{policyName}"
+            },
+            "expected": "NO_CONTENT",
+            "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                }
+            }
         },
         {
             "type": "ServiceIdentity",
@@ -7448,6 +9989,15 @@
                     "optional": true,
                     "flag": false,
                     "default": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
                 },
                 {
                     "name": "detail",
@@ -7560,6 +10110,15 @@
                     "header": "Y-Audit-Ref",
                     "optional": true,
                     "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
                 }
             ],
             "auth": {
@@ -7622,6 +10181,24 @@
                     "optional": false,
                     "flag": false,
                     "default": false
+                },
+                {
+                    "name": "tagKey",
+                    "type": "TagKey",
+                    "comment": "flag to query all services that have a given tagName",
+                    "pathParam": false,
+                    "queryParam": "tagKey",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "tagValue",
+                    "type": "TagCompoundValue",
+                    "comment": "flag to query all services that have a given tag name and value",
+                    "pathParam": false,
+                    "queryParam": "tagValue",
+                    "optional": true,
+                    "flag": false
                 }
             ],
             "auth": {
@@ -7791,6 +10368,15 @@
                     "flag": false
                 },
                 {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
+                },
+                {
                     "name": "publicKeyEntry",
                     "type": "PublicKeyEntry",
                     "comment": "PublicKeyEntry object to be added/updated in the service",
@@ -7864,6 +10450,15 @@
                     "header": "Y-Audit-Ref",
                     "optional": true,
                     "flag": false
+                },
+                {
+                    "name": "resourceOwner",
+                    "type": "String",
+                    "comment": "Resource owner for the request",
+                    "pathParam": false,
+                    "header": "Athenz-Resource-Owner",
+                    "optional": true,
+                    "flag": false
                 }
             ],
             "auth": {
@@ -7897,7 +10492,7 @@
             "type": "ServiceIdentitySystemMeta",
             "method": "PUT",
             "path": "/domain/{domain}/service/{service}/meta/system/{attribute}",
-            "comment": "Set the specified service metadata. Caller must have update privileges on the sys.auth domain.",
+            "comment": "Set the specified service metadata. Caller must have update privileges on the sys.auth domain. For OAuth DCR clientid updates, client ID self-update is also allowed when the server property and domain clientIdSelfUpdate flag are enabled, the caller is the target service principal, and the target domain policy grants update on resource service.<service>.clientid.<clientid>.",
             "inputs": [
                 {
                     "name": "domain",
@@ -7942,9 +10537,7 @@
                 }
             ],
             "auth": {
-                "authenticate": false,
-                "action": "update",
-                "resource": "sys.auth:meta.service.{attribute}.{domain}"
+                "authenticate": true
             },
             "expected": "NO_CONTENT",
             "exceptions": {
@@ -7967,6 +10560,118 @@
                     "type": "ResourceError"
                 }
             }
+        },
+        {
+            "type": "ResourceServiceIdentityOwnership",
+            "method": "PUT",
+            "path": "/domain/{domainName}/service/{service}/ownership",
+            "comment": "Set the resource ownership for the given service",
+            "inputs": [
+                {
+                    "name": "domainName",
+                    "type": "DomainName",
+                    "comment": "name of the domain",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "service",
+                    "type": "SimpleName",
+                    "comment": "name of the service",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "auditRef",
+                    "type": "String",
+                    "comment": "Audit param required(not empty) if domain auditEnabled is true.",
+                    "pathParam": false,
+                    "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "resourceOwnership",
+                    "type": "ResourceServiceIdentityOwnership",
+                    "comment": "resource ownership to be set for the given service",
+                    "pathParam": false,
+                    "optional": false,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": false,
+                "action": "update",
+                "resource": "{domainName}:meta.service.ownership.{service}"
+            },
+            "expected": "NO_CONTENT",
+            "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                }
+            }
+        },
+        {
+            "type": "ServiceIdentities",
+            "method": "GET",
+            "path": "/service/{serviceName}",
+            "comment": "Search for all services across all domains that match the specified service name. The service name can be a substring match based on the option substringMatch query parameter. The domainFilter query parameter can be used to limit the domain names.",
+            "inputs": [
+                {
+                    "name": "serviceName",
+                    "type": "SimpleName",
+                    "comment": "name of the service (could be substring)",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "substringMatch",
+                    "type": "Bool",
+                    "comment": "substring match for service name",
+                    "pathParam": false,
+                    "queryParam": "substringMatch",
+                    "optional": false,
+                    "flag": false,
+                    "default": false
+                },
+                {
+                    "name": "domainFilter",
+                    "type": "DomainName",
+                    "comment": "domain filter match for service name",
+                    "pathParam": false,
+                    "queryParam": "domainFilter",
+                    "optional": true,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "OK",
+            "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                }
+            },
+            "name": "searchServiceIdentities"
         },
         {
             "type": "Tenancy",
@@ -8777,6 +11482,15 @@
                     "comment": "usually null. If present, carry out the access check for this principal",
                     "pathParam": false,
                     "queryParam": "principal",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "caseSensitive",
+                    "type": "Bool",
+                    "comment": "usually null. If true, match the action and resource of assertions created with the case-sensitive flag in their original case",
+                    "pathParam": false,
+                    "queryParam": "caseSensitive",
                     "optional": true,
                     "flag": false
                 }
@@ -9887,6 +12601,84 @@
             "name": "getDependentDomainList"
         },
         {
+            "type": "ReviewObjects",
+            "method": "GET",
+            "path": "/review/role",
+            "comment": "Fetch all the roles across domains for either the caller or specified principal that require a review based on the last reviewed date and configured attributes. The method requires the caller to be either the principal or authorized in system to carry out the operation for any principal (typically this would be system administrators) 1. authenticated principal is the same as the check principal 2. system authorized (\"access\", \"sys.auth:meta.review.lookup\")",
+            "inputs": [
+                {
+                    "name": "principal",
+                    "type": "ResourceName",
+                    "comment": "If not present, will return roles for the user making the call",
+                    "pathParam": false,
+                    "queryParam": "principal",
+                    "optional": true,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "OK",
+            "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                }
+            },
+            "name": "GetRolesForReview"
+        },
+        {
+            "type": "ReviewObjects",
+            "method": "GET",
+            "path": "/review/group",
+            "comment": "Fetch all the groups across domains for either the caller or specified principal that require a review based on the last reviewed date and configured attributes. The method requires the caller to be either the principal or authorized in system to carry out the operation for any principal (typically this would be system administrators) 1. authenticated principal is the same as the check principal 2. system authorized (\"access\", \"sys.auth:meta.review.lookup\")",
+            "inputs": [
+                {
+                    "name": "principal",
+                    "type": "ResourceName",
+                    "comment": "If not present, will return groups for the user making the call",
+                    "pathParam": false,
+                    "queryParam": "principal",
+                    "optional": true,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "OK",
+            "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                }
+            },
+            "name": "GetGroupsForReview"
+        },
+        {
             "type": "Info",
             "method": "GET",
             "path": "/sys/info",
@@ -9914,6 +12706,171 @@
                     "type": "ResourceError"
                 }
             }
+        },
+        {
+            "type": "PrincipalState",
+            "method": "PUT",
+            "path": "/principal/{principalName}/state",
+            "comment": "Update the state of the principal - currently only the suspended state is supported Suspension can be enforced through the User Authority or by Athenz administrators. The suspended state is used to disable a principal from accessing the Athenz services The required authorization includes the following two options: 1. (\"update\", \"{domainName}:service.{serviceName}\") for the domain administrators where the domainName and serviceName are extracted from the principalName 2. (\"update\", \"sys.auth:state.{principalName}\") for the Athenz administrators",
+            "inputs": [
+                {
+                    "name": "principalName",
+                    "type": "MemberName",
+                    "comment": "name of the principal",
+                    "pathParam": true,
+                    "optional": false,
+                    "flag": false
+                },
+                {
+                    "name": "auditRef",
+                    "type": "String",
+                    "comment": "Audit param required(not empty) if domain auditEnabled is true.",
+                    "pathParam": false,
+                    "header": "Y-Audit-Ref",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "principalState",
+                    "type": "PrincipalState",
+                    "comment": "Principal state indicating if the principal is suspended or not",
+                    "pathParam": false,
+                    "optional": false,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "NO_CONTENT",
+            "exceptions": {
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                },
+                "CONFLICT": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                }
+            }
+        },
+        {
+            "type": "SelfServeObjects",
+            "method": "GET",
+            "path": "/selfserve/role",
+            "name": "GetSelfServeRoles",
+            "comment": "Fetch all self-service roles across all domains whose name or description contains the given match string. The match is case-insensitive. If the match string is not specified, then all self-service roles are returned. Any authenticated principal may make this call since self-service roles are, by definition, discoverable and requestable by any user.",
+            "inputs": [
+                {
+                    "name": "matchString",
+                    "type": "String",
+                    "comment": "string to match against the role name or description; if empty all self-service roles are returned",
+                    "pathParam": false,
+                    "queryParam": "matchString",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "memberOnly",
+                    "type": "Bool",
+                    "comment": "if true, only return roles the calling principal is already a member of or has a pending request for",
+                    "pathParam": false,
+                    "queryParam": "memberOnly",
+                    "optional": true,
+                    "default": false,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "OK",
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                }
+            }
+        },
+        {
+            "type": "SelfServeObjects",
+            "method": "GET",
+            "path": "/selfserve/group",
+            "name": "GetSelfServeGroups",
+            "comment": "Fetch all self-service groups across all domains whose name contains the given match string. The match is case-insensitive. If the match string is not specified, then all self-service groups are returned. Any authenticated principal may make this call since self-service groups are, by definition, discoverable and requestable by any user.",
+            "inputs": [
+                {
+                    "name": "matchString",
+                    "type": "String",
+                    "comment": "string to match against the group name; if empty all self-service groups are returned",
+                    "pathParam": false,
+                    "queryParam": "matchString",
+                    "optional": true,
+                    "flag": false
+                },
+                {
+                    "name": "memberOnly",
+                    "type": "Bool",
+                    "comment": "if true, only return groups the calling principal is already a member of or has a pending request for",
+                    "pathParam": false,
+                    "queryParam": "memberOnly",
+                    "optional": true,
+                    "default": false,
+                    "flag": false
+                }
+            ],
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "OK",
+            "exceptions": {
+                "BAD_REQUEST": {
+                    "type": "ResourceError"
+                },
+                "NOT_FOUND": {
+                    "type": "ResourceError"
+                },
+                "FORBIDDEN": {
+                    "type": "ResourceError"
+                },
+                "UNAUTHORIZED": {
+                    "type": "ResourceError"
+                },
+                "TOO_MANY_REQUESTS": {
+                    "type": "ResourceError"
+                }
+            }
+        },
+        {
+            "type": "rdl.Schema",
+            "method": "GET",
+            "path": "/schema",
+            "comment": "Get RDL Schema",
+            "auth": {
+                "authenticate": true
+            },
+            "expected": "OK"
         }
     ]
 }

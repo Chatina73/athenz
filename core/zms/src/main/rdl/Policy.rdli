@@ -31,8 +31,8 @@ resource Policies GET "/domain/{domainName}/policies?assertions={assertions}&inc
     DomainName domainName; //name of the domain
     Bool assertions (optional, default=false); // return list of assertions in the policy
     Bool includeNonActive (optional, default=false); // include non-active policy versions
-    CompoundName tagKey (optional); //flag to query all policies that have a given tagName
-    CompoundName tagValue (optional); //flag to query all policies that have a given tag name and value
+    TagKey tagKey (optional); //flag to query all policies that have a given tagName
+    TagCompoundValue tagValue (optional); //flag to query all policies that have a given tag name and value
     authenticate;
     exceptions {
         ResourceError BAD_REQUEST;
@@ -62,6 +62,7 @@ resource Policy PUT "/domain/{domainName}/policy/{policyName}" {
     EntityName policyName; //name of the policy to be added/updated
     String     auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
     Bool returnObj (optional, default=false, header="Athenz-Return-Object"); //Return object param updated object back.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
     Policy policy; //Policy object to be added or updated in the domain
     authorize("update", "{domainName}:policy.{policyName}");
     expected NO_CONTENT, OK;
@@ -81,8 +82,29 @@ resource Policy PUT "/domain/{domainName}/policy/{policyName}" {
 resource Policy DELETE "/domain/{domainName}/policy/{policyName}" {
     DomainName domainName; //name of the domain
     EntityName policyName; //name of the policy to be deleted
-    String     auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
     authorize("delete", "{domainName}:policy.{policyName}");
+    expected NO_CONTENT;
+    exceptions {
+        ResourceError BAD_REQUEST;
+        ResourceError NOT_FOUND;
+        ResourceError FORBIDDEN;
+        ResourceError UNAUTHORIZED;
+        ResourceError CONFLICT;
+        ResourceError TOO_MANY_REQUESTS;
+    }
+}
+
+//Delete the specified policies. Upon successful completion of this delete
+//request, the server will return NO_CONTENT status code without any data
+//(no object will be returned).
+resource PolicyList DELETE "/domain/{domainName}/policies/{policyNames}" (name=DeletePolicies) {
+    DomainName domainName; //name of the domain
+    EntityNameList policyNames; //comma separated list of policy names to be deleted
+    String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
+    authenticate;
     expected NO_CONTENT;
     exceptions {
         ResourceError BAD_REQUEST;
@@ -114,6 +136,7 @@ resource Assertion PUT "/domain/{domainName}/policy/{policyName}/assertion" {
     DomainName domainName; //name of the domain
     EntityName policyName; //name of the policy
     String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
     Assertion assertion; //Assertion object to be added to the given policy
     authorize ("update", "{domainName}:policy.{policyName}");
     expected OK;
@@ -131,8 +154,9 @@ resource Assertion PUT "/domain/{domainName}/policy/{policyName}/assertion" {
 resource Assertion PUT "/domain/{domainName}/policy/{policyName}/version/{version}/assertion" (name=putAssertionPolicyVersion) {
     DomainName domainName; //name of the domain
     EntityName policyName; //name of the policy
-    SimpleName version;    //name of the version
+    SimpleName version; //name of the version
     String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
     Assertion assertion; //Assertion object to be added to the given policy version
     authorize ("update", "{domainName}:policy.{policyName}");
     expected OK;
@@ -148,13 +172,16 @@ resource Assertion PUT "/domain/{domainName}/policy/{policyName}/version/{versio
 
 //Delete the specified policy assertion. Upon successful completion of this delete
 //request, the server will return NO_CONTENT status code without any data (no
-//object will be returned).
+//object will be returned). The required authorization includes two options:
+// 1. ("update", "{domainName}:policy.{policyName}")
+// 2. ("delete", "{domainName}:policy.{policyName}.assertion.{assertionId}")
 resource Assertion DELETE "/domain/{domainName}/policy/{policyName}/assertion/{assertionId}" {
     DomainName domainName; //name of the domain
     EntityName policyName; //name of the policy
     Int64 assertionId; //assertion id
     String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
-    authorize ("update", "{domainName}:policy.{policyName}");
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
+    authenticate;
     expected NO_CONTENT;
     exceptions {
         ResourceError NOT_FOUND;
@@ -168,14 +195,17 @@ resource Assertion DELETE "/domain/{domainName}/policy/{policyName}/assertion/{a
 
 //Delete the specified policy version assertion. Upon successful completion of this delete
 //request, the server will return NO_CONTENT status code without any data (no
-//object will be returned).
+//object will be returned). The required authorization includes two options:
+// 1. ("update", "{domainName}:policy.{policyName}")
+// 2. ("delete", "{domainName}:policy.{policyName}.assertion.{assertionId}")
 resource Assertion DELETE "/domain/{domainName}/policy/{policyName}/version/{version}/assertion/{assertionId}" (name=deleteAssertionPolicyVersion) {
     DomainName domainName; //name of the domain
     EntityName policyName; //name of the policy
-    SimpleName version;    //name of the version
+    SimpleName version; //name of the version
     Int64 assertionId; //assertion id
     String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
-    authorize ("update", "{domainName}:policy.{policyName}");
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
+    authenticate;
     expected NO_CONTENT;
     exceptions {
         ResourceError NOT_FOUND;
@@ -193,6 +223,7 @@ resource AssertionConditions PUT "/domain/{domainName}/policy/{policyName}/asser
     EntityName policyName; //name of the policy
     Int64 assertionId; //assertion id
     String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
     AssertionConditions assertionConditions; //Assertion conditions object to be added to the given assertion
     authorize ("update", "{domainName}:policy.{policyName}");
     expected OK;
@@ -212,6 +243,7 @@ resource AssertionCondition PUT "/domain/{domainName}/policy/{policyName}/assert
     EntityName policyName; //name of the policy
     Int64 assertionId; //assertion id
     String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
     AssertionCondition assertionCondition; //Assertion conditions object to be added to the given assertion
     authorize ("update", "{domainName}:policy.{policyName}");
     expected OK;
@@ -232,6 +264,7 @@ resource AssertionConditions DELETE "/domain/{domainName}/policy/{policyName}/as
     EntityName policyName; //name of the policy
     Int64 assertionId; //assertion id
     String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
     authorize ("update", "{domainName}:policy.{policyName}");
     expected NO_CONTENT;
     exceptions {
@@ -252,6 +285,7 @@ resource AssertionCondition DELETE "/domain/{domainName}/policy/{policyName}/ass
     Int64 assertionId; //assertion id
     Int32 conditionId; //condition id
     String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
     authorize ("update", "{domainName}:policy.{policyName}");
     expected NO_CONTENT;
     exceptions {
@@ -298,8 +332,9 @@ resource Policy PUT "/domain/{domainName}/policy/{policyName}/version/create" (n
     DomainName domainName; //name of the domain
     EntityName policyName; //name of the policy to be added/updated
     PolicyOptions policyOptions; // name of the source version to copy from and name of new version
-    String     auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
     Bool returnObj (optional, default=false, header="Athenz-Return-Object"); //Return object param updated object back.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
     authorize("update", "{domainName}:policy.{policyName}");
     expected NO_CONTENT, OK;
     exceptions {
@@ -317,7 +352,8 @@ resource Policy PUT "/domain/{domainName}/policy/{policyName}/version/active" (n
     DomainName domainName; //name of the domain
     EntityName policyName; //name of the policy
     PolicyOptions policyOptions; // name of the version
-    String     auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
     authorize("update", "{domainName}:policy.{policyName}");
     expected NO_CONTENT;
     exceptions {
@@ -337,7 +373,8 @@ resource Policy DELETE "/domain/{domainName}/policy/{policyName}/version/{versio
     DomainName domainName; //name of the domain
     EntityName policyName; //name of the policy
     SimpleName version;    //name of the version to be deleted
-    String     auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    String resourceOwner (header="Athenz-Resource-Owner"); //Resource owner for the request
     authorize("delete", "{domainName}:policy.{policyName}");
     expected NO_CONTENT;
     exceptions {
@@ -346,6 +383,24 @@ resource Policy DELETE "/domain/{domainName}/policy/{policyName}/version/{versio
         ResourceError FORBIDDEN;
         ResourceError UNAUTHORIZED;
         ResourceError CONFLICT;
+        ResourceError TOO_MANY_REQUESTS;
+    }
+}
+
+
+// Set the resource ownership for the given policy
+resource ResourcePolicyOwnership PUT "/domain/{domainName}/policy/{policyName}/ownership" {
+    DomainName domainName; //name of the domain
+    EntityName policyName; //name of the policy
+    String auditRef (header="Y-Audit-Ref"); //Audit param required(not empty) if domain auditEnabled is true.
+    ResourcePolicyOwnership resourceOwnership; //resource ownership to be set for the given policy
+    authorize ("update", "{domainName}:meta.policy.ownership.{policyName}");
+    expected NO_CONTENT;
+    exceptions {
+        ResourceError BAD_REQUEST;
+        ResourceError NOT_FOUND;
+        ResourceError FORBIDDEN;
+        ResourceError UNAUTHORIZED;
         ResourceError TOO_MANY_REQUESTS;
     }
 }

@@ -6,28 +6,41 @@ package com.yahoo.athenz.zms;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.http.HttpEntity;
-import org.apache.http.client.CookieStore;
-import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.client.methods.RequestBuilder;
-import org.apache.http.client.protocol.HttpClientContext;
-import org.apache.http.client.utils.URIBuilder;
-import org.apache.http.entity.ContentType;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.BasicCookieStore;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-import org.apache.http.impl.cookie.BasicClientCookie;
-import org.apache.http.protocol.BasicHttpContext;
-import org.apache.http.protocol.HttpContext;
-import org.apache.http.util.EntityUtils;
+import org.apache.hc.client5.http.config.ConnectionConfig;
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.config.TlsConfig;
+import org.apache.hc.client5.http.cookie.BasicCookieStore;
+import org.apache.hc.client5.http.cookie.CookieStore;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.cookie.BasicClientCookie;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.client5.http.protocol.HttpClientContext;
+import org.apache.hc.client5.http.ssl.DefaultClientTlsStrategy;
+import org.apache.hc.client5.http.ssl.TlsSocketStrategy;
+import org.apache.hc.core5.http.ClassicHttpRequest;
+import org.apache.hc.core5.http.ContentType;
+import org.apache.hc.core5.http.HttpEntity;
+import org.apache.hc.core5.http.ParseException;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
+import org.apache.hc.core5.http.io.entity.StringEntity;
+import org.apache.hc.core5.http.io.support.ClassicRequestBuilder;
+import org.apache.hc.core5.http.protocol.BasicHttpContext;
+import org.apache.hc.core5.http.protocol.HttpContext;
+import org.apache.hc.core5.http.ssl.TLS;
+import org.apache.hc.core5.net.URIBuilder;
+import org.apache.hc.core5.pool.PoolConcurrencyPolicy;
+import org.apache.hc.core5.pool.PoolReusePolicy;
+import org.apache.hc.core5.ssl.SSLContexts;
+import org.apache.hc.core5.util.Timeout;
 
 import javax.net.ssl.HostnameVerifier;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.List;
+
 import com.yahoo.rdl.Schema;
 
 public class ZMSRDLGeneratedClient {
@@ -44,14 +57,29 @@ public class ZMSRDLGeneratedClient {
     private ObjectMapper jsonMapper;
 
     protected CloseableHttpClient createHttpClient(HostnameVerifier hostnameVerifier) {
+
+        final TlsSocketStrategy tlsStrategy = hostnameVerifier == null ?
+                new DefaultClientTlsStrategy(SSLContexts.createSystemDefault()) :
+                new DefaultClientTlsStrategy(SSLContexts.createSystemDefault(), hostnameVerifier);
+
+        PoolingHttpClientConnectionManager connectionManager = PoolingHttpClientConnectionManagerBuilder.create()
+                .setTlsSocketStrategy(tlsStrategy)
+                .setDefaultTlsConfig(TlsConfig.custom()
+                        .setSupportedProtocols(TLS.V_1_2, TLS.V_1_3)
+                        .build())
+                .setPoolConcurrencyPolicy(PoolConcurrencyPolicy.STRICT)
+                .setConnPoolPolicy(PoolReusePolicy.FIFO)
+                .setDefaultConnectionConfig(ConnectionConfig.custom()
+                        .setSocketTimeout(Timeout.ofMinutes(DEFAULT_CLIENT_READ_TIMEOUT_MS))
+                        .setConnectTimeout(Timeout.ofMinutes(DEFAULT_CLIENT_CONNECT_TIMEOUT_MS))
+                        .build())
+                .build();
         RequestConfig config = RequestConfig.custom()
-                .setConnectTimeout(DEFAULT_CLIENT_CONNECT_TIMEOUT_MS)
-                .setSocketTimeout(DEFAULT_CLIENT_READ_TIMEOUT_MS)
                 .setRedirectsEnabled(false)
                 .build();
         return HttpClients.custom()
+                .setConnectionManager(connectionManager)
                 .setDefaultRequestConfig(config)
-                .setSSLHostnameVerifier(hostnameVerifier)
                 .build();
     }
 
@@ -109,6 +137,8 @@ public class ZMSRDLGeneratedClient {
             CookieStore cookieStore = new BasicCookieStore();
             BasicClientCookie cookie = new BasicClientCookie(header.substring(7), token);
             cookie.setPath(baseUrl);
+            cookie.setHttpOnly(true);
+            cookie.setSecure(true);
             cookieStore.addCookie(cookie);
             httpContext.setAttribute(HttpClientContext.COOKIE_STORE, cookieStore);
             credsHeader = null;
@@ -119,11 +149,19 @@ public class ZMSRDLGeneratedClient {
         client = httpClient;
     }
 
+    protected String getStringResponseEntity(HttpEntity httpResponseEntity) throws IOException {
+        try {
+            return EntityUtils.toString(httpResponseEntity);
+        } catch (ParseException ex) {
+            throw new IOException(ex);
+        }
+    }
+
     public Domain getDomain(String domain) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domain}")
             .resolveTemplate("domain", domain);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -131,16 +169,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Domain.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -192,7 +230,7 @@ public class ZMSRDLGeneratedClient {
         if (productId != null) {
             uriBuilder.setParameter("productId", productId);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -203,27 +241,27 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), DomainList.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Domain postTopLevelDomain(String auditRef, TopLevelDomain detail) throws URISyntaxException, IOException {
+    public Domain postTopLevelDomain(String auditRef, String resourceOwner, TopLevelDomain detail) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain");
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(detail), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.post()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.post()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -233,30 +271,33 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Domain.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Domain postSubDomain(String parent, String auditRef, SubDomain detail) throws URISyntaxException, IOException {
+    public Domain postSubDomain(String parent, String auditRef, String resourceOwner, SubDomain detail) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/subdomain/{parent}")
             .resolveTemplate("parent", parent);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(detail), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.post()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.post()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -266,30 +307,33 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Domain.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Domain postUserDomain(String name, String auditRef, UserDomain detail) throws URISyntaxException, IOException {
+    public Domain postUserDomain(String name, String auditRef, String resourceOwner, UserDomain detail) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/userdomain/{name}")
             .resolveTemplate("name", name);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(detail), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.post()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.post()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -299,29 +343,32 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Domain.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public TopLevelDomain deleteTopLevelDomain(String name, String auditRef) throws URISyntaxException, IOException {
+    public TopLevelDomain deleteTopLevelDomain(String name, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{name}")
             .resolveTemplate("name", name);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -330,30 +377,33 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public SubDomain deleteSubDomain(String parent, String name, String auditRef) throws URISyntaxException, IOException {
+    public SubDomain deleteSubDomain(String parent, String name, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/subdomain/{parent}/{name}")
             .resolveTemplate("parent", parent)
             .resolveTemplate("name", name);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -362,29 +412,32 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public UserDomain deleteUserDomain(String name, String auditRef) throws URISyntaxException, IOException {
+    public UserDomain deleteUserDomain(String name, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/userdomain/{name}")
             .resolveTemplate("name", name);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -393,30 +446,33 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Domain putDomainMeta(String name, String auditRef, DomainMeta detail) throws URISyntaxException, IOException {
+    public Domain putDomainMeta(String name, String auditRef, String resourceOwner, DomainMeta detail) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{name}/meta")
             .resolveTemplate("name", name);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(detail), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -426,18 +482,21 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -450,7 +509,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("attribute", attribute);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(detail), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -462,16 +521,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -483,7 +542,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("name", name);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(domainTemplate), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -495,16 +554,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -517,7 +576,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("template", template);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(domainTemplate), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -529,16 +588,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -549,7 +608,7 @@ public class ZMSRDLGeneratedClient {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{name}/template")
             .resolveTemplate("name", name);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -557,16 +616,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), DomainTemplateList.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -578,7 +637,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("name", name)
             .resolveTemplate("template", template);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -589,16 +648,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -614,7 +673,7 @@ public class ZMSRDLGeneratedClient {
         if (userName != null) {
             uriBuilder.setParameter("user", userName);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -622,16 +681,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), DomainMetaStoreValidValuesList.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -642,7 +701,7 @@ public class ZMSRDLGeneratedClient {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/history/auth")
             .resolveTemplate("domainName", domainName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -650,16 +709,62 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), AuthHistoryDependencies.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public DomainAuditLog getDomainAuditLog(String domainName, String api, String entity, String principal, String startDate, String endDate, Integer limit) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/history/audit")
+            .resolveTemplate("domainName", domainName);
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        if (api != null) {
+            uriBuilder.setParameter("api", api);
+        }
+        if (entity != null) {
+            uriBuilder.setParameter("entity", entity);
+        }
+        if (principal != null) {
+            uriBuilder.setParameter("principal", principal);
+        }
+        if (startDate != null) {
+            uriBuilder.setParameter("start", startDate);
+        }
+        if (endDate != null) {
+            uriBuilder.setParameter("end", endDate);
+        }
+        if (limit != null) {
+            uriBuilder.setParameter("limit", String.valueOf(limit));
+        }
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
+            .setUri(uriBuilder.build())
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 200:
+                return jsonMapper.readValue(httpResponseEntity.getContent(), DomainAuditLog.class);
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -672,7 +777,7 @@ public class ZMSRDLGeneratedClient {
         if (purgeResources != null) {
             uriBuilder.setParameter("purgeResources", String.valueOf(purgeResources));
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -686,7 +791,7 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
@@ -696,10 +801,43 @@ public class ZMSRDLGeneratedClient {
                 }
                 return jsonMapper.readValue(httpResponseEntity.getContent(), ExpiredMembers.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public ResourceDomainOwnership putResourceDomainOwnership(String domainName, String auditRef, ResourceDomainOwnership resourceOwnership) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/ownership")
+            .resolveTemplate("domainName", domainName);
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(resourceOwnership), ContentType.APPLICATION_JSON);
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
+            .setUri(uriBuilder.build())
+            .setEntity(httpEntity)
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        if (auditRef != null) {
+            httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 204:
+                return null;
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -710,7 +848,7 @@ public class ZMSRDLGeneratedClient {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/check")
             .resolveTemplate("domainName", domainName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -718,16 +856,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), DomainDataCheck.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -740,7 +878,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("entityName", entityName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(entity), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -752,16 +890,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -773,7 +911,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("entityName", entityName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -781,16 +919,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Entity.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -802,7 +940,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("entityName", entityName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -813,16 +951,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -833,7 +971,7 @@ public class ZMSRDLGeneratedClient {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/entity")
             .resolveTemplate("domainName", domainName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -841,16 +979,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), EntityList.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -867,7 +1005,7 @@ public class ZMSRDLGeneratedClient {
         if (skip != null) {
             uriBuilder.setParameter("skip", skip);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -875,16 +1013,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), RoleList.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -904,7 +1042,7 @@ public class ZMSRDLGeneratedClient {
         if (tagValue != null) {
             uriBuilder.setParameter("tagValue", tagValue);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -912,16 +1050,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Roles.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -942,7 +1080,7 @@ public class ZMSRDLGeneratedClient {
         if (pending != null) {
             uriBuilder.setParameter("pending", String.valueOf(pending));
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -950,29 +1088,29 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Role.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Role putRole(String domainName, String roleName, String auditRef, Boolean returnObj, Role role) throws URISyntaxException, IOException {
+    public Role putRole(String domainName, String roleName, String auditRef, Boolean returnObj, String resourceOwner, Role role) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/role/{roleName}")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("roleName", roleName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(role), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -985,9 +1123,12 @@ public class ZMSRDLGeneratedClient {
         if (returnObj != null) {
             httpUriRequest.addHeader("Athenz-Return-Object", String.valueOf(returnObj));
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
@@ -997,22 +1138,22 @@ public class ZMSRDLGeneratedClient {
                 }
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Role.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Role deleteRole(String domainName, String roleName, String auditRef) throws URISyntaxException, IOException {
+    public Role deleteRole(String domainName, String roleName, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/role/{roleName}")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("roleName", roleName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -1021,18 +1162,56 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public RoleList deleteRoles(String domainName, String roleNames, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/roles/{roleNames}")
+            .resolveTemplate("domainName", domainName)
+            .resolveTemplate("roleNames", roleNames);
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
+            .setUri(uriBuilder.build())
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        if (auditRef != null) {
+            httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
+        }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 204:
+                return null;
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1048,7 +1227,7 @@ public class ZMSRDLGeneratedClient {
         if (expiration != null) {
             uriBuilder.setParameter("expiration", expiration);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -1056,16 +1235,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Membership.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1076,7 +1255,7 @@ public class ZMSRDLGeneratedClient {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/overdue")
             .resolveTemplate("domainName", domainName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -1084,16 +1263,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), DomainRoleMembers.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1104,7 +1283,7 @@ public class ZMSRDLGeneratedClient {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/member")
             .resolveTemplate("domainName", domainName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -1112,16 +1291,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), DomainRoleMembers.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1140,7 +1319,7 @@ public class ZMSRDLGeneratedClient {
         if (expand != null) {
             uriBuilder.setParameter("expand", String.valueOf(expand));
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -1148,30 +1327,30 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), DomainRoleMember.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Membership putMembership(String domainName, String roleName, String memberName, String auditRef, Boolean returnObj, Membership membership) throws URISyntaxException, IOException {
+    public Membership putMembership(String domainName, String roleName, String memberName, String auditRef, Boolean returnObj, String resourceOwner, Membership membership) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/role/{roleName}/member/{memberName}")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("roleName", roleName)
             .resolveTemplate("memberName", memberName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(membership), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -1184,9 +1363,12 @@ public class ZMSRDLGeneratedClient {
         if (returnObj != null) {
             httpUriRequest.addHeader("Athenz-Return-Object", String.valueOf(returnObj));
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
@@ -1196,23 +1378,23 @@ public class ZMSRDLGeneratedClient {
                 }
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Membership.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Membership deleteMembership(String domainName, String roleName, String memberName, String auditRef) throws URISyntaxException, IOException {
+    public Membership deleteMembership(String domainName, String roleName, String memberName, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/role/{roleName}/member/{memberName}")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("roleName", roleName)
             .resolveTemplate("memberName", memberName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -1221,18 +1403,21 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1245,7 +1430,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("roleName", roleName)
             .resolveTemplate("memberName", memberName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -1256,16 +1441,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1277,7 +1462,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("domainName", domainName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(defaultAdmins), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -1289,16 +1474,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1312,7 +1497,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("attribute", attribute);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(detail), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -1324,29 +1509,29 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Role putRoleMeta(String domainName, String roleName, String auditRef, RoleMeta detail) throws URISyntaxException, IOException {
+    public Role putRoleMeta(String domainName, String roleName, String auditRef, String resourceOwner, RoleMeta detail) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/role/{roleName}/meta")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("roleName", roleName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(detail), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -1356,18 +1541,21 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1381,7 +1569,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("memberName", memberName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(membership), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -1393,29 +1581,29 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Role putRoleReview(String domainName, String roleName, String auditRef, Boolean returnObj, Role role) throws URISyntaxException, IOException {
+    public Role putRoleReview(String domainName, String roleName, String auditRef, Boolean returnObj, String resourceOwner, Role role) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/role/{roleName}/review")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("roleName", roleName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(role), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -1428,9 +1616,12 @@ public class ZMSRDLGeneratedClient {
         if (returnObj != null) {
             httpUriRequest.addHeader("Athenz-Return-Object", String.valueOf(returnObj));
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
@@ -1440,10 +1631,44 @@ public class ZMSRDLGeneratedClient {
                 }
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Role.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public ResourceRoleOwnership putResourceRoleOwnership(String domainName, String roleName, String auditRef, ResourceRoleOwnership resourceOwnership) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/role/{roleName}/ownership")
+            .resolveTemplate("domainName", domainName)
+            .resolveTemplate("roleName", roleName);
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(resourceOwnership), ContentType.APPLICATION_JSON);
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
+            .setUri(uriBuilder.build())
+            .setEntity(httpEntity)
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        if (auditRef != null) {
+            httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 204:
+                return null;
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1463,7 +1688,7 @@ public class ZMSRDLGeneratedClient {
         if (tagValue != null) {
             uriBuilder.setParameter("tagValue", tagValue);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -1471,16 +1696,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Groups.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1498,7 +1723,7 @@ public class ZMSRDLGeneratedClient {
         if (pending != null) {
             uriBuilder.setParameter("pending", String.valueOf(pending));
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -1506,29 +1731,29 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Group.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Group putGroup(String domainName, String groupName, String auditRef, Boolean returnObj, Group group) throws URISyntaxException, IOException {
+    public Group putGroup(String domainName, String groupName, String auditRef, Boolean returnObj, String resourceOwner, Group group) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/group/{groupName}")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("groupName", groupName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(group), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -1541,9 +1766,12 @@ public class ZMSRDLGeneratedClient {
         if (returnObj != null) {
             httpUriRequest.addHeader("Athenz-Return-Object", String.valueOf(returnObj));
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
@@ -1553,22 +1781,22 @@ public class ZMSRDLGeneratedClient {
                 }
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Group.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Group deleteGroup(String domainName, String groupName, String auditRef) throws URISyntaxException, IOException {
+    public Group deleteGroup(String domainName, String groupName, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/group/{groupName}")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("groupName", groupName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -1577,18 +1805,21 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1604,7 +1835,7 @@ public class ZMSRDLGeneratedClient {
         if (expiration != null) {
             uriBuilder.setParameter("expiration", expiration);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -1612,16 +1843,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), GroupMembership.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1637,7 +1868,7 @@ public class ZMSRDLGeneratedClient {
         if (domainName != null) {
             uriBuilder.setParameter("domain", domainName);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -1645,30 +1876,30 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), DomainGroupMember.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public GroupMembership putGroupMembership(String domainName, String groupName, String memberName, String auditRef, Boolean returnObj, GroupMembership membership) throws URISyntaxException, IOException {
+    public GroupMembership putGroupMembership(String domainName, String groupName, String memberName, String auditRef, Boolean returnObj, String resourceOwner, GroupMembership membership) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/group/{groupName}/member/{memberName}")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("groupName", groupName)
             .resolveTemplate("memberName", memberName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(membership), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -1681,9 +1912,12 @@ public class ZMSRDLGeneratedClient {
         if (returnObj != null) {
             httpUriRequest.addHeader("Athenz-Return-Object", String.valueOf(returnObj));
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
@@ -1693,23 +1927,23 @@ public class ZMSRDLGeneratedClient {
                 }
                 return jsonMapper.readValue(httpResponseEntity.getContent(), GroupMembership.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public GroupMembership deleteGroupMembership(String domainName, String groupName, String memberName, String auditRef) throws URISyntaxException, IOException {
+    public GroupMembership deleteGroupMembership(String domainName, String groupName, String memberName, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/group/{groupName}/member/{memberName}")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("groupName", groupName)
             .resolveTemplate("memberName", memberName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -1718,18 +1952,21 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1742,7 +1979,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("groupName", groupName)
             .resolveTemplate("memberName", memberName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -1753,16 +1990,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1776,7 +2013,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("attribute", attribute);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(detail), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -1788,29 +2025,29 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Group putGroupMeta(String domainName, String groupName, String auditRef, GroupMeta detail) throws URISyntaxException, IOException {
+    public Group putGroupMeta(String domainName, String groupName, String auditRef, String resourceOwner, GroupMeta detail) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/group/{groupName}/meta")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("groupName", groupName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(detail), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -1820,18 +2057,21 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1845,7 +2085,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("memberName", memberName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(membership), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -1857,29 +2097,29 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Group putGroupReview(String domainName, String groupName, String auditRef, Boolean returnObj, Group group) throws URISyntaxException, IOException {
+    public Group putGroupReview(String domainName, String groupName, String auditRef, Boolean returnObj, String resourceOwner, Group group) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/group/{groupName}/review")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("groupName", groupName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(group), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -1892,9 +2132,12 @@ public class ZMSRDLGeneratedClient {
         if (returnObj != null) {
             httpUriRequest.addHeader("Athenz-Return-Object", String.valueOf(returnObj));
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
@@ -1904,10 +2147,10 @@ public class ZMSRDLGeneratedClient {
                 }
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Group.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1923,7 +2166,7 @@ public class ZMSRDLGeneratedClient {
         if (domainName != null) {
             uriBuilder.setParameter("domain", domainName);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -1931,16 +2174,78 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), DomainGroupMembership.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public ResourceGroupOwnership putResourceGroupOwnership(String domainName, String groupName, String auditRef, ResourceGroupOwnership resourceOwnership) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/group/{groupName}/ownership")
+            .resolveTemplate("domainName", domainName)
+            .resolveTemplate("groupName", groupName);
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(resourceOwnership), ContentType.APPLICATION_JSON);
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
+            .setUri(uriBuilder.build())
+            .setEntity(httpEntity)
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        if (auditRef != null) {
+            httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 204:
+                return null;
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public DomainGroupMembers getDomainGroupMembers(String domainName) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/group/member")
+            .resolveTemplate("domainName", domainName);
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
+            .setUri(uriBuilder.build())
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 200:
+                return jsonMapper.readValue(httpResponseEntity.getContent(), DomainGroupMembers.class);
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1957,7 +2262,7 @@ public class ZMSRDLGeneratedClient {
         if (skip != null) {
             uriBuilder.setParameter("skip", skip);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -1965,16 +2270,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), PolicyList.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -1997,7 +2302,7 @@ public class ZMSRDLGeneratedClient {
         if (tagValue != null) {
             uriBuilder.setParameter("tagValue", tagValue);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2005,16 +2310,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Policies.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -2026,7 +2331,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("policyName", policyName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2034,29 +2339,29 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Policy.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Policy putPolicy(String domainName, String policyName, String auditRef, Boolean returnObj, Policy policy) throws URISyntaxException, IOException {
+    public Policy putPolicy(String domainName, String policyName, String auditRef, Boolean returnObj, String resourceOwner, Policy policy) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/policy/{policyName}")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("policyName", policyName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(policy), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -2069,9 +2374,12 @@ public class ZMSRDLGeneratedClient {
         if (returnObj != null) {
             httpUriRequest.addHeader("Athenz-Return-Object", String.valueOf(returnObj));
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
@@ -2081,22 +2389,22 @@ public class ZMSRDLGeneratedClient {
                 }
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Policy.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Policy deletePolicy(String domainName, String policyName, String auditRef) throws URISyntaxException, IOException {
+    public Policy deletePolicy(String domainName, String policyName, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/policy/{policyName}")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("policyName", policyName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2105,18 +2413,56 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public PolicyList deletePolicies(String domainName, String policyNames, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/policies/{policyNames}")
+            .resolveTemplate("domainName", domainName)
+            .resolveTemplate("policyNames", policyNames);
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
+            .setUri(uriBuilder.build())
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        if (auditRef != null) {
+            httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
+        }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 204:
+                return null;
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -2129,7 +2475,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("policyName", policyName)
             .resolveTemplate("assertionId", assertionId);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2137,29 +2483,29 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Assertion.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Assertion putAssertion(String domainName, String policyName, String auditRef, Assertion assertion) throws URISyntaxException, IOException {
+    public Assertion putAssertion(String domainName, String policyName, String auditRef, String resourceOwner, Assertion assertion) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/policy/{policyName}/assertion")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("policyName", policyName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(assertion), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -2169,32 +2515,35 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Assertion.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Assertion putAssertionPolicyVersion(String domainName, String policyName, String version, String auditRef, Assertion assertion) throws URISyntaxException, IOException {
+    public Assertion putAssertionPolicyVersion(String domainName, String policyName, String version, String auditRef, String resourceOwner, Assertion assertion) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/policy/{policyName}/version/{version}/assertion")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("policyName", policyName)
             .resolveTemplate("version", version);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(assertion), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -2204,31 +2553,34 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Assertion.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Assertion deleteAssertion(String domainName, String policyName, Long assertionId, String auditRef) throws URISyntaxException, IOException {
+    public Assertion deleteAssertion(String domainName, String policyName, Long assertionId, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/policy/{policyName}/assertion/{assertionId}")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("policyName", policyName)
             .resolveTemplate("assertionId", assertionId);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2237,32 +2589,35 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Assertion deleteAssertionPolicyVersion(String domainName, String policyName, String version, Long assertionId, String auditRef) throws URISyntaxException, IOException {
+    public Assertion deleteAssertionPolicyVersion(String domainName, String policyName, String version, Long assertionId, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/policy/{policyName}/version/{version}/assertion/{assertionId}")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("policyName", policyName)
             .resolveTemplate("version", version)
             .resolveTemplate("assertionId", assertionId);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2271,32 +2626,35 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public AssertionConditions putAssertionConditions(String domainName, String policyName, Long assertionId, String auditRef, AssertionConditions assertionConditions) throws URISyntaxException, IOException {
+    public AssertionConditions putAssertionConditions(String domainName, String policyName, Long assertionId, String auditRef, String resourceOwner, AssertionConditions assertionConditions) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/policy/{policyName}/assertion/{assertionId}/conditions")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("policyName", policyName)
             .resolveTemplate("assertionId", assertionId);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(assertionConditions), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -2306,32 +2664,35 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), AssertionConditions.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public AssertionCondition putAssertionCondition(String domainName, String policyName, Long assertionId, String auditRef, AssertionCondition assertionCondition) throws URISyntaxException, IOException {
+    public AssertionCondition putAssertionCondition(String domainName, String policyName, Long assertionId, String auditRef, String resourceOwner, AssertionCondition assertionCondition) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/policy/{policyName}/assertion/{assertionId}/condition")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("policyName", policyName)
             .resolveTemplate("assertionId", assertionId);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(assertionCondition), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -2341,31 +2702,34 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), AssertionCondition.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public AssertionConditions deleteAssertionConditions(String domainName, String policyName, Long assertionId, String auditRef) throws URISyntaxException, IOException {
+    public AssertionConditions deleteAssertionConditions(String domainName, String policyName, Long assertionId, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/policy/{policyName}/assertion/{assertionId}/conditions")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("policyName", policyName)
             .resolveTemplate("assertionId", assertionId);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2374,32 +2738,35 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public AssertionCondition deleteAssertionCondition(String domainName, String policyName, Long assertionId, Integer conditionId, String auditRef) throws URISyntaxException, IOException {
+    public AssertionCondition deleteAssertionCondition(String domainName, String policyName, Long assertionId, Integer conditionId, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/policy/{policyName}/assertion/{assertionId}/condition/{conditionId}")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("policyName", policyName)
             .resolveTemplate("assertionId", assertionId)
             .resolveTemplate("conditionId", conditionId);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2408,18 +2775,21 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -2431,7 +2801,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("policyName", policyName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2439,16 +2809,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), PolicyList.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -2461,7 +2831,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("policyName", policyName)
             .resolveTemplate("version", version);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2469,29 +2839,29 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Policy.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Policy putPolicyVersion(String domainName, String policyName, PolicyOptions policyOptions, String auditRef, Boolean returnObj) throws URISyntaxException, IOException {
+    public Policy putPolicyVersion(String domainName, String policyName, PolicyOptions policyOptions, String auditRef, Boolean returnObj, String resourceOwner) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/policy/{policyName}/version/create")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("policyName", policyName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(policyOptions), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -2504,9 +2874,12 @@ public class ZMSRDLGeneratedClient {
         if (returnObj != null) {
             httpUriRequest.addHeader("Athenz-Return-Object", String.valueOf(returnObj));
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
@@ -2516,23 +2889,96 @@ public class ZMSRDLGeneratedClient {
                 }
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Policy.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Policy setActivePolicyVersion(String domainName, String policyName, PolicyOptions policyOptions, String auditRef) throws URISyntaxException, IOException {
+    public Policy setActivePolicyVersion(String domainName, String policyName, PolicyOptions policyOptions, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/policy/{policyName}/version/active")
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("policyName", policyName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(policyOptions), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
+            .setUri(uriBuilder.build())
+            .setEntity(httpEntity)
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        if (auditRef != null) {
+            httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
+        }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 204:
+                return null;
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public Policy deletePolicyVersion(String domainName, String policyName, String version, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/policy/{policyName}/version/{version}")
+            .resolveTemplate("domainName", domainName)
+            .resolveTemplate("policyName", policyName)
+            .resolveTemplate("version", version);
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
+            .setUri(uriBuilder.build())
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        if (auditRef != null) {
+            httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
+        }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 204:
+                return null;
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public ResourcePolicyOwnership putResourcePolicyOwnership(String domainName, String policyName, String auditRef, ResourcePolicyOwnership resourceOwnership) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/policy/{policyName}/ownership")
+            .resolveTemplate("domainName", domainName)
+            .resolveTemplate("policyName", policyName);
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(resourceOwnership), ContentType.APPLICATION_JSON);
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -2544,62 +2990,29 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Policy deletePolicyVersion(String domainName, String policyName, String version, String auditRef) throws URISyntaxException, IOException {
-        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/policy/{policyName}/version/{version}")
-            .resolveTemplate("domainName", domainName)
-            .resolveTemplate("policyName", policyName)
-            .resolveTemplate("version", version);
-        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
-            .setUri(uriBuilder.build())
-            .build();
-        if (credsHeader != null) {
-            httpUriRequest.addHeader(credsHeader, credsToken);
-        }
-        if (auditRef != null) {
-            httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
-        }
-        HttpEntity httpResponseEntity = null;
-        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
-            httpResponseEntity = httpResponse.getEntity();
-            switch (code) {
-            case 204:
-                return null;
-            default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
-                throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
-            }
-        } finally {
-            EntityUtils.consumeQuietly(httpResponseEntity);
-        }
-    }
-
-    public ServiceIdentity putServiceIdentity(String domain, String service, String auditRef, Boolean returnObj, ServiceIdentity detail) throws URISyntaxException, IOException {
+    public ServiceIdentity putServiceIdentity(String domain, String service, String auditRef, Boolean returnObj, String resourceOwner, ServiceIdentity detail) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domain}/service/{service}")
             .resolveTemplate("domain", domain)
             .resolveTemplate("service", service);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(detail), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -2612,9 +3025,12 @@ public class ZMSRDLGeneratedClient {
         if (returnObj != null) {
             httpUriRequest.addHeader("Athenz-Return-Object", String.valueOf(returnObj));
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
@@ -2624,10 +3040,10 @@ public class ZMSRDLGeneratedClient {
                 }
                 return jsonMapper.readValue(httpResponseEntity.getContent(), ServiceIdentity.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -2639,7 +3055,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("domain", domain)
             .resolveTemplate("service", service);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2647,28 +3063,28 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), ServiceIdentity.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public ServiceIdentity deleteServiceIdentity(String domain, String service, String auditRef) throws URISyntaxException, IOException {
+    public ServiceIdentity deleteServiceIdentity(String domain, String service, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domain}/service/{service}")
             .resolveTemplate("domain", domain)
             .resolveTemplate("service", service);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2677,18 +3093,21 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -2711,7 +3130,7 @@ public class ZMSRDLGeneratedClient {
         if (tagValue != null) {
             uriBuilder.setParameter("tagValue", tagValue);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2719,16 +3138,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), ServiceIdentities.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -2745,7 +3164,7 @@ public class ZMSRDLGeneratedClient {
         if (skip != null) {
             uriBuilder.setParameter("skip", skip);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2753,16 +3172,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), ServiceIdentityList.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -2775,7 +3194,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("service", service)
             .resolveTemplate("id", id);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2783,30 +3202,30 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), PublicKeyEntry.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public PublicKeyEntry putPublicKeyEntry(String domain, String service, String id, String auditRef, PublicKeyEntry publicKeyEntry) throws URISyntaxException, IOException {
+    public PublicKeyEntry putPublicKeyEntry(String domain, String service, String id, String auditRef, String resourceOwner, PublicKeyEntry publicKeyEntry) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domain}/service/{service}/publickey/{id}")
             .resolveTemplate("domain", domain)
             .resolveTemplate("service", service)
             .resolveTemplate("id", id);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(publicKeyEntry), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -2816,31 +3235,34 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public PublicKeyEntry deletePublicKeyEntry(String domain, String service, String id, String auditRef) throws URISyntaxException, IOException {
+    public PublicKeyEntry deletePublicKeyEntry(String domain, String service, String id, String auditRef, String resourceOwner) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domain}/service/{service}/publickey/{id}")
             .resolveTemplate("domain", domain)
             .resolveTemplate("service", service)
             .resolveTemplate("id", id);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2849,18 +3271,21 @@ public class ZMSRDLGeneratedClient {
         if (auditRef != null) {
             httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
         }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -2874,7 +3299,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("attribute", attribute);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(detail), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -2886,16 +3311,121 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public ResourceServiceIdentityOwnership putResourceServiceIdentityOwnership(String domainName, String service, String auditRef, ResourceServiceIdentityOwnership resourceOwnership) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domainName}/service/{service}/ownership")
+            .resolveTemplate("domainName", domainName)
+            .resolveTemplate("service", service);
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(resourceOwnership), ContentType.APPLICATION_JSON);
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
+            .setUri(uriBuilder.build())
+            .setEntity(httpEntity)
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        if (auditRef != null) {
+            httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 204:
+                return null;
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public ServiceIdentities searchServiceIdentities(String serviceName, Boolean substringMatch, String domainFilter) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/service/{serviceName}")
+            .resolveTemplate("serviceName", serviceName);
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        if (substringMatch != null) {
+            uriBuilder.setParameter("substringMatch", String.valueOf(substringMatch));
+        }
+        if (domainFilter != null) {
+            uriBuilder.setParameter("domainFilter", domainFilter);
+        }
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
+            .setUri(uriBuilder.build())
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 200:
+                return jsonMapper.readValue(httpResponseEntity.getContent(), ServiceIdentities.class);
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public CredsEntry putServiceCredsEntry(String domain, String service, String auditRef, String resourceOwner, CredsEntry credEntry) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{domain}/service/{service}/creds")
+            .resolveTemplate("domain", domain)
+            .resolveTemplate("service", service);
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(credEntry), ContentType.APPLICATION_JSON);
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
+            .setUri(uriBuilder.build())
+            .setEntity(httpEntity)
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        if (auditRef != null) {
+            httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
+        }
+        if (resourceOwner != null) {
+            httpUriRequest.addHeader("Athenz-Resource-Owner", resourceOwner);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 204:
+                return null;
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -2908,7 +3438,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("service", service);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(detail), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -2920,16 +3450,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -2941,7 +3471,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("domain", domain)
             .resolveTemplate("service", service);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -2952,16 +3482,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -2975,7 +3505,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("tenantDomain", tenantDomain);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(detail), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -2987,16 +3517,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3009,7 +3539,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("service", service)
             .resolveTemplate("tenantDomain", tenantDomain);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3020,16 +3550,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3044,7 +3574,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("resourceGroup", resourceGroup);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(detail), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -3056,16 +3586,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), TenantResourceGroupRoles.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3079,7 +3609,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("tenantDomain", tenantDomain)
             .resolveTemplate("resourceGroup", resourceGroup);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3087,16 +3617,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), TenantResourceGroupRoles.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3110,7 +3640,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("tenantDomain", tenantDomain)
             .resolveTemplate("resourceGroup", resourceGroup);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3121,16 +3651,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3145,7 +3675,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("resourceGroup", resourceGroup);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(detail), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -3157,16 +3687,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), ProviderResourceGroupRoles.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3180,7 +3710,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("provService", provService)
             .resolveTemplate("resourceGroup", resourceGroup);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3188,16 +3718,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), ProviderResourceGroupRoles.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3211,7 +3741,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("provService", provService)
             .resolveTemplate("resourceGroup", resourceGroup);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3222,16 +3752,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3249,7 +3779,7 @@ public class ZMSRDLGeneratedClient {
         if (checkPrincipal != null) {
             uriBuilder.setParameter("principal", checkPrincipal);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3257,23 +3787,23 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Access.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public Access getAccessExt(String action, String resource, String domain, String checkPrincipal) throws URISyntaxException, IOException {
+    public Access getAccessExt(String action, String resource, String domain, String checkPrincipal, Boolean caseSensitive) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/access/{action}")
             .resolveTemplate("action", action);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
@@ -3286,7 +3816,10 @@ public class ZMSRDLGeneratedClient {
         if (checkPrincipal != null) {
             uriBuilder.setParameter("principal", checkPrincipal);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        if (caseSensitive != null) {
+            uriBuilder.setParameter("caseSensitive", String.valueOf(caseSensitive));
+        }
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3294,23 +3827,23 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Access.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
         }
     }
 
-    public ResourceAccessList getResourceAccessList(String principal, String action) throws URISyntaxException, IOException {
+    public ResourceAccessList getResourceAccessList(String principal, String action, String filter) throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/resource");
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         if (principal != null) {
@@ -3319,7 +3852,10 @@ public class ZMSRDLGeneratedClient {
         if (action != null) {
             uriBuilder.setParameter("action", action);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        if (filter != null) {
+            uriBuilder.setParameter("filter", filter);
+        }
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3327,16 +3863,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), ResourceAccessList.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3361,7 +3897,7 @@ public class ZMSRDLGeneratedClient {
         if (conditions != null) {
             uriBuilder.setParameter("conditions", String.valueOf(conditions));
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3372,23 +3908,25 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
             case 304:
                 if (headers != null) {
-                    headers.put("tag", List.of(httpResponse.getFirstHeader("ETag").getValue()));
+                    if (httpResponse.getFirstHeader("ETag") != null) {
+                        headers.put("tag", List.of(httpResponse.getFirstHeader("ETag").getValue()));
+                    }
                 }
                 if (code == 304) {
                     return null;
                 }
                 return jsonMapper.readValue(httpResponseEntity.getContent(), SignedDomains.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3402,7 +3940,7 @@ public class ZMSRDLGeneratedClient {
         if (signatureP1363Format != null) {
             uriBuilder.setParameter("signaturep1363format", String.valueOf(signatureP1363Format));
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3413,23 +3951,25 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
             case 304:
                 if (headers != null) {
-                    headers.put("tag", List.of(httpResponse.getFirstHeader("ETag").getValue()));
+                    if (httpResponse.getFirstHeader("ETag") != null) {
+                        headers.put("tag", List.of(httpResponse.getFirstHeader("ETag").getValue()));
+                    }
                 }
                 if (code == 304) {
                     return null;
                 }
                 return jsonMapper.readValue(httpResponseEntity.getContent(), JWSDomain.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3446,7 +3986,7 @@ public class ZMSRDLGeneratedClient {
         if (header != null) {
             uriBuilder.setParameter("header", String.valueOf(header));
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3454,16 +3994,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), UserToken.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3477,21 +4017,21 @@ public class ZMSRDLGeneratedClient {
         if (serviceNames != null) {
             uriBuilder.setParameter("services", serviceNames);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.options()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.options()
             .setUri(uriBuilder.build())
             .build();
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), UserToken.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3501,7 +4041,7 @@ public class ZMSRDLGeneratedClient {
     public ServicePrincipal getServicePrincipal() throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/principal");
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3509,16 +4049,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), ServicePrincipal.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3528,7 +4068,7 @@ public class ZMSRDLGeneratedClient {
     public ServerTemplateList getServerTemplateList() throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/template");
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3536,16 +4076,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), ServerTemplateList.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3556,7 +4096,7 @@ public class ZMSRDLGeneratedClient {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/template/{template}")
             .resolveTemplate("template", template);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3564,16 +4104,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Template.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3584,7 +4124,7 @@ public class ZMSRDLGeneratedClient {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{name}/templatedetails")
             .resolveTemplate("name", name);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3592,16 +4132,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), DomainTemplateDetailsList.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3611,7 +4151,7 @@ public class ZMSRDLGeneratedClient {
     public DomainTemplateDetailsList getServerTemplateDetailsList() throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/templatedetails");
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3619,16 +4159,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), DomainTemplateDetailsList.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3641,7 +4181,7 @@ public class ZMSRDLGeneratedClient {
         if (domainName != null) {
             uriBuilder.setParameter("domain", domainName);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3649,16 +4189,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), UserList.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3669,7 +4209,7 @@ public class ZMSRDLGeneratedClient {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/user/{name}")
             .resolveTemplate("name", name);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3680,16 +4220,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3701,7 +4241,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("memberName", memberName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3712,16 +4252,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3732,7 +4272,7 @@ public class ZMSRDLGeneratedClient {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{name}/quota")
             .resolveTemplate("name", name);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3740,16 +4280,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Quota.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3761,7 +4301,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("name", name);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(quota), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -3773,16 +4313,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3793,7 +4333,7 @@ public class ZMSRDLGeneratedClient {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{name}/quota")
             .resolveTemplate("name", name);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3804,16 +4344,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3823,7 +4363,7 @@ public class ZMSRDLGeneratedClient {
     public Status getStatus() throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/status");
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3831,16 +4371,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Status.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3856,7 +4396,7 @@ public class ZMSRDLGeneratedClient {
         if (domainName != null) {
             uriBuilder.setParameter("domain", domainName);
         }
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3864,16 +4404,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), DomainRoleMembership.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3883,7 +4423,7 @@ public class ZMSRDLGeneratedClient {
     public UserAuthorityAttributeMap getUserAuthorityAttributeMap() throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/authority/user/attribute");
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3891,16 +4431,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), UserAuthorityAttributeMap.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3911,7 +4451,7 @@ public class ZMSRDLGeneratedClient {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/domain/{name}/stats")
             .resolveTemplate("name", name);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3919,16 +4459,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Stats.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3938,7 +4478,7 @@ public class ZMSRDLGeneratedClient {
     public Stats getSystemStats() throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/sys/stats");
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -3946,16 +4486,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Stats.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -3967,7 +4507,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("domainName", domainName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
         HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(service), ContentType.APPLICATION_JSON);
-        HttpUriRequest httpUriRequest = RequestBuilder.put()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
             .setUri(uriBuilder.build())
             .setEntity(httpEntity)
             .build();
@@ -3979,16 +4519,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -4000,7 +4540,7 @@ public class ZMSRDLGeneratedClient {
             .resolveTemplate("domainName", domainName)
             .resolveTemplate("service", service);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.delete()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.delete()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -4011,16 +4551,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 204:
                 return null;
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -4031,7 +4571,7 @@ public class ZMSRDLGeneratedClient {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/dependency/domain/{domainName}")
             .resolveTemplate("domainName", domainName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -4039,16 +4579,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), ServiceIdentityList.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -4059,7 +4599,7 @@ public class ZMSRDLGeneratedClient {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/dependency/domain/{domainName}/resourceGroup")
             .resolveTemplate("domainName", domainName);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -4067,16 +4607,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), DependentServiceResourceGroupList.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -4087,7 +4627,7 @@ public class ZMSRDLGeneratedClient {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/dependency/service/{service}")
             .resolveTemplate("service", service);
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -4095,16 +4635,142 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), DomainList.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public ReviewObjects getRolesForReview(String principal) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/review/role");
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        if (principal != null) {
+            uriBuilder.setParameter("principal", principal);
+        }
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
+            .setUri(uriBuilder.build())
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 200:
+                return jsonMapper.readValue(httpResponseEntity.getContent(), ReviewObjects.class);
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public ReviewObjects getGroupsForReview(String principal) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/review/group");
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        if (principal != null) {
+            uriBuilder.setParameter("principal", principal);
+        }
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
+            .setUri(uriBuilder.build())
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 200:
+                return jsonMapper.readValue(httpResponseEntity.getContent(), ReviewObjects.class);
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public SelfServeObjects getSelfServeRoles(String matchString, Boolean memberOnly) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/selfserve/role");
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        if (matchString != null) {
+            uriBuilder.setParameter("matchString", matchString);
+        }
+        if (memberOnly != null) {
+            uriBuilder.setParameter("memberOnly", String.valueOf(memberOnly));
+        }
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
+            .setUri(uriBuilder.build())
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 200:
+                return jsonMapper.readValue(httpResponseEntity.getContent(), SelfServeObjects.class);
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public SelfServeObjects getSelfServeGroups(String matchString, Boolean memberOnly) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/selfserve/group");
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        if (matchString != null) {
+            uriBuilder.setParameter("matchString", matchString);
+        }
+        if (memberOnly != null) {
+            uriBuilder.setParameter("memberOnly", String.valueOf(memberOnly));
+        }
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
+            .setUri(uriBuilder.build())
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 200:
+                return jsonMapper.readValue(httpResponseEntity.getContent(), SelfServeObjects.class);
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -4114,7 +4780,7 @@ public class ZMSRDLGeneratedClient {
     public Info getInfo() throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/sys/info");
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -4122,16 +4788,49 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Info.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, ResourceError.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
+            }
+        } finally {
+            EntityUtils.consumeQuietly(httpResponseEntity);
+        }
+    }
+
+    public PrincipalState putPrincipalState(String principalName, String auditRef, PrincipalState principalState) throws URISyntaxException, IOException {
+        UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/principal/{principalName}/state")
+            .resolveTemplate("principalName", principalName);
+        URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
+        HttpEntity httpEntity = new StringEntity(jsonMapper.writeValueAsString(principalState), ContentType.APPLICATION_JSON);
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.put()
+            .setUri(uriBuilder.build())
+            .setEntity(httpEntity)
+            .build();
+        if (credsHeader != null) {
+            httpUriRequest.addHeader(credsHeader, credsToken);
+        }
+        if (auditRef != null) {
+            httpUriRequest.addHeader("Y-Audit-Ref", auditRef);
+        }
+        HttpEntity httpResponseEntity = null;
+        try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
+            int code = httpResponse.getCode();
+            httpResponseEntity = httpResponse.getEntity();
+            switch (code) {
+            case 204:
+                return null;
+            default:
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
+                throw (errorData != null && !errorData.isEmpty())
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, ClientResourceError.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);
@@ -4141,7 +4840,7 @@ public class ZMSRDLGeneratedClient {
     public Schema getRdlSchema() throws URISyntaxException, IOException {
         UriTemplateBuilder uriTemplateBuilder = new UriTemplateBuilder(baseUrl, "/schema");
         URIBuilder uriBuilder = new URIBuilder(uriTemplateBuilder.getUri());
-        HttpUriRequest httpUriRequest = RequestBuilder.get()
+        ClassicHttpRequest httpUriRequest = ClassicRequestBuilder.get()
             .setUri(uriBuilder.build())
             .build();
         if (credsHeader != null) {
@@ -4149,16 +4848,16 @@ public class ZMSRDLGeneratedClient {
         }
         HttpEntity httpResponseEntity = null;
         try (CloseableHttpResponse httpResponse = client.execute(httpUriRequest, httpContext)) {
-            int code = httpResponse.getStatusLine().getStatusCode();
+            int code = httpResponse.getCode();
             httpResponseEntity = httpResponse.getEntity();
             switch (code) {
             case 200:
                 return jsonMapper.readValue(httpResponseEntity.getContent(), Schema.class);
             default:
-                final String errorData = (httpResponseEntity == null) ? null : EntityUtils.toString(httpResponseEntity);
+                final String errorData = (httpResponseEntity == null) ? null : getStringResponseEntity(httpResponseEntity);
                 throw (errorData != null && !errorData.isEmpty())
-                    ? new ResourceException(code, jsonMapper.readValue(errorData, Object.class))
-                    : new ResourceException(code);
+                    ? new ClientResourceException(code, jsonMapper.readValue(errorData, Object.class))
+                    : new ClientResourceException(code);
             }
         } finally {
             EntityUtils.consumeQuietly(httpResponseEntity);

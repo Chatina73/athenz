@@ -1,0 +1,81 @@
+/*
+ * Copyright The Athenz Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.yahoo.athenz.zts.token;
+
+import com.yahoo.athenz.zts.ZTSConsts;
+import org.eclipse.jetty.util.StringUtil;
+
+public class AccessTokenScope extends OAuthTokenScope {
+
+    private static boolean supportOpenIdScope = Boolean.parseBoolean(
+            System.getProperty(ZTSConsts.ZTS_PROP_OAUTH_OPENID_SCOPE, "false"));
+    private static boolean supportRolesWithoutDomain = Boolean.parseBoolean(
+            System.getProperty(ZTSConsts.ZTS_PROP_SCOPE_ROLE_WOUT_DOMAIN, "false"));
+    private static int maxDomains = Integer.parseInt(
+            System.getProperty(ZTSConsts.ZTS_PROP_ACCESS_TOKEN_MAX_DOMAINS, "1"));
+
+    public AccessTokenScope(final String scope, final String principalDomain) {
+
+        // the format of our scopes for role access token and id tokens are:
+        // access token/id token combo:
+        //   <roleName> if principalDomain is specified
+        //   <domainName>:domain
+        //   <domainName>:role.<roleName>
+        //   openid <domainName>:service.<serviceName>
+
+        super(scope, maxDomains, null, supportRolesWithoutDomain ? principalDomain : null);
+
+        // if we don't have a domain then it's invalid scope
+
+        if (getDomainNames().isEmpty()) {
+            throw error("No domains in scope", scope);
+        }
+
+        // for openid scope we must have the openid scope
+        // along with the service name since the audience
+        // must be set for that service only
+
+        if (openIdScope && StringUtil.isEmpty(serviceName)) {
+            throw error("No audience service name for openid scope", scope);
+        }
+
+        if (openIdScope && getDomainName() == null) {
+            throw error("Multiple domains not supported with openid scope", scope);
+        }
+    }
+
+    @Override
+    public String getDomainName() {
+        return (domainNames.size() == 1) ? domainNames.iterator().next() : null;
+    }
+
+    @Override
+    public boolean isOpenIdScope() {
+        return supportOpenIdScope && openIdScope;
+    }
+
+    public static void setSupportOpenIdScope(boolean value) {
+        supportOpenIdScope = value;
+    }
+
+    public static void setSupportRolesWithoutDomain(boolean value) {
+        supportRolesWithoutDomain = value;
+    }
+
+    public static void setMaxDomains(int numDomains) {
+        maxDomains = numDomains;
+    }
+}

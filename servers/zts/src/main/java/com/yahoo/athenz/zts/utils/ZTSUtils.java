@@ -18,13 +18,15 @@ package com.yahoo.athenz.zts.utils;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import com.oath.auth.KeyRefresher;
 import com.oath.auth.Utils;
+import com.yahoo.athenz.common.server.ServerResourceException;
 import com.yahoo.athenz.common.server.cert.Priority;
+import com.yahoo.athenz.zts.ResourceError;
+import com.yahoo.athenz.zts.ResourceException;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.eclipse.jetty.util.StringUtil;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
@@ -53,6 +55,9 @@ public class ZTSUtils {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ZTSUtils.class);
 
+    // maximum length of a request-controlled value included in a log message
+    static final int MAX_LOG_VALUE_LENGTH = 256;
+
     static final String ZTS_DEFAULT_EXCLUDED_CIPHER_SUITES = "SSL_RSA_WITH_DES_CBC_SHA,"
             + "SSL_DHE_RSA_WITH_DES_CBC_SHA,SSL_DHE_DSS_WITH_DES_CBC_SHA,"
             + "SSL_RSA_EXPORT_WITH_RC4_40_MD5,SSL_RSA_EXPORT_WITH_DES40_CBC_SHA,"
@@ -60,25 +65,36 @@ public class ZTSUtils {
     static final String ZTS_DEFAULT_EXCLUDED_PROTOCOLS = "SSLv2,SSLv3";
     public static final List<String> ZTS_CERT_DNS_SUFFIX = Arrays.asList(
             System.getProperty(ZTSConsts.ZTS_PROP_CERT_DNS_SUFFIX, ZTSConsts.ZTS_CERT_DNS_SUFFIX).split(","));
+    // generate a list of instance id dns names which based on ZTS_CERT_DNS_SUFFIX values with .instanceid.athenz. prefix
+    public static final List<String> ZTS_CERT_INSTANCE_ID_DNS_NAMES = ZTS_CERT_DNS_SUFFIX.stream()
+            .map(suffix -> ".instanceid.athenz" + suffix)
+            .collect(Collectors.toList());
 
-    public static final long CERT_PRIORITY_MIN_PERCENT_LOW_PRIORITY = Long.parseLong(System.getProperty(ZTSConsts.ZTS_PROP_CERT_PRIORITY_MIN_PERCENT_LOW_PRIORITY, ZTSConsts.ZTS_CERT_PRIORITY_MIN_PERCENT_LOW_PRIORITY_DEFAULT));
-    public static final long CERT_PRIORITY_MAX_PERCENT_HIGH_PRIORITY = Long.parseLong(System.getProperty(ZTSConsts.ZTS_PROP_CERT_PRIORITY_MAX_PERCENT_HIGH_PRIORITY, ZTSConsts.ZTS_CERT_PRIORITY_MAX_PERCENT_HIGH_PRIORITY_DEFAULT));
+    public static final long CERT_PRIORITY_MIN_PERCENT_LOW_PRIORITY = Long.parseLong(System.getProperty(
+            ZTSConsts.ZTS_PROP_CERT_PRIORITY_MIN_PERCENT_LOW_PRIORITY, ZTSConsts.ZTS_CERT_PRIORITY_MIN_PERCENT_LOW_PRIORITY_DEFAULT));
+    public static final long CERT_PRIORITY_MAX_PERCENT_HIGH_PRIORITY = Long.parseLong(System.getProperty(
+            ZTSConsts.ZTS_PROP_CERT_PRIORITY_MAX_PERCENT_HIGH_PRIORITY, ZTSConsts.ZTS_CERT_PRIORITY_MAX_PERCENT_HIGH_PRIORITY_DEFAULT));
+    private static final boolean SKIP_ERROR_METRICS = Boolean.parseBoolean(System.getProperty(
+            ZTSConsts.ZTS_PROP_SKIP_ERROR_METRICS, "false"));
 
-    private static final String ATHENZ_PROP_KEYSTORE_PATH               = "athenz.ssl_key_store";
-    private static final String ATHENZ_PROP_KEYSTORE_TYPE               = "athenz.ssl_key_store_type";
-    private static final String ATHENZ_PROP_KEYSTORE_PASSWORD           = "athenz.ssl_key_store_password";
-    private static final String ATHENZ_PROP_KEYSTORE_PASSWORD_APPNAME   = "athenz.ssl_key_store_password_appname";
+    private static final String ATHENZ_PROP_KEYSTORE_PATH                    = "athenz.ssl_key_store";
+    private static final String ATHENZ_PROP_KEYSTORE_TYPE                    = "athenz.ssl_key_store_type";
+    private static final String ATHENZ_PROP_KEYSTORE_PASSWORD                = "athenz.ssl_key_store_password";
+    private static final String ATHENZ_PROP_KEYSTORE_PASSWORD_APPNAME        = "athenz.ssl_key_store_password_appname";
+    private static final String ATHENZ_PROP_KEYSTORE_PASSWORD_KEYGROUPNAME   = "athenz.ssl_key_store_password_keygroupname";
 
-    private static final String ATHENZ_PROP_TRUSTSTORE_PATH             = "athenz.ssl_trust_store";
-    private static final String ATHENZ_PROP_TRUSTSTORE_TYPE             = "athenz.ssl_trust_store_type";
-    private static final String ATHENZ_PROP_TRUSTSTORE_PASSWORD         = "athenz.ssl_trust_store_password";
-    private static final String ATHENZ_PROP_TRUSTSTORE_PASSWORD_APPNAME = "athenz.ssl_trust_store_password_appname";
+    private static final String ATHENZ_PROP_TRUSTSTORE_PATH                  = "athenz.ssl_trust_store";
+    private static final String ATHENZ_PROP_TRUSTSTORE_TYPE                  = "athenz.ssl_trust_store_type";
+    private static final String ATHENZ_PROP_TRUSTSTORE_PASSWORD              = "athenz.ssl_trust_store_password";
+    private static final String ATHENZ_PROP_TRUSTSTORE_PASSWORD_APPNAME      = "athenz.ssl_trust_store_password_appname";
+    private static final String ATHENZ_PROP_TRUSTSTORE_PASSWORD_KEYGROUPNAME = "athenz.ssl_trust_store_password_keygroupname";
 
-    private static final String ATHENZ_PROP_PROVIDER_CLIENT_PUBLIC_CERT_PATH            = "athenz.zts.provider.ssl_client_public_cert_path";
-    private static final String ATHENZ_PROP_PROVIDER_CLIENT_PRIVATE_KEY_PATH            = "athenz.zts.provider.ssl_client_private_key_path";
-    private static final String ATHENZ_PROP_PROVIDER_CLIENT_TRUSTSTORE_PATH             = "athenz.zts.provider.ssl_client_trust_store";
-    private static final String ATHENZ_PROP_PROVIDER_CLIENT_TRUSTSTORE_PASSWORD         = "athenz.zts.provider.ssl_client_trust_store_password";
-    private static final String ATHENZ_PROP_PROVIDER_CLIENT_TRUSTSTORE_PASSWORD_APPNAME = "athenz.zts.provider.ssl_client_trust_store_password_appname";
+    private static final String ATHENZ_PROP_PROVIDER_CLIENT_PUBLIC_CERT_PATH                 = "athenz.zts.provider.ssl_client_public_cert_path";
+    private static final String ATHENZ_PROP_PROVIDER_CLIENT_PRIVATE_KEY_PATH                 = "athenz.zts.provider.ssl_client_private_key_path";
+    private static final String ATHENZ_PROP_PROVIDER_CLIENT_TRUSTSTORE_PATH                  = "athenz.zts.provider.ssl_client_trust_store";
+    private static final String ATHENZ_PROP_PROVIDER_CLIENT_TRUSTSTORE_PASSWORD              = "athenz.zts.provider.ssl_client_trust_store_password";
+    private static final String ATHENZ_PROP_PROVIDER_CLIENT_TRUSTSTORE_PASSWORD_APPNAME      = "athenz.zts.provider.ssl_client_trust_store_password_appname";
+    private static final String ATHENZ_PROP_PROVIDER_CLIENT_TRUSTSTORE_PASSWORD_KEYGROUPNAME = "athenz.zts.provider.ssl_client_trust_store_password_keygroupname";
 
     private final static char[] EMPTY_PASSWORD = "".toCharArray();
 
@@ -87,14 +103,18 @@ public class ZTSUtils {
         
         String keyStorePath = System.getProperty(ZTSConsts.ZTS_PROP_KEYSTORE_PATH);
         String keyStorePasswordAppName = System.getProperty(ZTSConsts.ZTS_PROP_KEYSTORE_PASSWORD_APPNAME);
+        String keyStorePasswordKeygroupName = System.getProperty(ZTSConsts.ZTS_PROP_KEYSTORE_PASSWORD_KEYGROUPNAME);
         String keyStorePassword = System.getProperty(ZTSConsts.ZTS_PROP_KEYSTORE_PASSWORD);
         String keyStoreType = System.getProperty(ZTSConsts.ZTS_PROP_KEYSTORE_TYPE, "PKCS12");
+
         String keyManagerPassword = System.getProperty(ZTSConsts.ZTS_PROP_KEYMANAGER_PASSWORD);
         String keyManagerPasswordAppName = System.getProperty(ZTSConsts.ZTS_PROP_KEYMANAGER_PASSWORD_APPNAME);
+        String keyManagerPasswordKeygroupName = System.getProperty(ZTSConsts.ZTS_PROP_KEYMANAGER_PASSWORD_KEYGROUPNAME);
 
         String trustStorePath = System.getProperty(ZTSConsts.ZTS_PROP_TRUSTSTORE_PATH);
         String trustStorePassword = System.getProperty(ZTSConsts.ZTS_PROP_TRUSTSTORE_PASSWORD);
         String trustStorePasswordAppName = System.getProperty(ZTSConsts.ZTS_PROP_TRUSTSTORE_PASSWORD_APPNAME);
+        String trustStorePasswordKeygroupName = System.getProperty(ZTSConsts.ZTS_PROP_TRUSTSTORE_PASSWORD_KEYGROUPNAME);
 
         String trustStoreType = System.getProperty(ZTSConsts.ZTS_PROP_TRUSTSTORE_TYPE, "PKCS12");
         String excludedCipherSuites = System.getProperty(ZTSConsts.ZTS_PROP_EXCLUDED_CIPHER_SUITES,
@@ -109,13 +129,13 @@ public class ZTSUtils {
         }
         
         if (!StringUtil.isEmpty(keyStorePassword)) {
-            keyStorePassword = getApplicationSecret(privateKeyStore, keyStorePasswordAppName, keyStorePassword);
+            keyStorePassword = getApplicationSecret(privateKeyStore, keyStorePasswordAppName, keyStorePassword, keyStorePasswordKeygroupName);
             sslContextFactory.setKeyStorePassword(keyStorePassword);
         }
         sslContextFactory.setKeyStoreType(keyStoreType);
 
         if (!StringUtil.isEmpty(keyManagerPassword)) {
-            keyManagerPassword = getApplicationSecret(privateKeyStore, keyManagerPasswordAppName, keyManagerPassword);
+            keyManagerPassword = getApplicationSecret(privateKeyStore, keyManagerPasswordAppName, keyManagerPassword, keyManagerPasswordKeygroupName);
             sslContextFactory.setKeyManagerPassword(keyManagerPassword);
         }
         
@@ -124,7 +144,7 @@ public class ZTSUtils {
             sslContextFactory.setTrustStorePath(trustStorePath);
         }
         if (!StringUtil.isEmpty(trustStorePassword)) {
-            trustStorePassword = getApplicationSecret(privateKeyStore, trustStorePasswordAppName, trustStorePassword);
+            trustStorePassword = getApplicationSecret(privateKeyStore, trustStorePasswordAppName, trustStorePassword, trustStorePasswordKeygroupName);
             sslContextFactory.setTrustStorePassword(trustStorePassword);
         }
         sslContextFactory.setTrustStoreType(trustStoreType);
@@ -140,26 +160,23 @@ public class ZTSUtils {
     }
     
     static String getApplicationSecret(final PrivateKeyStore privateKeyStore,
-            final String keyStorePasswordAppName, final String keyStorePassword) {
-        return String.valueOf(getSecret(privateKeyStore, keyStorePasswordAppName, keyStorePassword));
+            final String keyStorePasswordAppName, final String keyStorePassword, final String keygroupName) {
+        return String.valueOf(getSecret(privateKeyStore, keyStorePasswordAppName, keyStorePassword, keygroupName));
     }
 
     static char[] getSecret(final PrivateKeyStore privateKeyStore,
-                                       final String keyStorePasswordAppName, final String keyStorePassword) {
+                                       final String keyStorePasswordAppName, final String keyStorePassword, final String keyStorePasswordKeygroupName) {
 
         if (privateKeyStore == null) {
             return keyStorePassword.toCharArray();
         }
-        return privateKeyStore.getSecret(keyStorePasswordAppName, keyStorePassword);
+        return privateKeyStore.getSecret(keyStorePasswordAppName, keyStorePasswordKeygroupName, keyStorePassword);
     }
     
     public static boolean emitMonmetricError(int errorCode, String caller,
             String requestDomain, String principalDomain, Metric metric) {
 
-        if (errorCode < 1) {
-            return false;
-        }
-        if (StringUtil.isEmpty(caller)) {
+        if (SKIP_ERROR_METRICS || errorCode < 1 || StringUtil.isEmpty(caller)) {
             return false;
         }
 
@@ -239,15 +256,15 @@ public class ZTSUtils {
         }
         
         // the only two formats we're allowed to have in the CSR are:
-        // 1) <service>.<domain-with-dashes>.<provider-dns-suffix>
-        // 2) <service>.<domain-with-dashes>.instanceid.athenz.<provider-dns-suffix>
+        // 1) <service>.<domain-with-dashes>.[<components>.]<provider-dns-suffix>
+        // 2) <instance-id>.instanceid.athenz.<provider-dns-suffix>
         
         final String prefix = service + "." + domain.replace('.', '-') + ".";
         for (String dnsName : dnsNames) {
             if (dnsName.startsWith(prefix) && valueEndsWith(dnsName, ZTS_CERT_DNS_SUFFIX)) {
                 continue;
             }
-            if (dnsName.contains(ZTSConsts.ZTS_CERT_INSTANCE_ID_DNS)) {
+            if (valueEndsWith(dnsName, ZTS_CERT_INSTANCE_ID_DNS_NAMES)) {
                 continue;
             }
             LOGGER.error("validateServiceCertReqDNSNames - Invalid dnsName SAN entry: {}", dnsName);
@@ -280,13 +297,13 @@ public class ZTSUtils {
     
     public static Identity generateIdentity(InstanceCertManager certManager, final String provider,
             final String certIssuer, final String csr, final String cn, final String certUsage,
-            int expiryTime) {
+            int expiryTime, final String signerKeyId) {
         
         // generate a certificate for this certificate request
 
         String pemCert = certManager.generateX509Certificate(provider, certIssuer, csr, certUsage, expiryTime,
-                Priority.Unspecified_priority);
-        if (pemCert == null || pemCert.isEmpty()) {
+                Priority.Unspecified_priority, signerKeyId);
+        if (StringUtil.isEmpty(pemCert)) {
             return null;
         }
         
@@ -329,8 +346,11 @@ public class ZTSUtils {
         final String serverTrustStorePasswordAppName = System.getProperty(ATHENZ_PROP_TRUSTSTORE_PASSWORD_APPNAME);
         final String trustStorePasswordAppName = System.getProperty(ATHENZ_PROP_PROVIDER_CLIENT_TRUSTSTORE_PASSWORD_APPNAME,
                 serverTrustStorePasswordAppName);
+        final String serverTrustStorePasswordKeygroupName = System.getProperty(ATHENZ_PROP_TRUSTSTORE_PASSWORD_KEYGROUPNAME);
+        final String trustStorePasswordKeygroupName = System.getProperty(ATHENZ_PROP_PROVIDER_CLIENT_TRUSTSTORE_PASSWORD_KEYGROUPNAME,
+                serverTrustStorePasswordKeygroupName);
         try {
-            final char[] passwordChars = getSecret(privateKeyStore, trustStorePasswordAppName, trustStorePassword);
+            final char[] passwordChars = getSecret(privateKeyStore, trustStorePasswordAppName, trustStorePassword, trustStorePasswordKeygroupName);
             KeyRefresher keyRefresher = Utils.generateKeyRefresher(trustStorePath, passwordChars, certPath, keyPath);
             keyRefresher.startup();
             return Utils.buildSSLContext(keyRefresher.getKeyManagerProxy(), keyRefresher.getTrustManagerProxy());
@@ -347,6 +367,7 @@ public class ZTSUtils {
             return null;
         }
         final String keyStorePasswordAppName = System.getProperty(ATHENZ_PROP_KEYSTORE_PASSWORD_APPNAME);
+        final String keyStorePasswordKeygroupName = System.getProperty(ATHENZ_PROP_KEYSTORE_PASSWORD_KEYGROUPNAME);
         final String keyStorePassword = System.getProperty(ATHENZ_PROP_KEYSTORE_PASSWORD);
         final String keyStoreType = System.getProperty(ATHENZ_PROP_KEYSTORE_TYPE, "PKCS12");
 
@@ -358,6 +379,7 @@ public class ZTSUtils {
 
         final String trustStorePassword = System.getProperty(ATHENZ_PROP_TRUSTSTORE_PASSWORD);
         final String trustStorePasswordAppName = System.getProperty(ATHENZ_PROP_TRUSTSTORE_PASSWORD_APPNAME);
+        final String trustStorePasswordKeygroupName = System.getProperty(ATHENZ_PROP_TRUSTSTORE_PASSWORD_KEYGROUPNAME);
         final String trustStoreType = System.getProperty(ATHENZ_PROP_TRUSTSTORE_TYPE, "PKCS12");
 
         SSLContext sslcontext = null;
@@ -365,7 +387,7 @@ public class ZTSUtils {
             TrustManagerFactory tmfactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
             try (FileInputStream instream = new FileInputStream(trustStorePath)) {
                 KeyStore trustStore = KeyStore.getInstance(trustStoreType);
-                final char[] password = getSecret(privateKeyStore, trustStorePasswordAppName, trustStorePassword);
+                final char[] password = getSecret(privateKeyStore, trustStorePasswordAppName, trustStorePassword, trustStorePasswordKeygroupName);
                 trustStore.load(instream, password != null ? password : EMPTY_PASSWORD);
                 tmfactory.init(trustStore);
             }
@@ -373,7 +395,7 @@ public class ZTSUtils {
             KeyManagerFactory kmfactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
             try (FileInputStream instream = new FileInputStream(keyStorePath)) {
                 KeyStore keyStore = KeyStore.getInstance(keyStoreType);
-                final char[] password = getSecret(privateKeyStore, keyStorePasswordAppName, keyStorePassword);
+                final char[] password = getSecret(privateKeyStore, keyStorePasswordAppName, keyStorePassword, keyStorePasswordKeygroupName);
                 keyStore.load(instream, password != null ? password : EMPTY_PASSWORD);
                 kmfactory.init(keyStore, password != null ? password : EMPTY_PASSWORD);
             }
@@ -455,5 +477,72 @@ public class ZTSUtils {
             }
         }
         return false;
+    }
+
+    public static RuntimeException error(ServerResourceException ex) {
+        LOGGER.error("Server Common Error: {} message: {}", ex.getCode(), ex.getMessage());
+        return new ResourceException(ex.getCode(), new ResourceError().code(ex.getCode()).message(ex.getMessage()));
+    }
+
+    public static Integer getRemainingExpiryTime(long expiryTime) {
+        Integer remainingExpiry = null;
+        try {
+            remainingExpiry = Math.toIntExact(expiryTime - System.currentTimeMillis() / 1000);
+            if (remainingExpiry < 0) {
+                throw new ResourceException(ResourceException.BAD_REQUEST,
+                        new ResourceError().code(ResourceException.BAD_REQUEST).message("Token Expired"));
+            }
+        } catch (ArithmeticException ex) {
+            LOGGER.error("Token expiry too far in the future: {} - {}", expiryTime, ex.getMessage());
+        }
+        return remainingExpiry;
+    }
+
+    public static boolean isSubset(String[] subset, String[] superset) {
+        Set<String> supersetSet = new HashSet<>(Arrays.asList(superset));
+        for (String element : subset) {
+            if (!supersetSet.contains(element)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Generate the error message for a failed object validation. The message
+     * includes the api (caller) processing the request, the type that was
+     * being validated, the value itself if it's a simple type (e.g. domain
+     * or service name) and the error reported by the validator. For complex
+     * objects the validator error already identifies the failing field.
+     */
+    public static String validationErrorMessage(final String caller, Object val, final String type,
+            final String error) {
+        StringBuilder msg = new StringBuilder(128);
+        msg.append(caller).append(": Invalid ").append(type);
+        if (val instanceof String || val instanceof Number || val instanceof Boolean) {
+            msg.append(" value: ").append(sanitizeLogValue(val.toString()));
+        }
+        msg.append(" error: ").append(error);
+        return msg.toString();
+    }
+
+    /**
+     * The value is request-controlled, so before including it in a message
+     * that ends up in the logs we cap its length and replace any control
+     * characters (e.g. CR/LF) so a client cannot forge log entries or
+     * amplify log volume with an oversized value.
+     */
+    static String sanitizeLogValue(final String value) {
+        boolean truncated = value.length() > MAX_LOG_VALUE_LENGTH;
+        final String str = truncated ? value.substring(0, MAX_LOG_VALUE_LENGTH) : value;
+        StringBuilder sb = new StringBuilder(str.length() + 3);
+        for (int i = 0; i < str.length(); i++) {
+            char ch = str.charAt(i);
+            sb.append(Character.isISOControl(ch) ? '?' : ch);
+        }
+        if (truncated) {
+            sb.append("...");
+        }
+        return sb.toString();
     }
 }

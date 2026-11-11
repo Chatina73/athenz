@@ -48,6 +48,12 @@ class DateUtils {
         return inputDay >= minusSevenDays;
     }
 
+    isExpired(dateToCheck, currentTimezone) {
+        return moment().isAfter(
+            moment(dateToCheck, 'YYYY-MM-DDTHH:mm:ss.SSSZ', currentTimezone)
+        );
+    }
+
     getCurrentTimeZone() {
         return Intl.DateTimeFormat().resolvedOptions().timeZone;
     }
@@ -55,7 +61,7 @@ class DateUtils {
     // converts a datetime returned by the datetime picker into an
     // RDL "Timestamp" (e.g. "2018-10-09T22:55:57.389Z")
     uxDatetimeToRDLTimestamp(ux) {
-        if (ux) {
+        if (ux instanceof Date || ux?.length) {
             return new Date(ux).toISOString();
         }
         return '';

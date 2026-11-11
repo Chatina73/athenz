@@ -21,19 +21,24 @@ package com.yahoo.athenz.auth;
 public final class AuthorityConsts {
 
     // Athenz data model
+
     public static final char ATHENZ_PRINCIPAL_DELIMITER_CHAR = '.';
+    public static final char ATHENZ_PRINCIPAL_ENTITY_CHAR = ':';
     public static final String ATHENZ_PRINCIPAL_DELIMITER = String.valueOf(ATHENZ_PRINCIPAL_DELIMITER_CHAR);
 
     public static final String ROLE_SEP   = ":role.";
     public static final String GROUP_SEP  = ":group.";
     public static final String POLICY_SEP = ":policy.";
     public static final String ENTITY_SEP = ":entity.";
+    public static final String EXT_SEP    = ":ext.";
 
     // system properties
     public static final String ATHENZ_PROP_USER_DOMAIN = "athenz.user_domain";
     public static final String ATHENZ_PROP_RESTRICTED_OU = "athenz.crypto.restricted_ou";
 
     public static final String ZTS_CERT_PRINCIPAL_URI    = "athenz://principal/";
+
+    public static final String AUTH_PROP_MILLIS_BETWEEN_ZTS_CALLS = "athenz.auth.millis_between_zts_calls";
 
     // prevent object creation
     private AuthorityConsts() {

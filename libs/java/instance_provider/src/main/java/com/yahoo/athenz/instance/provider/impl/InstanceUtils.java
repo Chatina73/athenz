@@ -15,7 +15,12 @@
  */
 package com.yahoo.athenz.instance.provider.impl;
 
+import com.yahoo.athenz.common.ServerCommonConsts;
+import com.yahoo.athenz.common.server.util.config.dynamic.DynamicConfigBoolean;
+import com.yahoo.athenz.instance.provider.InstanceConfirmation;
 import com.yahoo.athenz.instance.provider.InstanceProvider;
+import com.yahoo.athenz.common.server.util.IPBlock;
+import com.yahoo.athenz.instance.provider.ProviderResourceException;
 import org.eclipse.jetty.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +46,9 @@ public class InstanceUtils {
 
     static final String K8S_SERVICE_ACCOUNT_PREFIX = "system:serviceaccount:";
 
+    static final String SPIFFE_URI_PREFIX    = "spiffe://";
+    static final String SPIFFE_URI_NAMESPACE = "/ns/";
+
     public static String getInstanceProperty(final Map<String, String> attributes,
             final String propertyName) {
 
@@ -56,6 +64,63 @@ public class InstanceUtils {
         }
 
         return value;
+    }
+
+    /**
+     * Add an attribute to the confirmation object that ZTS forwards to the
+     * CertSigner when generating the X.509 certificate. The name is prefixed
+     * with {@link InstanceProvider#ZTS_CERT_SIGNER_ATTR_PREFIX}. Empty names
+     * or values are ignored. Providers must only call this method with values
+     * derived from verified evidence and after all validation has passed.
+     * @param confirmation instance confirmation object returned by the provider
+     * @param name attribute name (without the prefix)
+     * @param value attribute value
+     */
+    public static void setCertSignerAttribute(InstanceConfirmation confirmation, final String name,
+            final String value) {
+
+        if (StringUtil.isEmpty(name) || StringUtil.isEmpty(value)) {
+            return;
+        }
+
+        Map<String, String> attributes = confirmation.getAttributes();
+        if (attributes == null) {
+            attributes = new HashMap<>();
+            confirmation.setAttributes(attributes);
+        }
+        attributes.put(InstanceProvider.ZTS_CERT_SIGNER_ATTR_PREFIX + name, value);
+    }
+
+    /**
+     * Remove all attributes with the {@link InstanceProvider#ZTS_CERT_SIGNER_ATTR_PREFIX}
+     * prefix from the given map and return them with the prefix removed.
+     * Entries with an empty name after the prefix are removed but not returned.
+     * @param attributes attributes returned by the provider (modified in place)
+     * @return map of cert signer attributes, never null
+     */
+    public static Map<String, String> extractCertSignerAttributes(Map<String, String> attributes) {
+
+        if (attributes == null || attributes.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        final int prefixLen = InstanceProvider.ZTS_CERT_SIGNER_ATTR_PREFIX.length();
+        Map<String, String> signerAttributes = new HashMap<>();
+        Iterator<Map.Entry<String, String>> iterator = attributes.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, String> entry = iterator.next();
+            final String key = entry.getKey();
+            if (key == null || !key.startsWith(InstanceProvider.ZTS_CERT_SIGNER_ATTR_PREFIX)) {
+                continue;
+            }
+            // capture the value before removing: TreeMap may reuse the removed entry for its successor
+            final String value = entry.getValue();
+            iterator.remove();
+            if (key.length() > prefixLen) {
+                signerAttributes.put(key.substring(prefixLen), value);
+            }
+        }
+        return signerAttributes;
     }
 
     static int dnsSuffixMatchIndex(final String hostname, final List<String> dnsSuffixes) {
@@ -154,7 +219,7 @@ public class InstanceUtils {
 
         final String prefix = hostname.substring(0, suffixIdx);
         for (String comp : prefix.split("\\.")) {
-            if (service.equals(comp)) {
+            if (service.equalsIgnoreCase(comp)) {
                 return true;
             }
         }
@@ -163,9 +228,27 @@ public class InstanceUtils {
         return false;
     }
 
+    /**
+     * validate the specifies sanDNS entries in the certificate request. If the failedDnsNames
+     * list is specified, it will be populated with the dns names that failed validation.
+     * However, if the failure is critical (e.g. we couldn't validate hostname, dns names suffix
+     * list is not specified), then the method will return false and the failedDnsNames list
+     * will be empty.
+     * @param attributes attributes from the certificate request
+     * @param domain name of the domain
+     * @param service name of the service
+     * @param dnsSuffixes list of dns suffixes
+     * @param k8sDnsSuffixes list of k8s dns suffixes
+     * @param k8sClusterNames list of k8s cluster names
+     * @param validateHostname flag to indicate whether we should validate hostname
+     * @param instanceId instance id value to be returned
+     * @param failedDnsNames list of failed dns names to be returned
+     * @return true if all dns names are valid, false otherwise
+     */
     public static boolean validateCertRequestSanDnsNames(final Map<String, String> attributes, final String domain,
             final String service, final Set<String> dnsSuffixes, final List<String> k8sDnsSuffixes,
-            final List<String> k8sClusterNames, boolean validateHostname, StringBuilder instanceId) {
+            final List<String> k8sClusterNames, boolean validateHostname, StringBuilder instanceId,
+            List<String> failedDnsNames) {
 
         // make sure we have valid dns suffix specified
 
@@ -185,11 +268,23 @@ public class InstanceUtils {
         }
         String[] hosts = hostnames.split(",");
 
-        // extract the instance id from the request
-
+        // extract the instance id from the request. if absent, fall back
+        // to ZTS_INSTANCE_ID (e.g. set by ZTS from the K8s SA token UID)
         if (!extractCertRequestInstanceId(attributes, hosts, dnsSuffixes, instanceId)) {
-            LOGGER.error("Request does not contain expected instance id entry");
-            return false;
+
+            // extractCertRequestInstanceId may have already appended a partial
+            // value (e.g. conflicting instanceid SAN entries) - do not fall back
+            if (instanceId.length() != 0) {
+                return false;
+            }
+
+            final String ztsInstanceId = getInstanceProperty(attributes, InstanceProvider.ZTS_INSTANCE_ID);
+            if (!StringUtil.isEmpty(ztsInstanceId)) {
+                instanceId.append(ztsInstanceId);
+            } else {
+                LOGGER.error("Request does not contain expected instance id entry");
+                return false;
+            }
         }
 
         // for hostnames that are included in the sanDNS entry in the certificate we have
@@ -237,20 +332,42 @@ public class InstanceUtils {
             }
 
             if (!validateSanDnsName(host, service, hostNameSuffixList, k8sDnsSuffixes, clusterNameSet)) {
-                return false;
+
+                // if we're not interested in the list of failed hostnames then
+                // we'll return failure right away. otherwise we'll keep track
+                // of the failed hostname and continue with the rest of the list
+
+                if (failedDnsNames == null) {
+                    return false;
+                } else {
+                    failedDnsNames.add(host);
+                    continue;
+                }
             }
 
             hostCheck = true;
         }
 
-        // if we have no host entry that it's a failure
+        // if we have no host entry that it's a failure. We're going to
+        // make sure the failedDnsNames list is empty and return false
+        // so the caller knows this is a critical failure as opposed to
+        // failure of not being able to validate the specified entries
 
         if (!hostCheck) {
             LOGGER.error("Request does not contain expected host SAN DNS entry");
+            if (failedDnsNames != null) {
+                failedDnsNames.clear();
+            }
             return false;
         }
 
-        return true;
+        // if we got here, then we're good to go as long as the
+        // failedDnsNames list is empty or null.
+        // if it's not empty then we have some failed entries
+        // and if it's null, then we would have already returned
+        // failure when processing the list
+
+        return failedDnsNames == null || failedDnsNames.isEmpty();
     }
 
     private static boolean extractCertRequestInstanceId(final Map<String, String> attributes, final String[] hosts,
@@ -346,5 +463,151 @@ public class InstanceUtils {
             return null;
         }
         return components[3];
+    }
+
+    public static String getNamespaceFromIdTokenSubject(final String sub) {
+        if (StringUtil.isEmpty(sub) || !sub.startsWith(K8S_SERVICE_ACCOUNT_PREFIX)) {
+            return null;
+        }
+        String[] components = sub.split(":");
+        if (components.length != 4) {
+            return null;
+        }
+        return components[2];
+    }
+
+    /**
+     * Extract the namespace component from the spiffe uri in the given list of
+     * certificate request uris. The expected format is
+     * spiffe://&lt;trust-domain&gt;/ns/&lt;namespace&gt;/sa/&lt;service-account&gt;.
+     * @param sanUri comma separated list of uris from the certificate request
+     * @return namespace from the spiffe uri, null if the request carries no
+     *      spiffe uri with a namespace component
+     */
+    public static String getNamespaceFromSpiffeUri(final String sanUri) {
+
+        if (StringUtil.isEmpty(sanUri)) {
+            return null;
+        }
+        for (String uri : sanUri.split(",")) {
+            if (!uri.startsWith(SPIFFE_URI_PREFIX)) {
+                continue;
+            }
+            int idx = uri.indexOf(SPIFFE_URI_NAMESPACE);
+            if (idx == -1) {
+                continue;
+            }
+            int startIdx = idx + SPIFFE_URI_NAMESPACE.length();
+            int endIdx = uri.indexOf('/', startIdx);
+            if (endIdx == -1) {
+                continue;
+            }
+            return uri.substring(startIdx, endIdx);
+        }
+        return null;
+    }
+
+    public static List<IPBlock> parseIPBlocks(final String certAllowedIPAddresses) {
+        List<IPBlock> ipBlocks = new ArrayList<>();
+        for (String ipEntry : certAllowedIPAddresses.split(",")) {
+            ipEntry = ipEntry.trim();
+            try {
+                ipBlocks.add(new IPBlock(ipEntry));
+            } catch (Exception ex) {
+                LOGGER.error("Skipping invalid ip block entry: {}, error: {}", ipEntry, ex.getMessage());
+            }
+        }
+        return ipBlocks;
+    }
+
+    public static boolean verifyIPAddressAccess(final String ipAddress, final List<IPBlock> ipBlocks) {
+        long ipAddr = IPBlock.convertIPToLong(ipAddress);
+        for (IPBlock ipBlock : ipBlocks) {
+            if (ipBlock.ipCheck(ipAddr)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static void validateCertIPAddresses(DynamicConfigBoolean validateIPAddress,
+            Map<String, String> instanceAttributes, final String instancePrivateIP, List<IPBlock> allowedIPAddresses)
+            throws ProviderResourceException {
+
+        // if we have no IP address validation enabled then we're good to go
+
+        if (Boolean.FALSE.equals(validateIPAddress.get())) {
+            return;
+        }
+
+        // if we no IP addresses specified in the request then we have nothing to validate
+
+        String ipAddresses = getInstanceProperty(instanceAttributes, InstanceProvider.ZTS_INSTANCE_SAN_IP);
+        if (StringUtil.isEmpty(ipAddresses)) {
+            return;
+        }
+
+        for (String ipAddress : ipAddresses.split(",")) {
+            ipAddress = ipAddress.trim();
+            if (ipAddress.isEmpty()) {
+                continue;
+            }
+
+            // if the IP address is the same as our instance private IP then we're good to go
+
+            if (ipAddress.equals(instancePrivateIP)) {
+                continue;
+            }
+
+            // otherwise, let's check if the IP address is in our allowed list
+
+            if (verifyIPAddressAccess(ipAddress, allowedIPAddresses)) {
+                continue;
+            }
+
+            // if we got here then the IP address is not in our allowed list
+            // so we're going to log the error and throw an exception
+
+            throw error("Certificate IP address validation failed for: " + ipAddress);
+        }
+    }
+
+    public static boolean shouldCheckBootTime(final Map<String, String> instanceAttributes) {
+
+        final String domainFeatureFlags = getInstanceProperty(instanceAttributes,
+                InstanceProvider.ZTS_INSTANCE_DOMAIN_FEATURE_FLAGS);
+        if (domainFeatureFlags != null) {
+            try {
+                if ((Integer.parseInt(domainFeatureFlags) &
+                        ServerCommonConsts.ZMS_DOMAIN_FEATURE_SKIP_BOOT_TIME_VALIDATION) != 0) {
+                    LOGGER.info("Boot time validation skipped based on domain feature flags");
+                    return false;
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
+
+        final String serviceFeatureFlags = getInstanceProperty(instanceAttributes,
+                InstanceProvider.ZTS_INSTANCE_SERVICE_FEATURE_FLAGS);
+        if (serviceFeatureFlags != null) {
+            try {
+                if ((Integer.parseInt(serviceFeatureFlags) &
+                        ServerCommonConsts.ZMS_SERVICE_FEATURE_SKIP_BOOT_TIME_VALIDATION) != 0) {
+                    LOGGER.info("Boot time validation skipped based on service feature flags");
+                    return false;
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
+
+        return true;
+    }
+
+    public static ProviderResourceException error(String message) {
+        return error(ProviderResourceException.FORBIDDEN, message);
+    }
+
+    public static ProviderResourceException error(int errorCode, String message) {
+        return new ProviderResourceException(errorCode, message);
     }
 }

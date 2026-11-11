@@ -17,7 +17,7 @@
   <parent>
     <groupId>com.yahoo.athenz</groupId>
     <artifactId>athenz</artifactId>
-    <version>1.11.39-SNAPSHOT</version>
+    <version>1.12.52-SNAPSHOT</version>
     <relativePath>../../../pom.xml</relativePath>
   </parent>
 
@@ -27,7 +27,7 @@
   <description>ZMS Java Client Library</description>
 
   <properties>
-    <code.coverage.min>0.9545</code.coverage.min>
+    <code.coverage.min>0.9624</code.coverage.min>
   </properties>
 
   <dependencies>
@@ -63,8 +63,8 @@
       <version>${project.parent.version}</version>
     </dependency>
     <dependency>
-      <groupId>org.apache.httpcomponents</groupId>
-      <artifactId>httpclient</artifactId>
+      <groupId>org.apache.httpcomponents.client5</groupId>
+      <artifactId>httpclient5</artifactId>
       <version>${apache.httpclient.version}</version>
     </dependency>
     <dependency>
@@ -95,7 +95,7 @@
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-annotations</artifactId>
-      <version>${jackson-core.version}</version>
+      <version>${jackson-annotations.version}</version>
     </dependency>
   </dependencies>
 

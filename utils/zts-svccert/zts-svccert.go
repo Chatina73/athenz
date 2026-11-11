@@ -1,12 +1,13 @@
+// Copyright The Athenz Authors
+// Licensed under the terms of the Apache version 2.0 license. See LICENSE file for terms.
+
 package main
 
 import (
 	"bytes"
 	"crypto"
-	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -18,13 +19,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"reflect"
 	"strings"
 	"time"
 
-	"github.com/AthenZ/athenz/libs/go/athenzutils"
-
 	"github.com/AthenZ/athenz/clients/go/zts"
+	"github.com/AthenZ/athenz/libs/go/athenzutils"
+	"github.com/AthenZ/athenz/libs/go/tls/config"
 	"github.com/AthenZ/athenz/libs/go/zmssvctoken"
 )
 
@@ -61,21 +61,27 @@ func usage() {
 	fmt.Println("")
 	fmt.Println("Request Service Identity Certificate using Registered Public/Private Key Pair:")
 	fmt.Println("")
-	fmt.Println("    zts-svccert -zts <zts-server-url> -private-key <private-key-path> -key-version <private-key-version> -hdr <credential-header-name> [-provider <provider-name>[ <service-details> [-instance <instance-id>] <certificate-details>")
+	fmt.Println("    zts-svccert -zts <zts-server-url> -private-key <private-key-path> -key-version <private-key-version> -hdr <credential-header-name> <service-details> <certificate-details> [-provider <provider-name> -instance <instance-id>]")
+	fmt.Println("")
+	fmt.Println("Request Service Identity Certificate using a Pre-Generated Certificate Signing Request (CSR):")
+	fmt.Println("")
+	fmt.Println("    zts-svccert -request-csr <csr-file> <any of the certificate request options above without -private-key and -dns-domain>")
+	fmt.Println("")
+	fmt.Println("    Note: -private-key (along with -key-version for ntoken) is still required if it's used for authentication (ntoken or attestation data generation)")
 	fmt.Println("")
 	fmt.Println("Request Service Identity Certificate Signing Request (CSR) Only:")
 	fmt.Println("")
-	fmt.Println("    zts-svccert -csr -private-key <private-key-path> [-provider <provider-name>] <service-details> [-instance <instance-id>] <certificate-details>")
+	fmt.Println("    zts-svccert -csr -private-key <private-key-path> <service-details> <certificate-details> [-provider <provider-name> -instance <instance-id>]")
 	fmt.Println("")
 	fmt.Println("Request Service Identity Certificate using Provided Attestation Data:")
 	fmt.Println("")
-	fmt.Println("    zts-svccert -private-key <private-key-path> -attestation-data <attestation-data-file> [-hdr <credential-header-name>] [-provider <provider-name>] <service-details> [-instance <instance-id>] <certificate-details>")
+	fmt.Println("    zts-svccert -private-key <private-key-path> -attestation-data <attestation-data-file> <service-details> <certificate-details> [-hdr <credential-header-name>] [-provider <provider-name> -instance <instance-id>]")
 	fmt.Println("")
 	fmt.Println("Common parameters:")
 	fmt.Println("")
 	fmt.Println("      <service-details> := -domain <domain-name> -service <service-name>")
 	fmt.Println("")
-	fmt.Println("      <certificate-details> := -dns-domain <san-dns-domain-component> [-signer-cert-file <cert-output-file>] [-spiffe] [-expiry-time <mins>] [-sub-c <subject country>] [-sub-o <subject org] [-sub-ou <subject orgunit] [-ip <san-ip-address>] [-signer-cert-file <root-ca-output-file>]")
+	fmt.Println("      <certificate-details> := -dns-domain <san-dns-domain-component> (not required with -request-csr) [-signer-cert-file <ca-cert-output-file>] [-spiffe] [-expiry-time <mins>] [-subj-c <subject country>] [-subj-o <subject org>] [-subj-ou <subject orgunit>] [-ip <san-ip-address>] [-hostname <hostname>] [-signer-key-id <key-id>]")
 	fmt.Println("")
 	fmt.Println("      <principal-credentials> := -svc-key-file <private-key-file> -svc-cert-file <service-cert-file> [-cacert <ca-cert-file>] |")
 	fmt.Println("                                 -ntoken-file <ntoken-file> [-hdr <auth-header-name>] [-cacert <ca-cert-file>]")
@@ -84,10 +90,10 @@ func usage() {
 }
 
 func main() {
-	var ztsURL, serviceKey, serviceCert, domain, service, keyID string
+	var ztsURL, serviceKey, serviceCert, domain, service, keyID, signerKeyID string
 	var caCertFile, certFile, signerCertFile, dnsDomain, hdr, ip string
-	var subjC, subjO, subjOU, uri, provider, instance, instanceId string
-	var svcKeyFile, svcCertFile, ntokenFile, attestationDataFile string
+	var subjC, subjO, subjOU, uri, provider, instance, instanceId, hostname, hostnameUri string
+	var svcKeyFile, svcCertFile, ntokenFile, attestationDataFile, spiffeTrustDomain, requestCsrFile string
 	var csr, spiffe, showVersion, getInstanceRegisterToken, useInstanceRegisterToken bool
 	var expiryTime int
 	flag.BoolVar(&csr, "csr", false, "request csr only")
@@ -111,12 +117,16 @@ func main() {
 	flag.StringVar(&subjO, "subj-o", "Oath Inc.", "Subject O/Organization field")
 	flag.StringVar(&subjOU, "subj-ou", "Athenz", "Subject OU/OrganizationalUnit field")
 	flag.StringVar(&ip, "ip", "", "IP address")
+	flag.StringVar(&hostname, "hostname", "", "instance hostname (e.g. server.athenz.io)")
 	flag.StringVar(&provider, "provider", "", "Athenz Provider")
 	flag.StringVar(&instance, "instance", "", "Instance Id")
 	flag.StringVar(&attestationDataFile, "attestation-data", "", "Attestation Data File")
 	flag.StringVar(&svcKeyFile, "svc-key-file", "", "service identity private key file")
 	flag.StringVar(&svcCertFile, "svc-cert-file", "", "service identity certificate file")
 	flag.BoolVar(&showVersion, "version", false, "Show version")
+	flag.StringVar(&spiffeTrustDomain, "spiffe-trust-domain", "", "Trust Domain value to be included in spiffe uri")
+	flag.StringVar(&signerKeyID, "signer-key-id", "", "Certificate Signer Key id to use to sign the certificate")
+	flag.StringVar(&requestCsrFile, "request-csr", "", "pre-generated csr file to be included in the certificate request")
 	flag.Parse()
 
 	if showVersion {
@@ -159,35 +169,36 @@ func main() {
 		}
 	}
 
-	if serviceKey == "" || domain == "" || service == "" || dnsDomain == "" {
+	if requestCsrFile != "" {
+		if csr {
+			log.Println("Error: -csr and -request-csr options cannot be used together")
+			usage()
+		}
+		if domain == "" || service == "" {
+			log.Println("Error: missing required attributes. Run with -help for command line arguments")
+			usage()
+		}
+	} else if serviceKey == "" || domain == "" || service == "" || dnsDomain == "" {
 		log.Println("Error: missing required attributes. Run with -help for command line arguments")
 		usage()
 	}
 
-	// load private key
-	keyBytes, err := os.ReadFile(serviceKey)
-	if err != nil {
-		if useInstanceRegisterToken {
-			keyBytes, err = generatePrivateKey(serviceKey)
-		}
+	// load private key. when we're given the csr, the private key is
+	// optional and only used for authentication if provided
+
+	var keyBytes []byte
+	if serviceKey != "" {
+		keyBytes, err = os.ReadFile(serviceKey)
 		if err != nil {
-			log.Fatalln(err)
+			if useInstanceRegisterToken && requestCsrFile == "" {
+				keyBytes, err = generatePrivateKey(serviceKey)
+			}
+			if err != nil {
+				log.Fatalln(err)
+			}
 		}
 	}
-	// get our private key signer for csr
-	pkSigner, err := newSigner(keyBytes)
-	if err != nil {
-		log.Fatalln(err)
-	}
 
-	// generate a csr for this service
-	// note: RFC 6125 states that if the SAN (Subject Alternative Name) exists,
-	// it is used, not the CA. So, we will always put the Athenz name in the CN
-	// (it is *not* a DNS domain name), and put the host name into the SAN.
-
-	hyphenDomain := strings.Replace(domain, ".", "-", -1)
-	host := fmt.Sprintf("%s.%s.%s", service, hyphenDomain, dnsDomain)
-	commonName := fmt.Sprintf("%s.%s", domain, service)
 	if instance != "" {
 		uriProvider := "zts"
 		if provider != "" {
@@ -195,20 +206,54 @@ func main() {
 		}
 		instanceId = fmt.Sprintf("athenz://instanceid/%s/%s", uriProvider, instance)
 	}
-	if spiffe {
-		uri = fmt.Sprintf("spiffe://%s/sa/%s", domain, service)
+	if hostname != "" {
+		if provider == "" && !csr {
+			log.Println("Error: -hostname requires -provider for certificate requests (use -csr to only generate the CSR)")
+			usage()
+		}
+		hostnameUri = fmt.Sprintf("athenz://hostname/%s", hostname)
 	}
 
-	subj := pkix.Name{
-		CommonName:         commonName,
-		OrganizationalUnit: []string{subjOU},
-		Organization:       []string{subjO},
-		Country:            []string{subjC},
-	}
+	var csrData string
+	if requestCsrFile != "" {
+		csrData, err = loadCSR(requestCsrFile)
+		if err != nil {
+			log.Fatalln(err)
+		}
+	} else {
+		// get our private key signer for csr
+		pkSigner, err := newSigner(keyBytes)
+		if err != nil {
+			log.Fatalln(err)
+		}
 
-	csrData, err := generateCSR(pkSigner, subj, host, instanceId, ip, uri)
-	if err != nil {
-		log.Fatalln(err)
+		// generate a csr for this service
+		// note: RFC 6125 states that if the SAN (Subject Alternative Name) exists,
+		// it is used, not the CA. So, we will always put the Athenz name in the CN
+		// (it is *not* a DNS domain name), and put the host name into the SAN.
+
+		hyphenDomain := strings.Replace(domain, ".", "-", -1)
+		host := fmt.Sprintf("%s.%s.%s", service, hyphenDomain, dnsDomain)
+		commonName := fmt.Sprintf("%s.%s", domain, service)
+		if spiffe || spiffeTrustDomain != "" {
+			if spiffeTrustDomain != "" {
+				uri = fmt.Sprintf("spiffe://%s/ns/default/sa/%s", spiffeTrustDomain, commonName)
+			} else {
+				uri = fmt.Sprintf("spiffe://%s/sa/%s", domain, service)
+			}
+		}
+
+		subj := pkix.Name{
+			CommonName:         commonName,
+			OrganizationalUnit: []string{subjOU},
+			Organization:       []string{subjO},
+			Country:            []string{subjC},
+		}
+
+		csrData, err = generateCSR(pkSigner, subj, host, instanceId, hostnameUri, ip, uri)
+		if err != nil {
+			log.Fatalln(err)
+		}
 	}
 
 	// if we're provided the csr flag then we're going to display
@@ -230,10 +275,23 @@ func main() {
 	// data contains the authentication details
 
 	var client *zts.ZTSClient
+	var ntoken string
 	if provider != "" {
-		client, err = certClient(ztsURL, nil, "", caCertFile)
+		var svcKeyBytes []byte
+		svcCertFileName := ""
+		if svcKeyFile != "" {
+			svcKeyBytes, err = os.ReadFile(svcKeyFile)
+			if err != nil {
+				log.Fatalln(err)
+			}
+			svcCertFileName = svcCertFile
+		}
+		client, err = certClient(ztsURL, svcKeyBytes, svcCertFileName, caCertFile)
+	} else if keyBytes == nil {
+		log.Println("Error: missing private key required to authenticate the request. Run with -help for command line arguments")
+		usage()
 	} else if serviceCert == "" {
-		ntoken, err := getNToken(domain, service, keyID, keyBytes)
+		ntoken, err = getNToken(domain, service, keyID, keyBytes)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -264,6 +322,10 @@ func main() {
 				}
 				attestationData = string(attestationDataBytes)
 			} else {
+				if keyBytes == nil {
+					log.Println("Error: missing private key required to generate attestation data. Run with -help for command line arguments")
+					usage()
+				}
 				attestationData, err = getNToken(domain, service, keyID, keyBytes)
 				if err != nil {
 					log.Fatalln(err)
@@ -276,6 +338,12 @@ func main() {
 			Service:         zts.SimpleName(service),
 			AttestationData: attestationData,
 			Csr:             csrData,
+		}
+		if signerKeyID != "" {
+			req.X509CertSignerKeyId = zts.SimpleName(signerKeyID)
+		}
+		if hostname != "" {
+			req.Hostname = zts.DomainName(hostname)
 		}
 
 		// request a tls certificate for this service
@@ -294,6 +362,9 @@ func main() {
 			Csr:        csrData,
 			KeyId:      keyID,
 			ExpiryTime: &expiryTime32,
+		}
+		if signerKeyID != "" {
+			req.X509CertSignerKeyId = zts.SimpleName(signerKeyID)
 		}
 
 		// request a tls certificate for this service
@@ -348,11 +419,12 @@ func fetchInstanceRegisterToken(ztsURL, svcKeyFile, svcCertFile, caCertFile, nto
 
 	var client *zts.ZTSClient
 	var err error
+	var ntokenBytes []byte
 	if svcKeyFile != "" {
 		client, err = athenzutils.ZtsClient(ztsURL, svcKeyFile, svcCertFile, caCertFile, true)
 	} else {
 		// we need to load our ntoken from the given file
-		ntokenBytes, err := os.ReadFile(ntokenFile)
+		ntokenBytes, err = os.ReadFile(ntokenFile)
 		if err != nil {
 			return "", err
 		}
@@ -369,45 +441,36 @@ func fetchInstanceRegisterToken(ztsURL, svcKeyFile, svcCertFile, caCertFile, nto
 	return instanceRegisterToken.AttestationData, nil
 }
 
-func newSigner(privateKeyPEM []byte) (*signer, error) {
-	block, _ := pem.Decode(privateKeyPEM)
-	if block == nil {
-		return nil, fmt.Errorf("unable to load private key")
+func loadCSR(csrFile string) (string, error) {
+	csrBytes, err := os.ReadFile(csrFile)
+	if err != nil {
+		return "", err
 	}
-
-	switch block.Type {
-	case "EC PRIVATE KEY":
-		key, err := x509.ParseECPrivateKey(block.Bytes)
-		if err != nil {
-			return nil, err
-		}
-		return &signer{key: key, algorithm: x509.ECDSAWithSHA256}, nil
-	case "RSA PRIVATE KEY":
-		key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-		if err != nil {
-			return nil, err
-		}
-		return &signer{key: key, algorithm: x509.SHA256WithRSA}, nil
-	case "PRIVATE KEY":
-		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if err != nil {
-			return nil, err
-		}
-		switch k := key.(type) {
-		case *ecdsa.PrivateKey:
-			return &signer{key: k, algorithm: x509.ECDSAWithSHA256}, nil
-		case *rsa.PrivateKey:
-			return &signer{key: k, algorithm: x509.SHA256WithRSA}, nil
-		default:
-			// PKCS#8 format may contain multiple key types other than RSA / EC, but current ZMS / ZTS server implementation only supports RSA / EC private keys
-			return nil, fmt.Errorf("unsupported private key type: %s", reflect.TypeOf(k).Name())
-		}
-	default:
-		return nil, fmt.Errorf("unsupported private key type: %s", block.Type)
+	block, _ := pem.Decode(csrBytes)
+	if block == nil || (block.Type != "CERTIFICATE REQUEST" && block.Type != "NEW CERTIFICATE REQUEST") {
+		return "", fmt.Errorf("unable to decode PEM certificate request from %s", csrFile)
 	}
+	csr, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		return "", fmt.Errorf("unable to parse certificate request from %s: %v", csrFile, err)
+	}
+	if err = csr.CheckSignature(); err != nil {
+		return "", fmt.Errorf("invalid certificate request signature in %s: %v", csrFile, err)
+	}
+	// normalize the legacy openssl header to the standard one
+	block.Type = "CERTIFICATE REQUEST"
+	return string(pem.EncodeToMemory(block)), nil
 }
 
-func generateCSR(keySigner *signer, subj pkix.Name, host, instanceId, ip, uri string) (string, error) {
+func newSigner(privateKeyPEM []byte) (*signer, error) {
+	key, algorithm, err := athenzutils.ExtractSignerInfo(privateKeyPEM)
+	if err != nil {
+		return nil, err
+	}
+	return &signer{key: key, algorithm: algorithm}, nil
+}
+
+func generateCSR(keySigner *signer, subj pkix.Name, host, instanceId, hostnameUri, ip, uri string) (string, error) {
 
 	template := x509.CertificateRequest{
 		Subject:            subj,
@@ -416,21 +479,15 @@ func generateCSR(keySigner *signer, subj pkix.Name, host, instanceId, ip, uri st
 	if host != "" {
 		template.DNSNames = []string{host}
 	}
-	if uri != "" {
-		uriptr, err := url.Parse(uri)
-		if err == nil {
-			template.URIs = []*url.URL{uriptr}
+	for _, sanUri := range []string{uri, instanceId, hostnameUri} {
+		if sanUri == "" {
+			continue
 		}
-	}
-	if instanceId != "" {
-		uriptr, err := url.Parse(instanceId)
-		if err == nil {
-			if len(template.URIs) > 0 {
-				template.URIs = append(template.URIs, uriptr)
-			} else {
-				template.URIs = []*url.URL{uriptr}
-			}
+		uriptr, err := url.Parse(sanUri)
+		if err != nil {
+			return "", fmt.Errorf("cannot parse SAN URI %q: %v", sanUri, err)
 		}
+		template.URIs = append(template.URIs, uriptr)
 	}
 	if ip != "" {
 		template.IPAddresses = []net.IP{net.ParseIP(ip)}
@@ -481,15 +538,17 @@ func ntokenClient(ztsURL, ntoken, caCertFile, hdr string) (*zts.ZTSClient, error
 		ResponseHeaderTimeout: 30 * time.Second,
 	}
 	if caCertFile != "" {
-		config := &tls.Config{}
+		tlsConfig := config.ClientTLSConfig()
 		certPool := x509.NewCertPool()
 		caCert, err := os.ReadFile(caCertFile)
 		if err != nil {
 			return nil, err
 		}
 		certPool.AppendCertsFromPEM(caCert)
-		config.RootCAs = certPool
-		transport.TLSClientConfig = config
+		tlsConfig.RootCAs = certPool
+		transport.TLSClientConfig = tlsConfig
+	} else {
+		transport.TLSClientConfig = config.ClientTLSConfig()
 	}
 	// use the ntoken to talk to Athenz
 	client := zts.NewClient(ztsURL, transport)
@@ -513,7 +572,7 @@ func certClient(ztsURL string, keyBytes []byte, certfile, caCertFile string) (*z
 			return nil, err
 		}
 	}
-	config, err := tlsConfiguration(keyBytes, certpem, cacertpem)
+	config, err := config.ClientTLSConfigFromPEM(keyBytes, certpem, cacertpem)
 	if err != nil {
 		return nil, err
 	}
@@ -523,22 +582,4 @@ func certClient(ztsURL string, keyBytes []byte, certfile, caCertFile string) (*z
 	}
 	client := zts.NewClient(ztsURL, transport)
 	return &client, nil
-}
-
-func tlsConfiguration(keypem, certpem, cacertpem []byte) (*tls.Config, error) {
-	config := &tls.Config{}
-	if certpem != nil && keypem != nil {
-		mycert, err := tls.X509KeyPair(certpem, keypem)
-		if err != nil {
-			return nil, err
-		}
-		config.Certificates = make([]tls.Certificate, 1)
-		config.Certificates[0] = mycert
-	}
-	if cacertpem != nil {
-		certPool := x509.NewCertPool()
-		certPool.AppendCertsFromPEM(cacertpem)
-		config.RootCAs = certPool
-	}
-	return config, nil
 }

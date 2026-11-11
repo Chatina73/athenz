@@ -41,9 +41,9 @@ public class PrincipalToken extends Token {
     public static class Builder {
 
         // required attributes
-        private String domain;
-        private String name;
-        private String version;
+        private final String domain;
+        private final String name;
+        private final String version;
         
         // optional attributes with default values
         private String salt = Crypto.randomSalt();
@@ -183,10 +183,6 @@ public class PrincipalToken extends Token {
     }
 
     public PrincipalToken(String signedToken) {
-
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Constructing PrincipalToken with input string: {}", signedToken);
-        }
         
         if (signedToken == null || signedToken.isEmpty()) {
             throw new IllegalArgumentException("Input String signedToken must not be empty");
@@ -235,6 +231,10 @@ public class PrincipalToken extends Token {
         }
 
         final String parseToken = unsignedToken != null ? unsignedToken : signedToken;
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Constructing PrincipalToken with input string: {}", parseToken);
+        }
+
         for (String item : parseToken.split(";")) {
             String [] kv = item.split("=");
             if (kv.length == 2) {

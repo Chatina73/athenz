@@ -33,8 +33,8 @@ import { selectDomainData } from '../../../redux/selectors/domainData';
 import Alert from '../../../components/denali/Alert';
 import createCache from '@emotion/cache';
 import { CacheProvider } from '@emotion/react';
-import Loader from '../../../components/denali/Loader';
 import { ReduxPageLoader } from '../../../components/denali/ReduxPageLoader';
+import { withRouter } from 'next/router';
 
 const AppContainerDiv = styled.div`
     align-items: stretch;
@@ -104,7 +104,7 @@ class RolePage extends React.Component {
         });
         this.state = {
             showUser: false,
-            errorMessage: '',
+            error: null,
             showError: false,
         };
         this.showUserToggle = this.showUserToggle.bind(this);
@@ -117,7 +117,7 @@ class RolePage extends React.Component {
             getDomainData(domainName, userName),
             getRoles(domainName),
         ]).catch((err) => {
-            this.showError(RequestUtils.fetcherErrorCheckHelper(err));
+            this.showError(err);
         });
     }
 
@@ -128,15 +128,15 @@ class RolePage extends React.Component {
                 getDomainData(domainName, userName),
                 getRoles(domainName),
             ]).catch((err) => {
-                this.showError(RequestUtils.fetcherErrorCheckHelper(err));
+                this.showError(err);
             });
         }
     };
 
-    showError(errorMessage) {
+    showError(error) {
         this.setState({
             showError: true,
-            errorMessage: errorMessage,
+            error: error,
         });
     }
 
@@ -158,11 +158,25 @@ class RolePage extends React.Component {
         }
 
         if (this.state.showError) {
+            const errorMessage = this.state.error
+                ? RequestUtils.fetcherErrorCheckHelper(this.state.error)
+                : 'An error occurred';
+
             return (
                 <Alert
                     isOpen={this.state.showError}
-                    title={this.state.errorMessage}
-                    onClose={() => {}}
+                    title={errorMessage}
+                    onClose={() => {
+                        // Only redirect to homepage for 404 domain not found errors
+                        if (
+                            this.state.error &&
+                            this.state.error.statusCode === 404
+                        ) {
+                            this.props.router.push('/', '/');
+                        } else {
+                            this.setState({ showError: false });
+                        }
+                    }}
                     type='danger'
                 />
             );
@@ -227,4 +241,7 @@ const mapDispatchToProps = (dispatch) => ({
         dispatch(getDomainData(domainName, userName)),
 });
 
-export default connect(mapStateToProps, mapDispatchToProps)(RolePage);
+export default connect(
+    mapStateToProps,
+    mapDispatchToProps
+)(withRouter(RolePage));

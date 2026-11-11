@@ -27,6 +27,8 @@ import jakarta.servlet.ServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.yahoo.athenz.common.metrics.Metric;
+import com.yahoo.athenz.common.metrics.Utils;
 import com.yahoo.athenz.common.filter.RateLimit;
 import com.yahoo.athenz.common.filter.RateLimitFactory;
 import com.yahoo.athenz.container.AthenzConsts;
@@ -35,9 +37,11 @@ public class RateLimitFilter implements jakarta.servlet.Filter {
     private static final Logger LOGGER = LoggerFactory.getLogger(RateLimitFilter.class);
 
     private RateLimit rateLimit;
+    private final Metric metric;
     
     public RateLimitFilter() {
         registerRateLimitFilter();
+        metric = Utils.getMetric();
     }
     
     @Override
@@ -47,7 +51,7 @@ public class RateLimitFilter implements jakarta.servlet.Filter {
     @Override
     public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain chain)
             throws IOException, ServletException {
-        if (rateLimit.filter(servletRequest, servletResponse)) {
+        if (rateLimit.filter(servletRequest, servletResponse, metric)) {
             return;
         }
         chain.doFilter(servletRequest, servletResponse);
@@ -62,13 +66,13 @@ public class RateLimitFilter implements jakarta.servlet.Filter {
                 AthenzConsts.ATHENZ_RATE_LIMIT_FACTORY_CLASS);
         RateLimitFactory rateLimitFactory;
         try {
-            rateLimitFactory = (RateLimitFactory) Class.forName(ratelimitFactoryClass).newInstance();
+            rateLimitFactory = (RateLimitFactory) Class.forName(ratelimitFactoryClass).getDeclaredConstructor().newInstance();
             this.rateLimit = rateLimitFactory.create();
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("Registered rate limit filter: {}", ratelimitFactoryClass);
             }
-        } catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
-            LOGGER.error("Invalid RateLimitFactory class: {} error: {}", ratelimitFactoryClass, e.getMessage());
+        } catch (Exception ex) {
+            LOGGER.error("Invalid RateLimitFactory class: {}", ratelimitFactoryClass, ex);
             throw new IllegalArgumentException("Invalid RateLimitFactory class");
         }
     }

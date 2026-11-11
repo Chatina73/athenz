@@ -1,0 +1,125 @@
+/*
+ * Copyright The Athenz Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.yahoo.athenz.auth.impl;
+
+import com.yahoo.athenz.auth.*;
+import com.yahoo.athenz.auth.token.AccessToken;
+import com.yahoo.athenz.auth.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Authority that validates Athenz-issued OAuth2 access tokens (JWTs) presented
+ * in the {@code Authorization: Bearer} header and creates the corresponding
+ * Athenz principal.
+ *
+ * <p><b>Coexistence with other Bearer-token authorities.</b> This authority
+ * can be registered alongside other authorities that also consume the
+ * {@code Authorization: Bearer} header (for example {@link OIDCAuthority},
+ * which validates external OIDC ID tokens). Athenz dispatches credentials to
+ * each configured authority in order and uses the first non-null principal;
+ * each authority is expected to return {@code null} for tokens it does not
+ * recognise. When coexistence is needed, authorities downstream of this one
+ * should pre-check the JWT {@code iss} claim before consulting their JWKS
+ * source so that tokens issued by other providers bail out cheaply;
+ * {@link OIDCAuthority} implements that pattern.
+ *
+ * @see OIDCAuthority
+ */
+public class ServiceAccessTokenAuthority implements Authority, AuthorityKeyStore {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ServiceAccessTokenAuthority.class);
+
+    public static final String ATHENZ_AUTH_CHALLENGE = "Basic realm=\"athenz\"";
+    public static final String HTTP_HEADER = "Authorization";
+    public static final String HTTP_BEARER_PREFIX = "Bearer ";
+
+    public static final String PROP_OAUTH_ISSUER = "athenz.auth.access_token.oauth_issuer";
+
+    private final String oauth2Issuer;
+    private KeyStore keyStore;
+
+    public ServiceAccessTokenAuthority() {
+        oauth2Issuer = System.getProperty(PROP_OAUTH_ISSUER, "https://athenz.io");
+    }
+
+    @Override
+    public String getID() {
+        return "Auth-SvcAccessToken";
+    }
+
+    @Override
+    public void initialize() {
+    }
+
+    @Override
+    public String getDomain() {
+        return null;
+    }
+
+    @Override
+    public String getHeader() {
+        return HTTP_HEADER;
+    }
+
+    @Override
+    public String getAuthenticateChallenge() {
+        return ATHENZ_AUTH_CHALLENGE;
+    }
+
+    @Override
+    public Principal authenticate(String creds, String remoteAddr, String httpMethod, StringBuilder errMsg) {
+
+        errMsg = errMsg == null ? new StringBuilder(512) : errMsg;
+
+        if (StringUtils.isEmpty(creds)) {
+            errMsg.append("AccessTokenAuthority:authenticate: No credentials provided");
+            LOG.error(errMsg.toString());
+            return null;
+        }
+
+        if (!creds.startsWith(HTTP_BEARER_PREFIX)) {
+            errMsg.append("AccessTokenAuthority:authenticate: Invalid token: No Bearer prefix");
+            LOG.error(errMsg.toString());
+            return null;
+        }
+
+        AccessToken token;
+        try {
+            token = new AccessToken(creds.substring(HTTP_BEARER_PREFIX.length()), keyStore, oauth2Issuer);
+        } catch (Exception ex) {
+            errMsg.append("AccessTokenAuthority:authenticate: Invalid token: exc=").append(ex.getMessage());
+            LOG.error(errMsg.toString());
+            return null;
+        }
+
+        // if this is a token issued by athenz then we need to set
+        // the role attribute accordingly in the principal object
+
+        if (oauth2Issuer.equals(token.getIssuer())) {
+            return SimplePrincipal.create(token.getAudience(), creds, token.getScope(), token.getSubject(), this);
+        } else {
+            return SimplePrincipal.create(token.getClientIdDomainName(), token.getClientIdServiceName(),
+                    creds, token.getIssueTime(), this);
+        }
+    }
+
+    @Override
+    public void setKeyStore(KeyStore keyStore) {
+        this.keyStore = keyStore;
+    }
+}

@@ -33,7 +33,7 @@ public class Role {
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public Integer certExpiryMins;
     @RdlOptional
-    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public String signAlgorithm;
     @RdlOptional
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
@@ -48,13 +48,13 @@ public class Role {
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public Boolean reviewEnabled;
     @RdlOptional
-    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public String notifyRoles;
     @RdlOptional
-    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public String userAuthorityFilter;
     @RdlOptional
-    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public String userAuthorityExpiration;
     @RdlOptional
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
@@ -66,7 +66,7 @@ public class Role {
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public Map<String, TagValueList> tags;
     @RdlOptional
-    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public String description;
     @RdlOptional
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
@@ -74,6 +74,27 @@ public class Role {
     @RdlOptional
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public Boolean deleteProtection;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public Timestamp lastReviewedDate;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public Boolean selfRenew;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public Integer selfRenewMins;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public Integer maxMembers;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public ResourceRoleOwnership resourceOwnership;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public String principalDomainFilter;
+    @RdlOptional
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public String notifyDetails;
     public String name;
     @RdlOptional
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
@@ -90,9 +111,6 @@ public class Role {
     @RdlOptional
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public List<RoleAuditLog> auditLog;
-    @RdlOptional
-    @JsonInclude(JsonInclude.Include.NON_EMPTY)
-    public Timestamp lastReviewedDate;
 
     public Role setSelfServe(Boolean selfServe) {
         this.selfServe = selfServe;
@@ -220,6 +238,55 @@ public class Role {
     public Boolean getDeleteProtection() {
         return deleteProtection;
     }
+    public Role setLastReviewedDate(Timestamp lastReviewedDate) {
+        this.lastReviewedDate = lastReviewedDate;
+        return this;
+    }
+    public Timestamp getLastReviewedDate() {
+        return lastReviewedDate;
+    }
+    public Role setSelfRenew(Boolean selfRenew) {
+        this.selfRenew = selfRenew;
+        return this;
+    }
+    public Boolean getSelfRenew() {
+        return selfRenew;
+    }
+    public Role setSelfRenewMins(Integer selfRenewMins) {
+        this.selfRenewMins = selfRenewMins;
+        return this;
+    }
+    public Integer getSelfRenewMins() {
+        return selfRenewMins;
+    }
+    public Role setMaxMembers(Integer maxMembers) {
+        this.maxMembers = maxMembers;
+        return this;
+    }
+    public Integer getMaxMembers() {
+        return maxMembers;
+    }
+    public Role setResourceOwnership(ResourceRoleOwnership resourceOwnership) {
+        this.resourceOwnership = resourceOwnership;
+        return this;
+    }
+    public ResourceRoleOwnership getResourceOwnership() {
+        return resourceOwnership;
+    }
+    public Role setPrincipalDomainFilter(String principalDomainFilter) {
+        this.principalDomainFilter = principalDomainFilter;
+        return this;
+    }
+    public String getPrincipalDomainFilter() {
+        return principalDomainFilter;
+    }
+    public Role setNotifyDetails(String notifyDetails) {
+        this.notifyDetails = notifyDetails;
+        return this;
+    }
+    public String getNotifyDetails() {
+        return notifyDetails;
+    }
     public Role setName(String name) {
         this.name = name;
         return this;
@@ -261,13 +328,6 @@ public class Role {
     }
     public List<RoleAuditLog> getAuditLog() {
         return auditLog;
-    }
-    public Role setLastReviewedDate(Timestamp lastReviewedDate) {
-        this.lastReviewedDate = lastReviewedDate;
-        return this;
-    }
-    public Timestamp getLastReviewedDate() {
-        return lastReviewedDate;
     }
 
     @Override
@@ -331,6 +391,27 @@ public class Role {
             if (deleteProtection == null ? a.deleteProtection != null : !deleteProtection.equals(a.deleteProtection)) {
                 return false;
             }
+            if (lastReviewedDate == null ? a.lastReviewedDate != null : !lastReviewedDate.equals(a.lastReviewedDate)) {
+                return false;
+            }
+            if (selfRenew == null ? a.selfRenew != null : !selfRenew.equals(a.selfRenew)) {
+                return false;
+            }
+            if (selfRenewMins == null ? a.selfRenewMins != null : !selfRenewMins.equals(a.selfRenewMins)) {
+                return false;
+            }
+            if (maxMembers == null ? a.maxMembers != null : !maxMembers.equals(a.maxMembers)) {
+                return false;
+            }
+            if (resourceOwnership == null ? a.resourceOwnership != null : !resourceOwnership.equals(a.resourceOwnership)) {
+                return false;
+            }
+            if (principalDomainFilter == null ? a.principalDomainFilter != null : !principalDomainFilter.equals(a.principalDomainFilter)) {
+                return false;
+            }
+            if (notifyDetails == null ? a.notifyDetails != null : !notifyDetails.equals(a.notifyDetails)) {
+                return false;
+            }
             if (name == null ? a.name != null : !name.equals(a.name)) {
                 return false;
             }
@@ -347,9 +428,6 @@ public class Role {
                 return false;
             }
             if (auditLog == null ? a.auditLog != null : !auditLog.equals(a.auditLog)) {
-                return false;
-            }
-            if (lastReviewedDate == null ? a.lastReviewedDate != null : !lastReviewedDate.equals(a.lastReviewedDate)) {
                 return false;
             }
         }

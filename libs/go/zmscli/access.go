@@ -24,7 +24,7 @@ func (cli Zms) getAccessParameters(dn string, action string, resource string, al
 		if action != "assume_role" {
 			resDomain := resource[0:idx]
 			if resDomain != dn {
-				return "", "", "", fmt.Errorf("Domain name mismatch. Expected " + dn + ", encountered in resource " + resDomain)
+				return "", "", "", fmt.Errorf("domain name mismatch. Expected %s, encountered in resource %s", dn, resDomain)
 			}
 		}
 	}
@@ -49,7 +49,7 @@ func (cli Zms) ShowAccess(dn string, action string, resource string, altIdent *s
 	if err != nil {
 		return nil, err
 	}
-	access, err := cli.Zms.GetAccess(zms.ActionName(action), zms.ResourceName(fullResourceName), zms.DomainName(trustDomain), zms.EntityName(altPrincipal))
+	access, err := cli.Zms.GetAccess(zms.ActionName(action), zms.ResourceName(fullResourceName), zms.DomainName(trustDomain), zms.PrincipalName(altPrincipal))
 	if err != nil {
 		return nil, err
 	}
@@ -65,13 +65,19 @@ func (cli Zms) ShowAccess(dn string, action string, resource string, altIdent *s
 }
 
 // ShowAccessExt returns access indicator as string:
-// 'access: granted' or 'access: denied'.
-func (cli Zms) ShowAccessExt(dn string, action string, resource string, altIdent *string, altDomain *string) (*string, error) {
+// 'access: granted' or 'access: denied'. If caseSensitive is true, the
+// action and resource of assertions created with the case-sensitive
+// flag are matched in their original case.
+func (cli Zms) ShowAccessExt(dn string, action string, resource string, altIdent *string, altDomain *string, caseSensitive bool) (*string, error) {
 	fullResourceName, trustDomain, altPrincipal, err := cli.getAccessParameters(dn, action, resource, altIdent, altDomain)
 	if err != nil {
 		return nil, err
 	}
-	access, err := cli.Zms.GetAccessExt(zms.ActionName(action), fullResourceName, zms.DomainName(trustDomain), zms.EntityName(altPrincipal))
+	var caseSensitiveParam *bool
+	if caseSensitive {
+		caseSensitiveParam = &caseSensitive
+	}
+	access, err := cli.Zms.GetAccessExt(zms.ActionName(action), fullResourceName, zms.DomainName(trustDomain), zms.PrincipalName(altPrincipal), caseSensitiveParam)
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +92,8 @@ func (cli Zms) ShowAccessExt(dn string, action string, resource string, altIdent
 	return cli.dumpByFormat(message, cli.buildYAMLOutput)
 }
 
-func (cli Zms) ShowResourceAccess(principal string, action string) (*string, error) {
-	rsrcAccessList, err := cli.Zms.GetResourceAccessList(zms.ResourceName(principal), zms.ActionName(action))
+func (cli Zms) ShowResourceAccess(principal, action, filter string) (*string, error) {
+	rsrcAccessList, err := cli.Zms.GetResourceAccessList(zms.PrincipalName(principal), zms.ActionName(action), filter)
 	if err != nil {
 		return nil, err
 	}

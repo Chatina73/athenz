@@ -23,6 +23,7 @@ import {
     selectServiceDescription,
     selectServicePublicKeys,
     selectServices,
+    selectServiceTags,
     thunkSelectServices,
     selectStaticServiceHeaderDetails,
     selectInstancesWorkLoadMeta,
@@ -59,7 +60,7 @@ describe('test service selectors', () => {
         },
     };
     describe('test thunkSelectServices selector', () => {
-        it('should return groups', () => {
+        it('should return services', () => {
             expect(thunkSelectServices(stateWithServices)).toEqual(
                 configStoreServices
             );
@@ -189,6 +190,10 @@ describe('test service selectors', () => {
             const expectedService = {
                 name: 'dom.service1',
                 description: 'service for test',
+                tags: {
+                    tag: { list: ['tag1', 'tag2'] },
+                    tag2: { list: ['tag3'] },
+                },
                 publicKeys: {
                     1: {
                         key: 'LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUF6WkNVaExjM1Rwdk9iaGpkWThIYgovMHprZldBWVNYTFhhQzlPMVM4QVhvTTcvTDcwWFkrOUtMKzFJeTd4WURUcmJaQjB0Y29sTHdubldIcTVnaVptClV3M3U2RkdTbDVsZDR4cHlxQjAyaUsrY0ZTcVM3S09MTEgwcDlnWFJmeFhpYXFSaVYycktGMFRoenJHb3gyY20KRGYvUW9abGxOZHdJRkdxa3VSY0VEdkJuUlRMV2xFVlYrMVUxMmZ5RXNBMXl2VmI0RjlSc2NaRFltaVBSYmhBKwpjTHpxSEt4WDUxZGw2ZWsxeDdBdlVJTThqczZXUElFZmVseVRSaVV6WHdPZ0laYnF2UkhTUG1GRzBaZ1pEakczCkxsZnkvRThLMFF0Q2sza2kxeThUZ2EySTVrMmhmZngzRHJITW5yMTRaajNCcjBUOVJ3aXFKRDdGb3lUaUQvdGkKeFFJREFRQUIKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0t',
@@ -393,8 +398,8 @@ describe('test service selectors', () => {
         it('should return static work load meta', () => {
             let workLoadMeta = {
                 totalDynamic: 0,
-                totalStatic: 2,
-                totalRecords: 2,
+                totalStatic: 3,
+                totalRecords: 3,
                 totalHealthyDynamic: 0,
             };
             expect(
@@ -486,6 +491,14 @@ describe('test service selectors', () => {
                     name: '101.101.101.2',
                     updateTime: '2022-08-03T11:07:02.416Z',
                 },
+                {
+                    domainName: 'dom',
+                    serviceName: 'ows',
+                    type: 'SERVICE_SUBNET',
+                    ipAddresses: ['101.101.101.2/20'],
+                    name: '101.101.101.2/20',
+                    updateTime: '2022-08-03T11:07:02.417Z',
+                },
             ];
             expect(
                 selectInstancesWorkLoadData(
@@ -505,6 +518,22 @@ describe('test service selectors', () => {
                     'static'
                 )
             ).toEqual([]);
+        });
+    });
+    describe('test selectServiceTags selector', () => {
+        it('should return service with tags', () => {
+            const expectedRoleTags = {
+                tag: { list: ['tag1', 'tag2'] },
+                tag2: { list: ['tag3'] },
+            };
+            expect(
+                selectServiceTags(stateWithServices, domainName, 'service1')
+            ).toEqual(expectedRoleTags);
+        });
+        it('should return empty object', () => {
+            expect(
+                selectServiceTags(stateWithServices, domainName, 'admin')
+            ).toEqual({});
         });
     });
 });

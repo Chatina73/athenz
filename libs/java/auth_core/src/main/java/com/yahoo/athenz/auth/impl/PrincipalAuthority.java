@@ -54,7 +54,7 @@ public class PrincipalAuthority implements Authority, AuthorityKeyStore {
     private int allowedOffset;
     IpCheckMode ipCheckMode;
     final String userDomain;
-    private String headerName;
+    private final String headerName;
     
     public PrincipalAuthority() {
         allowedOffset = Integer.parseInt(System.getProperty(ATHENZ_PROP_TOKEN_OFFSET, "300"));
@@ -100,7 +100,7 @@ public class PrincipalAuthority implements Authority, AuthorityKeyStore {
 
         errMsg = errMsg == null ? new StringBuilder(512) : errMsg;
         if (LOG.isDebugEnabled()) {
-            LOG.debug("Authenticating PrincipalToken: {}", signedToken);
+            LOG.debug("Authenticating PrincipalToken: {}", Token.getUnsignedToken(signedToken));
         }
 
         PrincipalToken serviceToken;
